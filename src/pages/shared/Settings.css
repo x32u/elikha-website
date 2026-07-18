@@ -1,0 +1,230 @@
+.settings-page-container {
+  min-height: 100vh;
+  padding-left: 90px;
+  background:
+    radial-gradient(circle at 8% 10%, rgba(255, 188, 110, 0.22) 0, rgba(255, 188, 110, 0) 230px),
+    radial-gradient(circle at 90% 8%, rgba(106, 146, 255, 0.22) 0, rgba(106, 146, 255, 0) 230px),
+    #f2f6ff;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.settings-page {
+  max-width: 1020px;
+  margin: 0 auto;
+  padding: 24px clamp(14px, 3.4vw, 30px) 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-page-title {
+  font-size: clamp(30px, 3.6vw, 42px);
+  font-weight: 900;
+  color: #13213f;
+  margin: 0 0 12px 0;
+}
+
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-card {
+  background: #ffffff;
+  border: 1px solid #d8e4ff;
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: 0 12px 24px rgba(44, 68, 140, 0.1);
+}
+
+.settings-status {
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-weight: 700;
+  border: 1px solid #d8e4ff;
+}
+
+.settings-status.success {
+  color: #16774e;
+  background: #e8f9ee;
+  border-color: #bbe7cc;
+}
+
+.settings-status.warning {
+  color: #8a5a00;
+  background: #fff7dd;
+  border-color: #ffe2a3;
+}
+
+.settings-status.error {
+  color: #a31919;
+  background: #fff0f0;
+  border-color: #ffd0d0;
+}
+
+.card-title {
+  font-weight: 900;
+  color: #13213f;
+  margin: 0 0 10px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #edf1ff;
+}
+
+.settings-row:last-child {
+  border-bottom: none;
+}
+
+.settings-label {
+  margin: 0;
+  font-weight: 800;
+  color: #13213f;
+}
+
+.settings-help {
+  margin: 2px 0 0;
+  color: #5f739b;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.settings-meta {
+  margin: 6px 0 0;
+  color: #3156e0;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.toggle {
+  position: relative;
+  width: 54px;
+  height: 30px;
+  border-radius: 20px;
+  border: 1px solid #cad9ff;
+  background: #eef3ff;
+  cursor: pointer;
+  padding: 3px;
+  transition: all 0.2s ease;
+}
+
+.toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.toggle-handle {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  transition: transform 0.2s ease;
+}
+
+.toggle.active {
+  background: #3156e0;
+  border-color: #3156e0;
+}
+
+.toggle.active .toggle-handle {
+  transform: translateX(24px);
+}
+
+.settings-select {
+  border: 1px solid #cad9ff;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-weight: 700;
+  color: #13213f;
+  background: #ffffff;
+  min-width: 150px;
+  font-family: 'Nunito', 'Plus Jakarta Sans', sans-serif;
+}
+
+.select-row {
+  align-items: center;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-start;
+}
+
+.settings-button {
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #3f6bff 0%, #2e54dd 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  font-family: 'Nunito', 'Plus Jakarta Sans', sans-serif;
+}
+
+.settings-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(45, 78, 201, 0.3);
+}
+
+.settings-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+  box-shadow: none;
+}
+
+.settings-button.secondary {
+  color: #3156e0;
+  background: #edf2ff;
+  border: 1px solid #cad9ff;
+}
+
+.settings-button.secondary:hover:not(:disabled) {
+  color: #ffffff;
+  background: linear-gradient(135deg, #3f6bff 0%, #2e54dd 100%);
+}
+
+.settings-button.danger {
+  background: linear-gradient(135deg, #b53737 0%, #902424 100%);
+}
+
+.settings-button.danger:hover:not(:disabled) {
+  background: linear-gradient(135deg, #9f2929 0%, #7e1f1f 100%);
+}
+
+.settings-button:active {
+  transform: translateY(0);
+}
+
+@media (max-width: 768px) {
+  .settings-page-container {
+    padding-left: 0;
+    padding-bottom: 94px;
+  }
+
+  .settings-page {
+    padding: 16px 14px 84px;
+  }
+
+  .settings-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .settings-select {
+    width: 100%;
+  }
+}

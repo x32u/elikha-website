@@ -1,0 +1,323 @@
+/* Settings page-specific styles. Shared layout/sidebar comes from AdminShell.css */
+
+:root {
+  --set-ink: #0d1c12;
+  --set-muted: #4d7399;
+  --set-bg: #f7fafc;
+  --set-border: #d9e5f2;
+  --set-blue: #1800ad;
+  --set-soft: #e8f2eb;
+  --set-shadow-sm: 0 6px 16px rgba(2, 30, 8, 0.05);
+  --set-radius: 14px;
+  --set-good: #1ae65c;
+  --set-bad: #ff2601;
+  --set-danger: #b42318;
+  --set-danger-bg: rgba(180, 35, 24, 0.08);
+}
+
+/* Frame 7 centers the settings form region and uses padding 20px 160px */
+.page-settings .dash-main {
+  /* Keep settings consistent with other admin pages (avoid large empty side whitespace). */
+  padding: 20px 0 36px 23px;
+  background: var(--set-bg);
+}
+
+.set-container {
+  width: 960px;
+  max-width: calc(100% - 23px);
+  position: relative;
+}
+
+.set-header {
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.set-title {
+  margin: 0;
+  font-size: 32px;
+  line-height: 40px;
+  font-weight: 700;
+  color: var(--set-ink);
+}
+
+.set-block {
+  width: 100%;
+  max-width: none;
+  margin: 12px 0;
+  box-sizing: border-box;
+}
+
+.set-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.set-block,
+.set-actions,
+.set-toggle-row {
+  background: #ffffff;
+  border: 1px solid var(--set-border);
+  border-radius: var(--set-radius);
+  box-shadow: var(--set-shadow-sm);
+}
+
+.set-block {
+  padding: 16px;
+}
+
+.set-actions {
+  width: 100%;
+  max-width: none;
+  margin: 12px 0;
+  padding: 12px 16px;
+  height: auto;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.set-label {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--set-ink);
+}
+
+.set-input,
+.set-static {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--set-border);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 12px;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--set-ink);
+}
+
+.set-static {
+  height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.set-input {
+  height: 56px;
+}
+
+.set-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(151, 217, 255, 0.45);
+}
+
+.set-input::placeholder {
+  color: var(--set-muted);
+}
+
+.set-btn {
+  height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--set-blue);
+  color: #ffffff;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 21px;
+  font-weight: 700;
+  box-shadow: 0 10px 24px rgba(24, 0, 173, 0.18);
+  transition: transform 140ms ease, filter 140ms ease, box-shadow 140ms ease;
+}
+
+.set-btn:hover {
+  filter: brightness(0.98);
+  box-shadow: 0 12px 28px rgba(24, 0, 173, 0.2);
+}
+
+.set-btn:active {
+  transform: translateY(1px);
+}
+
+.set-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(151, 217, 255, 0.45);
+}
+
+.set-btn:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.15);
+  opacity: 0.62;
+  box-shadow: none;
+}
+
+.set-page-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 6px 0;
+}
+
+.set-logout {
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid var(--set-border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(247, 250, 252, 0.96) 100%);
+  color: var(--set-danger);
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.1);
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease, filter 140ms ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.set-logout:hover {
+  transform: translateY(-1px);
+  border-color: rgba(180, 35, 24, 0.35);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.12);
+  filter: brightness(1.02);
+}
+
+.set-logout:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 38, 1, 0.18), 0 14px 35px rgba(0, 0, 0, 0.12);
+}
+
+.set-logout-ico {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.set-logout-text {
+  font-size: 14px;
+  letter-spacing: 0.01em;
+}
+
+.set-section-title {
+  margin: 8px 0 0;
+  padding: 20px 16px 12px;
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 700;
+  color: var(--set-ink);
+}
+
+.set-toggle-row {
+  width: 100%;
+  max-width: none;
+  height: 56px;
+  min-height: 56px;
+  padding: 0 16px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 12px 0;
+}
+
+.set-toggle-label {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+  color: var(--set-ink);
+}
+
+.set-switch {
+  width: 51px;
+  height: 31px;
+  border: 0;
+  border-radius: 15.5px;
+  background: var(--set-soft);
+  padding: 2px;
+  cursor: pointer;
+  position: relative;
+}
+
+.set-switch::after {
+  content: "";
+  width: 27px;
+  height: 27px;
+  border-radius: 13.5px;
+  background: #ffffff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform 160ms ease;
+}
+
+.set-switch.on {
+  background: color-mix(in srgb, var(--set-blue) 25%, var(--set-soft));
+}
+
+.set-switch.on::after {
+  transform: translateX(20px);
+}
+
+.set-toast {
+  position: sticky;
+  top: 12px;
+  z-index: 2;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--set-border);
+  background: #ffffff;
+  box-shadow: var(--set-shadow-sm);
+  font-weight: 700;
+  color: var(--set-ink);
+}
+
+.set-toast.success {
+  border-color: color-mix(in srgb, var(--set-good) 35%, var(--set-border));
+  background: color-mix(in srgb, var(--set-good) 10%, white);
+}
+
+.set-toast.error {
+  border-color: color-mix(in srgb, var(--set-bad) 35%, var(--set-border));
+  background: color-mix(in srgb, var(--set-bad) 10%, white);
+}
+
+.set-toast.warning {
+  border-color: #ffd37a;
+  background: #fff7de;
+  color: #7a4b00;
+}
+
+
+@media (max-width: 1280px) {
+  .page-settings .dash-main {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+
+@media (max-width: 980px) {
+  .page-settings .dash-main {
+    padding: 16px;
+  }
+
+  .set-container,
+  .set-block,
+  .set-actions,
+  .set-toggle-row {
+    width: 100%;
+    max-width: 960px;
+  }
+
+  .set-input,
+  .set-static {
+    width: 100%;
+  }
+
+}

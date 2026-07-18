@@ -1,0 +1,212 @@
+/* Shared admin shell: sidebar + main content. */
+
+:root {
+  --adm-bg: #ffffff;
+  --adm-ink: #0d1c12;
+  --adm-accent: #97d9ff;
+  --adm-accent-strong: #6cc8ff;
+  --adm-border: #e6e8eb;
+  --adm-shadow-xs: 0 2px 8px rgba(2, 30, 8, 0.05);
+  --adm-focus-ring: 0 0 0 3px rgba(151, 217, 255, 0.45);
+}
+
+.dash {
+  min-height: 100vh;
+  background: var(--adm-bg);
+  display: grid;
+  grid-template-columns: 403px 1fr;
+  color: var(--adm-ink);
+}
+
+.dash-sidebar {
+  padding: 19px 42px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-right: 1px solid var(--adm-border);
+  background: #fff;
+}
+
+.dash-brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 40px;
+  justify-content: space-between;
+}
+
+.dash-brand-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.dash-brand-home {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 12px;
+}
+
+.dash-brand-home:focus-visible {
+  outline: none;
+  box-shadow: var(--adm-focus-ring);
+}
+
+.dash-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  object-fit: contain;
+  background: transparent;
+  border: 0;
+}
+
+/* Brand text removed by request (logo only). */
+
+.dash-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background: #f2c7b8;
+  box-shadow: var(--adm-shadow-xs);
+}
+
+.dash-profile {
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 999px;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  color: var(--adm-ink);
+}
+
+.dash-avatarimg {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  object-fit: cover;
+  box-shadow: var(--adm-shadow-xs);
+  border: 1px solid var(--adm-border);
+  background: #ffffff;
+}
+
+.dash-profile:hover {
+  background: color-mix(in srgb, var(--adm-accent) 20%, white);
+  border-color: color-mix(in srgb, var(--adm-accent) 55%, #cfeeff);
+}
+
+.dash-profile:focus-visible {
+  outline: none;
+  box-shadow: var(--adm-focus-ring);
+}
+
+.dash-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.dash-link {
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  padding: 9px 12px;
+  border-radius: 12px;
+
+  font-size: 14px;
+  line-height: 21px;
+  font-weight: 600;
+  color: var(--adm-ink);
+  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.dash-ico {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--adm-ink);
+}
+
+.dash-link:hover {
+  background: color-mix(in srgb, var(--adm-accent) 35%, white);
+  border-color: color-mix(in srgb, var(--adm-accent) 65%, #cfeeff);
+}
+
+.dash-link:active {
+  transform: translateY(1px);
+}
+
+.dash-link:focus-visible {
+  outline: none;
+  box-shadow: var(--adm-focus-ring);
+}
+
+.dash-link.active {
+  background: var(--adm-accent);
+  border-color: color-mix(in srgb, var(--adm-accent-strong) 70%, #bfe9ff);
+  box-shadow: var(--adm-shadow-xs);
+}
+
+.dash-main {
+  height: 100vh;
+  overflow-y: auto;
+  background: var(--adm-bg);
+  /* Default: left-aligned content (no centering). Individual pages can override. */
+  padding: 20px 0 36px 23px;
+}
+
+@media (max-width: 1280px) {
+  .dash {
+    grid-template-columns: 320px 1fr;
+  }
+
+  .dash-sidebar {
+    padding: 16px 24px 20px;
+  }
+}
+
+@media (max-width: 980px) {
+  .dash {
+    grid-template-columns: 1fr;
+  }
+
+  .dash-sidebar {
+    border-bottom: 1px solid var(--adm-border);
+    border-right: 0;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .dash-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .dash-main {
+    height: auto;
+    overflow: visible;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}

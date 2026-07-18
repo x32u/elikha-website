@@ -1,0 +1,170 @@
+.activity-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border-radius: 16px;
+  padding: 16px;
+  background: linear-gradient(135deg, #f7f9ff 0%, #fefeff 100%);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  cursor: pointer;
+  border: 1px solid #d6e3ff;
+}
+
+.activity-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(57, 87, 174, 0.17);
+  border-color: #8ea7f5;
+}
+
+.activity-card.urgent {
+  background: linear-gradient(135deg, #fff8e7 0%, #fff3d5 100%);
+  border-color: #ffd488;
+  box-shadow: 0 8px 20px rgba(227, 154, 13, 0.2);
+}
+
+.activity-card.urgent:hover {
+  border-color: #f1ab2e;
+  box-shadow: 0 12px 24px rgba(210, 140, 8, 0.3);
+}
+
+.activity-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.activity-label {
+  display: inline-flex;
+  align-self: flex-start;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #3357cb;
+  background: #e9efff;
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+.activity-title {
+  font-weight: 900;
+  font-size: 20px;
+  line-height: 1.2;
+  color: #13213f;
+  margin: 0;
+}
+
+.activity-description {
+  font-size: 15px;
+  line-height: 1.45;
+  color: #60739b;
+  margin: 0;
+}
+
+.activity-date {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 5px 10px;
+  background: #edf2ff;
+  color: #2a428f;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 999px;
+}
+
+.activity-card.urgent .activity-date {
+  background: #ffdba6;
+  color: #7f4f09;
+}
+
+.activity-thumbnail {
+  flex: 0 0 124px;
+  height: 92px;
+  background: #f6f8ff;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #dbe6ff;
+}
+
+.activity-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.activity-placeholder {
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.activity-model-preview {
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  color: #1d2a44;
+  text-align: center;
+}
+
+.activity-model-preview.mask {
+  background: linear-gradient(135deg, #ffe6f0 0%, #f3ebff 100%);
+}
+
+.activity-model-preview.drink {
+  background: linear-gradient(135deg, #e2f6ff 0%, #ebf9ef 100%);
+}
+
+.activity-model-preview.creature {
+  background: linear-gradient(135deg, #fff2de 0%, #ffe6f1 100%);
+}
+
+.activity-model-preview.default {
+  background: linear-gradient(135deg, #ecf1ff 0%, #f8ecff 100%);
+}
+
+.activity-model-emoji {
+  font-size: 30px;
+  line-height: 1;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.12));
+}
+
+.activity-model-label {
+  max-width: 100%;
+  color: #4e5d84;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-object-icons {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+
+@media (max-width: 768px) {
+  .activity-card {
+    flex-direction: column-reverse;
+    align-items: flex-start;
+    padding: 14px;
+  }
+
+  .activity-thumbnail {
+    width: 100%;
+    height: 132px;
+    flex: none;
+  }
+
+  .activity-title {
+    font-size: 18px;
+  }
+}

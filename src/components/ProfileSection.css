@@ -1,0 +1,143 @@
+.profile-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 20px;
+  background: #ffffff;
+  border-radius: 22px;
+  border: 1px solid #d9e4ff;
+  box-shadow: 0 14px 34px rgba(51, 78, 165, 0.12);
+}
+
+.profile-image {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  margin-bottom: 8px;
+  overflow: hidden;
+  box-shadow: 0 10px 20px rgba(48, 86, 216, 0.26);
+}
+
+.profile-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-placeholder {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #3a64f2 0%, #6f86ff 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  font-weight: 900;
+  color: #ffffff;
+  text-transform: uppercase;
+}
+
+.profile-info {
+  text-align: center;
+}
+
+.profile-greeting {
+  font-weight: 900;
+  font-size: 34px;
+  line-height: 1.1;
+  color: #122244;
+  margin-bottom: 4px;
+}
+
+.profile-grade {
+  font-size: 16px;
+  line-height: 1.4;
+  color: #61749e;
+}
+
+.profile-stats {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.profile-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 11px 22px;
+  border-radius: 14px;
+  min-width: 102px;
+  gap: 2px;
+  border: 1px solid transparent;
+}
+
+.profile-stat--completed {
+  background: #ebfdf4;
+  border-color: #9fe7c3;
+}
+
+.profile-stat--pending {
+  background: #fff8ea;
+  border-color: #ffd89e;
+}
+
+.profile-stat__count {
+  font-size: 27px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.profile-stat--completed .profile-stat__count {
+  color: #15945f;
+}
+
+.profile-stat--pending .profile-stat__count {
+  color: #d17a12;
+}
+
+.profile-stat__label {
+  font-size: 11px;
+  font-weight: 800;
+  color: #6f6080;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+@media (min-width: 769px) {
+  .profile-section {
+    padding: 28px 24px;
+    flex-direction: row;
+    align-items: center;
+    gap: 22px;
+    text-align: left;
+  }
+
+  .profile-image {
+    margin-bottom: 0;
+    width: 102px;
+    height: 102px;
+    flex-shrink: 0;
+  }
+
+  .profile-info {
+    text-align: left;
+    flex: 1;
+  }
+
+  .profile-greeting {
+    font-size: clamp(28px, 2.8vw, 44px);
+  }
+
+  .profile-stats {
+    margin-top: 0;
+    flex-shrink: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .profile-greeting {
+    font-size: clamp(28px, 7vw, 36px);
+  }
+}

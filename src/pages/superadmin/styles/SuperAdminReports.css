@@ -1,0 +1,250 @@
+.page-superadmin-reports {
+  --sar-bg: #ffffff;
+  --sar-surface: #ffffff;
+  --sar-surface-2: #f0f2f5;
+  --sar-ink: #121417;
+  --sar-muted: #61758a;
+  --sar-border: #dbe0e6;
+
+  --sar-accent: #1800ad;
+  --sar-accent-soft: rgba(24, 0, 173, 0.12);
+}
+
+.page-superadmin-reports .dash-main {
+  background: var(--sar-bg);
+  padding: 28px 28px 44px;
+}
+
+.sar-header,
+.sar-section {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.sar-header {
+  margin-bottom: 12px;
+}
+
+.sar-title {
+  font-size: 32px;
+  line-height: 40px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--sar-ink);
+}
+
+.sar-h2 {
+  margin: 18px 0 12px;
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 800;
+  color: var(--sar-ink);
+}
+
+.sar-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.sar-card {
+  border: 1px solid var(--sar-border);
+  border-radius: 14px;
+  background: var(--sar-surface);
+  padding: 18px;
+  box-shadow: 0 10px 30px rgba(18, 20, 23, 0.06);
+  min-height: 360px;
+  overflow: hidden;
+}
+
+.sar-card:hover {
+  box-shadow: 0 16px 40px rgba(18, 20, 23, 0.08);
+  transform: translateY(-1px);
+  transition: box-shadow 160ms ease, transform 160ms ease;
+}
+
+.sar-card-top {
+  padding-bottom: 14px;
+}
+
+.sar-card-title {
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--sar-ink);
+}
+
+.sar-card-value {
+  margin-top: 10px;
+  font-weight: 900;
+  font-size: 32px;
+  line-height: 40px;
+  color: var(--sar-ink);
+}
+
+.sar-card-meta {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.sar-muted {
+  color: var(--sar-muted);
+}
+
+.sar-delta {
+  color: #088738;
+  font-weight: 700;
+}
+
+.sar-delta.down {
+  color: #e83808;
+}
+
+/* Tones */
+.sar-tone-purple {
+  --sar-accent: #1800ad;
+  --sar-accent-soft: rgba(24, 0, 173, 0.12);
+}
+
+.sar-tone-teal {
+  --sar-accent: #0ea5e9;
+  --sar-accent-soft: rgba(14, 165, 233, 0.14);
+}
+
+.sar-tone-green {
+  --sar-accent: #22c55e;
+  --sar-accent-soft: rgba(34, 197, 94, 0.14);
+}
+
+.sar-tone-amber {
+  --sar-accent: #f59e0b;
+  --sar-accent-soft: rgba(245, 158, 11, 0.16);
+}
+
+/* Area chart */
+.sar-chart {
+  margin-top: 12px;
+}
+
+.sar-chart-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 12px;
+  border: 1px solid rgba(97, 117, 138, 0.18);
+}
+
+.sar-xlabels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--sar-muted);
+  font-weight: 700;
+}
+
+.sar-xlabel {
+  min-width: 20px;
+  text-align: center;
+}
+
+/* Scrollable pill bars (right scroll) */
+.sar-scroll {
+  margin-top: 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(97, 117, 138, 0.18);
+  background: var(--sar-surface-2);
+  padding: 14px;
+  overflow-x: auto;
+}
+
+.sar-scroll-inner {
+  display: flex;
+  gap: 18px;
+  align-items: flex-end;
+  min-height: 210px;
+  padding-bottom: 4px;
+}
+
+.sar-pillbar {
+  flex: 0 0 auto;
+  width: 88px;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.sar-scroll {
+  scroll-snap-type: x proximity;
+}
+
+.sar-pillbar-bar {
+  width: 68px;
+  height: 140px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(97, 117, 138, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.sar-pillbar-fill {
+  width: 100%;
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--sar-accent) 0%, rgba(255, 255, 255, 0.65) 100%);
+}
+
+.sar-pillbar-label {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--sar-muted);
+  text-align: center;
+}
+
+/* Meter list */
+.sar-meters {
+  margin-top: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.sar-meter {
+  display: grid;
+  grid-template-columns: 86px 1fr;
+  gap: 14px;
+  align-items: center;
+}
+
+.sar-meter-label {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--sar-muted);
+}
+
+.sar-meter-track {
+  height: 18px;
+  border-radius: 10px;
+  background: var(--sar-surface-2);
+  border: 1px solid rgba(97, 117, 138, 0.18);
+  overflow: hidden;
+}
+
+.sar-meter-fill {
+  height: 100%;
+  border-radius: 10px;
+  background: linear-gradient(90deg, var(--sar-accent) 0%, rgba(255, 255, 255, 0.55) 100%);
+}
+
+@media (max-width: 980px) {
+  .sar-grid {
+    grid-template-columns: 1fr;
+  }
+}
+

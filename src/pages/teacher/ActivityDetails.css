@@ -1,0 +1,81 @@
+.activity-hero .hero-block {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 20px;
+  align-items: center;
+}
+
+.activity-hero .hero-image {
+  width: 120px;
+  height: 120px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #ffb6c1 0%, #ff69b4 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+}
+
+.activity-hero .hero-content h2 {
+  margin: 0 0 8px;
+  font-size: 24px;
+  color: #141217;
+}
+
+.activity-hero .hero-content p {
+  margin: 0;
+  color: #4b5563;
+  line-height: 1.6;
+}
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.overview-card {
+  padding: 16px;
+  border-radius: 12px;
+  background: #fdfcfb;
+  border: 1px solid #e6e0db;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.overview-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+  font-weight: 700;
+}
+
+.overview-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+}
+
+@media (max-width: 960px) {
+  .overview-grid {
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
+  }
+
+  .activity-hero .hero-block {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .activity-hero .hero-image {
+    margin: 0 auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
+}

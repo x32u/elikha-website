@@ -1,0 +1,498 @@
+/* Super Admin Settings (Frame 13: System Configuration + Database Management) */
+.page-superadmin-settings {
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, Arial, sans-serif;
+
+  --sas-ink: #121417;
+  --sas-muted: #61758a;
+  --sas-border: #dbe0e6;
+  --sas-soft: #f0f2f5;
+  --sas-surface: #ffffff;
+  /* Keep primary consistent with the rest of Super Admin pages */
+  --sas-primary: #1800ad;
+  --sas-primary-ink: #ffffff;
+  --sas-ring: rgba(24, 0, 173, 0.16);
+  --sas-bg-top: #f7fafc;
+  --sas-bg-bot: #ffffff;
+  --sas-danger: #b42318;
+  --sas-danger-bg: rgba(180, 35, 24, 0.08);
+}
+
+.page-superadmin-settings .dash-main {
+  background: linear-gradient(180deg, var(--sas-bg-top) 0%, var(--sas-bg-bot) 55%);
+  padding: 28px 28px 44px;
+}
+
+.sas-wrap {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.sas-toast {
+  position: sticky;
+  top: 14px;
+  z-index: 10;
+  width: fit-content;
+  max-width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(219, 224, 230, 0.9);
+  background: #ffffff;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.12);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--sas-ink);
+}
+
+.sas-toast.success {
+  border-color: rgba(8, 135, 56, 0.3);
+}
+
+.sas-toast.error {
+  border-color: rgba(232, 56, 8, 0.35);
+}
+
+.sas-toast.info {
+  border-color: rgba(18, 128, 237, 0.35);
+}
+
+.sas-section {
+  margin-bottom: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(219, 224, 230, 0.9);
+  background: var(--sas-surface);
+  box-shadow: 0 12px 30px rgba(18, 20, 23, 0.06);
+  overflow: hidden;
+}
+
+.sas-header {
+  padding: 18px 18px 10px;
+  background: linear-gradient(180deg, rgba(24, 0, 173, 0.06) 0%, rgba(255, 255, 255, 0) 80%);
+  border-bottom: 1px solid rgba(219, 224, 230, 0.8);
+}
+
+.sas-title {
+  margin: 0;
+  font-size: 32px;
+  line-height: 40px;
+  letter-spacing: -0.02em;
+  font-weight: 900;
+  color: var(--sas-ink);
+}
+
+.sas-h2 {
+  margin: 14px 18px 10px;
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 900;
+  color: var(--sas-ink);
+}
+
+.sas-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  padding: 12px 18px 10px;
+}
+
+.sas-field {
+  max-width: none;
+}
+
+.sas-label {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+  color: var(--sas-ink);
+  margin-bottom: 8px;
+}
+
+.sas-input,
+.sas-select {
+  width: 100%;
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--sas-border);
+  background: #ffffff;
+  padding: 0 14px;
+  font-size: 14px;
+  color: var(--sas-ink);
+  outline: none;
+}
+
+.sas-input:focus,
+.sas-select:focus {
+  border-color: rgba(24, 0, 173, 0.45);
+  box-shadow: 0 0 0 4px var(--sas-ring);
+}
+
+.sas-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 18px 18px;
+}
+
+.sas-primary,
+.sas-neutral {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+  user-select: none;
+}
+
+.sas-primary {
+  background: var(--sas-primary);
+  color: var(--sas-primary-ink);
+  box-shadow: 0 14px 26px rgba(24, 0, 173, 0.18);
+  transition: transform 140ms ease, box-shadow 140ms ease, filter 140ms ease;
+}
+
+.sas-primary:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+  box-shadow: 0 18px 30px rgba(24, 0, 173, 0.22);
+}
+
+.sas-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.sas-neutral {
+  background: var(--sas-soft);
+  border-color: rgba(219, 224, 230, 0.9);
+  color: var(--sas-ink);
+  transition: transform 140ms ease, box-shadow 140ms ease, filter 140ms ease,
+    border-color 140ms ease;
+}
+
+.sas-neutral:hover {
+  border-color: rgba(24, 0, 173, 0.25);
+  transform: translateY(-1px);
+}
+
+.sas-neutral:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sas-subhead {
+  padding: 14px 18px 10px;
+  font-weight: 900;
+  font-size: 18px;
+  line-height: 23px;
+  color: var(--sas-ink);
+}
+
+.sas-card {
+  margin: 0 18px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--sas-border);
+  background: #ffffff;
+  box-shadow: 0 10px 30px rgba(18, 20, 23, 0.06);
+  overflow: auto;
+}
+
+.sas-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 720px;
+}
+
+.sas-table th,
+.sas-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(219, 224, 230, 0.8);
+  text-align: left;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.sas-table th {
+  position: sticky;
+  top: 0;
+  background: #ffffff;
+  color: var(--sas-ink);
+  font-weight: 900;
+}
+
+.sas-table tbody tr:hover td {
+  background: rgba(24, 0, 173, 0.05);
+}
+
+.sas-muted {
+  color: var(--sas-muted);
+}
+
+.sas-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--sas-soft);
+  border: 1px solid rgba(219, 224, 230, 0.9);
+  color: var(--sas-ink);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.sas-pill.completed {
+  background: rgba(34, 197, 94, 0.14);
+  border-color: rgba(34, 197, 94, 0.25);
+  color: #0f6b2e;
+}
+
+.sas-pill.in-progress {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.26);
+  color: #8a5a00;
+}
+
+.sas-file {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--sas-border);
+  border-radius: 10px;
+  height: 44px;
+  padding: 0 12px;
+  background: #ffffff;
+}
+
+.sas-file-input {
+  display: none;
+}
+
+.sas-file-btn {
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  border-radius: 9px;
+  background: var(--sas-soft);
+  border: 1px solid rgba(219, 224, 230, 0.9);
+  font-weight: 900;
+  color: var(--sas-ink);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 140ms ease, border-color 140ms ease;
+}
+
+.sas-file-btn:hover {
+  border-color: rgba(24, 0, 173, 0.25);
+  transform: translateY(-1px);
+}
+
+.sas-file-name {
+  color: var(--sas-muted);
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sas-warning {
+  padding: 6px 18px 12px;
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--sas-ink);
+  max-width: 960px;
+}
+
+/* Modal */
+.sas-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 50;
+}
+
+.sas-modal {
+  width: min(640px, 92vw);
+  border-radius: 16px;
+  border: 1px solid rgba(219, 224, 230, 0.9);
+  background: #ffffff;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+  transform: translateY(0);
+  animation: sas-pop 140ms ease-out;
+}
+
+@keyframes sas-pop {
+  from {
+    opacity: 0.6;
+    transform: translateY(6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.sas-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(219, 224, 230, 0.85);
+  background: linear-gradient(180deg, rgba(24, 0, 173, 0.06) 0%, rgba(255, 255, 255, 0) 100%);
+}
+
+.sas-modal-title {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--sas-ink);
+}
+
+.sas-modal-x {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(219, 224, 230, 0.9);
+  background: #ffffff;
+  cursor: pointer;
+  font-weight: 900;
+  color: var(--sas-muted);
+}
+
+.sas-modal-x:hover {
+  border-color: rgba(24, 0, 173, 0.25);
+  color: var(--sas-primary);
+}
+
+.sas-modal-body {
+  padding: 16px;
+  color: var(--sas-ink);
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.sas-modal-file {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--sas-soft);
+  border: 1px solid rgba(219, 224, 230, 0.9);
+  color: var(--sas-muted);
+  font-weight: 800;
+}
+
+.sas-modal-actions {
+  padding: 14px 16px;
+  border-top: 1px solid rgba(219, 224, 230, 0.85);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(24, 0, 173, 0.04) 100%);
+}
+
+.sas-modal-btn {
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: var(--sas-primary);
+  color: #ffffff;
+  font-weight: 900;
+  cursor: pointer;
+  transition: transform 140ms ease, filter 140ms ease, box-shadow 140ms ease;
+  box-shadow: 0 14px 26px rgba(24, 0, 173, 0.18);
+}
+
+.sas-modal-btn:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+  box-shadow: 0 18px 30px rgba(24, 0, 173, 0.22);
+}
+
+.sas-modal-btn.ghost {
+  background: #ffffff;
+  border-color: rgba(219, 224, 230, 0.9);
+  color: var(--sas-ink);
+  box-shadow: none;
+}
+
+.sas-modal-btn.ghost:hover {
+  border-color: rgba(24, 0, 173, 0.25);
+  transform: translateY(-1px);
+}
+
+@media (max-width: 1100px) {
+  .page-superadmin-settings .dash-main {
+    padding: 20px 18px 34px;
+  }
+  .sas-table {
+    min-width: 640px;
+  }
+}
+
+@media (min-width: 900px) {
+  .sas-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 16px;
+  }
+  .sas-actions {
+    max-width: none;
+  }
+}
+
+.sas-page-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 6px 0;
+}
+
+/* Bottom logout button */
+.sas-logout {
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(219, 224, 230, 0.92);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(247, 250, 252, 0.96) 100%);
+  color: var(--sas-danger);
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.1);
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease, filter 140ms ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sas-logout:hover {
+  transform: translateY(-1px);
+  border-color: rgba(180, 35, 24, 0.35);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.12);
+  filter: brightness(1.02);
+}
+
+.sas-logout:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(180, 35, 24, 0.18), 0 14px 35px rgba(0, 0, 0, 0.12);
+}
+
+.sas-logout-ico {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.sas-logout-text {
+  font-size: 14px;
+  letter-spacing: 0.01em;
+}

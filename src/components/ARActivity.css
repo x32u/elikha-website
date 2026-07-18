@@ -1,0 +1,213 @@
+.ar-activity-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #000;
+}
+
+.camera-feed {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  z-index: 1;
+}
+
+.ar-canvas-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.ar-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
+  z-index: 10;
+}
+
+.ar-back-btn {
+  background: rgba(255,255,255,0.2);
+  border: none;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+}
+
+.ar-back-btn:hover {
+  background: rgba(255,255,255,0.3);
+}
+
+.ar-title {
+  color: white;
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.ar-status {
+  color: white;
+  font-size: 14px;
+}
+
+.ar-controls {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: rgba(0,0,0,0.7);
+  padding: 16px;
+  border-radius: 16px;
+  backdrop-filter: blur(10px);
+  z-index: 10;
+}
+
+.control-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.control-section label {
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.color-palette {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.color-btn {
+  width: 28px;
+  height: 28px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.color-btn:hover {
+  transform: scale(1.1);
+}
+
+.color-btn.active {
+  border-color: white;
+  box-shadow: 0 0 8px rgba(255,255,255,0.5);
+}
+
+.tool-btn {
+  background: rgba(255,255,255,0.2);
+  border: none;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.tool-btn.active {
+  background: #ff6b6b;
+}
+
+.ar-actions {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 16px;
+  z-index: 10;
+}
+
+.action-btn {
+  padding: 16px 32px;
+  border: none;
+  border-radius: 50px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.capture-btn {
+  background: #4ecdc4;
+  color: white;
+}
+
+.capture-btn:hover {
+  background: #45b7aa;
+  transform: scale(1.05);
+}
+
+.submit-btn {
+  background: #1800AD;
+  color: white;
+}
+
+.submit-btn:hover {
+  background: #1400a0;
+  transform: scale(1.05);
+}
+
+.ar-instructions {
+  position: absolute;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  z-index: 10;
+}
+
+.ar-instructions p {
+  color: rgba(255,255,255,0.8);
+  font-size: 14px;
+  margin: 4px 0;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .ar-controls {
+    right: 8px;
+    padding: 12px;
+  }
+  
+  .ar-actions {
+    flex-direction: column;
+    bottom: 16px;
+  }
+  
+  .action-btn {
+    padding: 12px 24px;
+    font-size: 14px;
+  }
+  
+  .ar-instructions {
+    bottom: 140px;
+  }
+}

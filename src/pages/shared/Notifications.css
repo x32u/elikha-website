@@ -1,0 +1,181 @@
+.notifications-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.notifications-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.notifications-content {
+  flex: 1;
+  padding: 24px clamp(14px, 3.4vw, 28px) 36px;
+}
+
+.notifications-title {
+  font-size: clamp(30px, 3.5vw, 40px);
+  font-weight: 900;
+  color: #13213f;
+  margin: 0 0 20px 0;
+}
+
+.notifications-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.notification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #d9e4ff;
+  position: relative;
+  cursor: pointer;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.notification-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(44, 68, 140, 0.14);
+}
+
+.notification-item.unread {
+  background: #f4f8ff;
+  border-color: #bfd1ff;
+}
+
+.notification-icon-wrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.notification-icon-wrapper svg {
+  width: 20px;
+  height: 20px;
+}
+
+.notification-icon-wrapper.activity {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.notification-icon-wrapper.feedback {
+  background: #e8f5e9;
+  color: #388e3c;
+}
+
+.notification-icon-wrapper.reminder {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+.notification-icon-wrapper.achievement {
+  background: #fce4ec;
+  color: #c2185b;
+}
+
+.notification-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: #13213f;
+  margin: 0 0 4px 0;
+}
+
+.notification-message {
+  font-size: 13px;
+  color: #5e739b;
+  margin: 0 0 8px 0;
+  line-height: 1.45;
+}
+
+.notification-time {
+  font-size: 12px;
+  color: #879ac0;
+  font-weight: 700;
+}
+
+.unread-dot {
+  width: 8px;
+  height: 8px;
+  background: #496fff;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 6px;
+}
+
+.notifications-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #d8e4ff;
+}
+
+.placeholder-icon {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 24px;
+  color: #c4cde2;
+}
+
+.placeholder-icon svg {
+  width: 100%;
+  height: 100%;
+  fill: currentColor;
+}
+
+.notifications-placeholder h2 {
+  font-size: 20px;
+  font-weight: 800;
+  color: #13213f;
+  margin: 0 0 8px 0;
+}
+
+.notifications-placeholder p {
+  font-size: 14px;
+  color: #5e739b;
+  margin: 0;
+}
+
+.student-notifications {
+  padding-left: 90px;
+  background:
+    radial-gradient(circle at 8% 10%, rgba(255, 191, 122, 0.22) 0, rgba(255, 191, 122, 0) 230px),
+    radial-gradient(circle at 90% 8%, rgba(108, 148, 255, 0.2) 0, rgba(108, 148, 255, 0) 240px),
+    #f2f6ff;
+}
+
+.teacher-notifications {
+  padding-left: 90px;
+  background: #fafafa;
+}
+
+@media (max-width: 768px) {
+  .student-notifications,
+  .teacher-notifications {
+    padding-left: 0;
+  }
+
+  .notifications-content {
+    padding: 16px 14px 96px;
+  }
+}
