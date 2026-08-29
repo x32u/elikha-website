@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Login.css';
 import logo from '../../assets/images/elikhalogo-ui.png';
+import { useAuth } from '../../context/AuthContext';
 import { authenticateUser } from '../../services/auth';
+import { getDefaultRouteForRole } from '../../utils/authState';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -11,14 +13,7 @@ const Login = () => {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-
-  const getRouteForRole = (role) => {
-    const normalizedRole = String(role || '').toLowerCase().replace(/[_\s-]/g, '');
-    if (normalizedRole === 'teacher') return '/classes';
-    if (normalizedRole === 'admin') return '/admin';
-    if (normalizedRole === 'superadmin') return '/superadmin';
-    return '/homepage';
-  };
+  const { refreshAuth } = useAuth();
 
   const validateForm = () => {
     const newErrors = {};
@@ -47,10 +42,13 @@ const Login = () => {
         const result = await authenticateUser(email, password);
         
         if (result.success) {
-          sessionStorage.setItem('userInfo', JSON.stringify(result.user));
-          window.dispatchEvent(new Event('elikha-auth-changed'));
+          const verified = await refreshAuth();
+          if (!verified.success) {
+            setErrors({ general: 'Signed in, but the account session could not be verified. Please try again.' });
+            return;
+          }
 
-          navigate(getRouteForRole(result.user.role));
+          navigate(getDefaultRouteForRole(verified.user.role));
         } else {
           setErrors({ general: result.error });
         }
@@ -74,9 +72,7 @@ const Login = () => {
               <div className="brand-logo">
                 <img src={logo} alt="Elikha Logo" />
               </div>
-              <h1 className="brand-title">e-Likha</h1>
             </button>
-            <p className="brand-subtitle">Education Platform</p>
             <p className="brand-description">
               Explore arts and crafts through AR-guided and voice-assisted learning.
             </p>

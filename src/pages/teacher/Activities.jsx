@@ -10,14 +10,17 @@ import {
   DEFAULT_MODEL_ID,
   DEFAULT_PUZZLE_PIECES,
   encodeActivityDescription,
-  getArModelLibrary,
+  getArRenderableModelLibrary,
   PUZZLE_PIECE_OPTIONS,
 } from '../../utils/activityArConfig';
 import { createActivityThumbnailDataUrl } from '../../utils/activityThumbnail';
 import { uploadActivityThumbnail } from '../../services/activityThumbnailStorage';
 import { formatClassLabel } from '../../utils/classLabels';
+import { getDueDateState } from '../../utils/dateDisplay';
+import { getActivityRubricOptions } from '../../services/rubricApi';
 
 const MAX_MODEL_QUANTITY = 12;
+const ASSIGNMENTS_PER_PAGE = 5;
 
 const clampModelQuantity = (value) => {
   const count = Number(value);
@@ -29,15 +32,27 @@ const getModelQuantity = (modelIds, modelId) => (
   (Array.isArray(modelIds) ? modelIds : []).filter((id) => id === modelId).length
 );
 
+const formatDueDate = (value) => {
+  if (!value) return 'No due date';
+  // Dates picked in this form are calendar dates, so avoid a UTC timezone shift.
+  const date = new Date(String(value).includes('T') ? value : `${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return 'Invalid due date';
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric'
+  }).format(date);
+};
+
 const Activities = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState('upcoming');
+  const [currentPage, setCurrentPage] = useState(1);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [assignments, setAssignments] = useState([]);
   const [classes, setClasses] = useState([]);
+  const [rubrics, setRubrics] = useState([]);
   const [creating, setCreating] = useState(false);
-  const [modelOptions, setModelOptions] = useState(() => getArModelLibrary());
+  const [modelOptions, setModelOptions] = useState(() => getArRenderableModelLibrary());
 
   const [formData, setFormData] = useState({
     title: '',
@@ -53,6 +68,7 @@ const Activities = () => {
     thumbnailUrl: '',
     thumbnailName: '',
     thumbnailError: '',
+    rubricId: '',
   });
 
   useEffect(() => {
@@ -60,7 +76,7 @@ const Activities = () => {
   }, []);
 
   useEffect(() => {
-    const refreshModels = () => setModelOptions(getArModelLibrary());
+    const refreshModels = () => setModelOptions(getArRenderableModelLibrary());
     window.addEventListener(AR_MODEL_LIBRARY_UPDATED_EVENT, refreshModels);
     return () => window.removeEventListener(AR_MODEL_LIBRARY_UPDATED_EVENT, refreshModels);
   }, []);
@@ -69,28 +85,33 @@ const Activities = () => {
     setLoading(true);
     try {
       const userInfo = JSON.parse(sessionStorage.getItem('userInfo') || '{}');
-      const [activitiesResult, classesResult] = await Promise.all([
+      const [activitiesResult, classesResult, rubricsResult] = await Promise.all([
         getTeacherActivities(userInfo.id),
-        getTeacherClasses(userInfo.id)
+        getTeacherClasses(userInfo.id),
+        getActivityRubricOptions(userInfo.id)
       ]);
 
       if (activitiesResult.success) {
         // Transform activities data
         const transformedActivities = activitiesResult.data.map(activity => {
-          const dueDate = new Date(activity.due_date);
-          const today = new Date();
-          const isPastDue = dueDate < today;
-          const isDueSoon = dueDate - today < 7 * 24 * 60 * 60 * 1000 && !isPastDue;
+          const { hasValidDueDate, isPastDue, isDueSoon } = getDueDateState(activity.due_date);
+          const pendingReviewCount = activity.pending_review_count || 0;
+          const submissionCount = activity.submission_count || 0;
+          const reviewedCount = activity.reviewed_count || 0;
           
           return {
             id: activity.id,
             title: activity.title,
             className: activity.class_name || 'Unknown Class',
             dueDate: activity.due_date,
-            status: activity.submission_count > 0 ? 'In review' : 'Open',
-            submissions: activity.submission_count || 0,
+            status: pendingReviewCount > 0
+              ? 'In review'
+              : submissionCount > 0 && reviewedCount === submissionCount
+                ? 'Reviewed'
+                : 'Open',
+            submissions: submissionCount,
             pending: activity.pending_count || 0,
-            chip: isPastDue ? 'Past due' : isDueSoon ? 'Due soon' : 'Upcoming'
+            chip: isPastDue ? 'Past due' : isDueSoon ? 'Due soon' : hasValidDueDate ? 'Upcoming' : 'No due date'
           };
         });
         setAssignments(transformedActivities);
@@ -99,6 +120,7 @@ const Activities = () => {
       if (classesResult.success) {
         setClasses(classesResult.data);
       }
+      if (rubricsResult.success) setRubrics(rubricsResult.data);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -149,6 +171,7 @@ const Activities = () => {
       thumbnailUrl: '',
       thumbnailName: '',
       thumbnailError: '',
+      rubricId: '',
     });
   };
 
@@ -183,6 +206,13 @@ const Activities = () => {
     return assignments.filter((a) => a.chip === 'Upcoming' || a.chip === 'Due soon');
   }, [activeFilter, assignments]);
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ASSIGNMENTS_PER_PAGE));
+  const visiblePage = Math.min(currentPage, totalPages);
+  const paginatedAssignments = filtered.slice(
+    (visiblePage - 1) * ASSIGNMENTS_PER_PAGE,
+    visiblePage * ASSIGNMENTS_PER_PAGE
+  );
+
   const handleCreateActivity = async () => {
     if (!formData.title.trim() || !formData.classId) {
       alert('Please fill in title and select a class');
@@ -212,7 +242,8 @@ const Activities = () => {
         instructions: formData.instructions,
         due_date: formData.dueDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
         materials: formData.materials.filter(m => m.name.trim()),
-        image_url: uploadedThumbnailUrl
+        image_url: uploadedThumbnailUrl,
+        rubric_id: formData.rubricId || null,
       });
 
       if (result.success) {
@@ -304,7 +335,10 @@ const Activities = () => {
                   <button
                     key={tab.id}
                     className={`filter-tab ${activeFilter === tab.id ? 'active' : ''}`}
-                    onClick={() => setActiveFilter(tab.id)}
+                    onClick={() => {
+                      setActiveFilter(tab.id);
+                      setCurrentPage(1);
+                    }}
                   >
                     {tab.label}
                   </button>
@@ -313,7 +347,7 @@ const Activities = () => {
             </div>
 
             <div className="assignments-list">
-              {filtered.map((item) => (
+              {paginatedAssignments.map((item) => (
                 <div key={item.id} className="assignment-card" onClick={() => navigate(`/activity/${item.id}`)}>
                   <div className="assignment-left">
                     <div className="assignment-chip">{item.chip}</div>
@@ -323,7 +357,7 @@ const Activities = () => {
                   <div className="assignment-meta">
                     <div className="meta-block">
                       <span className="meta-label">Due</span>
-                      <span className="meta-value">{item.dueDate}</span>
+                      <span className="meta-value">{formatDueDate(item.dueDate)}</span>
                     </div>
                     <div className="meta-block">
                       <span className="meta-label">Submissions</span>
@@ -340,6 +374,39 @@ const Activities = () => {
                 </div>
               ))}
             </div>
+            {filtered.length > ASSIGNMENTS_PER_PAGE && (
+              <nav className="assignment-pagination" aria-label="Assignments pagination">
+                <button
+                  type="button"
+                  className="pagination-button"
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={visiblePage === 1}
+                >
+                  Back
+                </button>
+                <div className="pagination-pages">
+                  {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
+                    <button
+                      key={page}
+                      type="button"
+                      className={`pagination-page ${page === visiblePage ? 'active' : ''}`}
+                      onClick={() => setCurrentPage(page)}
+                      aria-current={page === visiblePage ? 'page' : undefined}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="pagination-button"
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  disabled={visiblePage === totalPages}
+                >
+                  Next
+                </button>
+              </nav>
+            )}
           </section>
         )}
 
@@ -362,6 +429,15 @@ const Activities = () => {
                     value={formData.title}
                     onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Developmental rubric (recommended)</label>
+                  <select className="form-input" value={formData.rubricId} onChange={(e) => setFormData({ ...formData, rubricId: e.target.value })}>
+                    <option value="">No rubric yet</option>
+                    {rubrics.map((rubric) => <option key={rubric.id} value={rubric.id}>{rubric.title}</option>)}
+                  </select>
+                  <small className="form-help">Students can review it before starting; its saved criteria guide the AI draft and the teacher’s final review.</small>
                 </div>
 
                 {/* Activity Description */}

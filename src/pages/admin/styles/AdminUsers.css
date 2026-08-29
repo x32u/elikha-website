@@ -305,6 +305,21 @@
   color: var(--um-muted);
 }
 
+.um-notice {
+  width: 928px;
+  max-width: calc(100% - 55px);
+  box-sizing: border-box;
+  margin: 0 16px 12px;
+  padding: 12px 16px;
+  border: 1px solid #9ed9b3;
+  border-radius: 12px;
+  background: #effcf3;
+  color: #176b36;
+  font-size: 14px;
+  line-height: 21px;
+  font-weight: 600;
+}
+
 .um-status {
   display: inline-flex;
   align-items: center;
@@ -528,6 +543,42 @@
 }
 
 .um-input:focus {
+  outline: none;
+  box-shadow: var(--um-focus-ring);
+}
+
+.um-password-field {
+  position: relative;
+}
+
+.um-password-field .um-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding-right: 72px;
+}
+
+.um-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  height: 32px;
+  padding: 0 10px;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--um-blue);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.um-password-toggle:hover {
+  background: color-mix(in srgb, var(--um-blue) 8%, white);
+}
+
+.um-password-toggle:focus-visible {
   outline: none;
   box-shadow: var(--um-focus-ring);
 }

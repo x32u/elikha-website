@@ -62,9 +62,9 @@
 }
 
 .brand-logo {
-  width: 120px;
-  height: 120px;
-  margin: 0 0 20px 0;
+  width: 200px;
+  height: 200px;
+  margin: 0 0 24px 0;
   background: #FFFFFF;
   border-radius: 20px;
   display: flex;
@@ -253,8 +253,9 @@
     text-align: center;
   }
 
-  .brand-title {
-    font-size: 36px;
+  .brand-logo {
+    width: 160px;
+    height: 160px;
   }
 
   .login-card {

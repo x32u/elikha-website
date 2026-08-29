@@ -30,6 +30,9 @@ const roleLabel = (value) => {
 
 function AdminUsers({ onNavigate, role }) {
   const isSuperAdmin = role === 'SuperAdmin';
+  const editableRoleOptions = isSuperAdmin
+    ? ROLE_OPTIONS
+    : ROLE_OPTIONS.filter((option) => option.value !== 'superadmin');
   const homePageKey = isSuperAdmin ? 'sa-dashboard' : 'homepage';
 
   const [query, setQuery] = React.useState('');
@@ -40,6 +43,7 @@ function AdminUsers({ onNavigate, role }) {
   const [users, setUsers] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const [notice, setNotice] = React.useState('');
   const [classOptions, setClassOptions] = React.useState([]);
   const [classesLoading, setClassesLoading] = React.useState(false);
   const [classesError, setClassesError] = React.useState('');
@@ -49,6 +53,7 @@ function AdminUsers({ onNavigate, role }) {
   const [saveBusy, setSaveBusy] = React.useState(false);
   const [saveError, setSaveError] = React.useState('');
   const [showAddModal, setShowAddModal] = React.useState(false);
+  const [showAddPassword, setShowAddPassword] = React.useState(false);
   const [addBusy, setAddBusy] = React.useState(false);
   const [addError, setAddError] = React.useState('');
   const [addDraft, setAddDraft] = React.useState({
@@ -170,6 +175,7 @@ function AdminUsers({ onNavigate, role }) {
   });
 
   const openEdit = (user) => {
+    if (!isSuperAdmin && String(user?.role || '').toLowerCase() === 'superadmin') return;
     setEditing(user);
     setEditDraft({
       id: user.id,
@@ -189,7 +195,9 @@ function AdminUsers({ onNavigate, role }) {
 
   const openAdd = () => {
     setShowAddModal(true);
+    setShowAddPassword(false);
     setAddError('');
+    setNotice('');
     setAddDraft({
       name: '',
       email: '',
@@ -201,6 +209,7 @@ function AdminUsers({ onNavigate, role }) {
 
   const closeAdd = () => {
     setShowAddModal(false);
+    setShowAddPassword(false);
     setAddBusy(false);
     setAddError('');
   };
@@ -283,14 +292,13 @@ function AdminUsers({ onNavigate, role }) {
       return;
     }
 
-    setUsers((prev) => [result.data, ...prev]);
-
-    if (result.warning) {
-      setAddError(result.warning);
-      return;
-    }
-
+    setUsers((prev) => [result.data, ...prev.filter((user) => user.id !== result.data.id)]);
     closeAdd();
+    setNotice(
+      [result.message || 'User account created successfully.', result.warning]
+        .filter(Boolean)
+        .join(' ')
+    );
   };
 
   const saveParentLink = async () => {
@@ -353,7 +361,6 @@ function AdminUsers({ onNavigate, role }) {
       className="page-users"
       homePageKey={homePageKey}
       showAudit={isSuperAdmin}
-      showPasswordResets={isSuperAdmin}
       auditPageKey="audit"
     >
       <header className="um-header">
@@ -374,6 +381,11 @@ function AdminUsers({ onNavigate, role }) {
       </header>
 
       {error && <div className="um-empty" style={{ marginBottom: '12px' }}>{error}</div>}
+      {notice && (
+        <div className="um-notice" role="status" aria-live="polite">
+          {notice}
+        </div>
+      )}
 
       <section className="um-searchwrap" aria-label="Search users">
         <div className="um-search">
@@ -556,7 +568,15 @@ function AdminUsers({ onNavigate, role }) {
                     <span className="um-status active">{user.status_label || 'Active'}</span>
                   </td>
                   <td>
-                    <button className="um-action" type="button" onClick={() => openEdit(user)}>
+                    <button
+                      className="um-action"
+                      type="button"
+                      onClick={() => openEdit(user)}
+                      disabled={!isSuperAdmin && String(user.role || '').toLowerCase() === 'superadmin'}
+                      title={!isSuperAdmin && String(user.role || '').toLowerCase() === 'superadmin'
+                        ? 'Only a super administrator can edit this account.'
+                        : 'Edit user'}
+                    >
                       Edit
                     </button>
                   </td>
@@ -604,13 +624,10 @@ function AdminUsers({ onNavigate, role }) {
                 <span>Email</span>
                 <input
                   className="um-input"
+                  type="email"
                   value={editDraft.email}
-                  onChange={(event) =>
-                    setEditDraft((prev) => ({
-                      ...prev,
-                      email: event.target.value,
-                    }))
-                  }
+                  disabled
+                  title="Sign-in email changes require a secure Auth administration flow."
                 />
               </label>
 
@@ -627,7 +644,7 @@ function AdminUsers({ onNavigate, role }) {
                       }))
                     }
                   >
-                    {ROLE_OPTIONS.map((option) => (
+                    {editableRoleOptions.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
                       </option>
@@ -702,20 +719,33 @@ function AdminUsers({ onNavigate, role }) {
                 />
               </label>
 
-              <label className="um-field">
-                <span>Temporary Password</span>
-                <input
-                  className="um-input"
-                  type="password"
-                  value={addDraft.password}
-                  onChange={(event) =>
-                    setAddDraft((prev) => ({
-                      ...prev,
-                      password: event.target.value,
-                    }))
-                  }
-                />
-              </label>
+              <div className="um-field">
+                <label htmlFor="add-user-password">Temporary Password</label>
+                <div className="um-password-field">
+                  <input
+                    className="um-input"
+                    id="add-user-password"
+                    type={showAddPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    value={addDraft.password}
+                    onChange={(event) =>
+                      setAddDraft((prev) => ({
+                        ...prev,
+                        password: event.target.value,
+                      }))
+                    }
+                  />
+                  <button
+                    className="um-password-toggle"
+                    type="button"
+                    aria-label={showAddPassword ? 'Hide temporary password' : 'Show temporary password'}
+                    aria-pressed={showAddPassword}
+                    onClick={() => setShowAddPassword((visible) => !visible)}
+                  >
+                    {showAddPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </div>
 
               <label className="um-field">
                 <span>Role</span>
@@ -730,7 +760,7 @@ function AdminUsers({ onNavigate, role }) {
                     }))
                   }
                 >
-                  {ROLE_OPTIONS.map((option) => (
+                  {editableRoleOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>

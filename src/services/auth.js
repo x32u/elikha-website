@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabase';
 
 const normalizeRole = (role) => String(role || '').toLowerCase().replace(/[_\s-]/g, '');
-const ALLOWED_ROLES = new Set(['student', 'teacher', 'admin', 'superadmin']);
+const ALLOWED_ROLES = new Set(['student', 'parent', 'teacher', 'admin', 'superadmin']);
 
 export const authenticateUser = async (email, password) => {
   try {
@@ -21,6 +21,7 @@ export const authenticateUser = async (email, password) => {
       .single();
 
     if (userError) {
+      await supabase.auth.signOut();
       if (userError.code === 'PGRST116') {
         return {
           success: false,

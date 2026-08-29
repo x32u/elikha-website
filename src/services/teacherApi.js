@@ -1,4 +1,6 @@
 import { supabase } from '../lib/supabase';
+import { summarizeTeacherActivities } from '../utils/teacherActivitySummary';
+import { countLateSubmissionsByStudent, isSubmissionLate } from '../utils/teacherStudentMetrics';
 
 const REVIEWED_STATUSES = new Set(['reviewed', 'graded', 'completed']);
 const SUBMITTED_STATUSES = new Set(['submitted', 'late', 'reviewed', 'graded', 'completed']);
@@ -10,15 +12,6 @@ const parseDate = (value) => {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
-};
-
-const isLateSubmission = ({ submissionStatus = '', submittedAt = null, dueDate = null } = {}) => {
-  if (normalizeStatus(submissionStatus) === 'late') return true;
-
-  const submittedDate = parseDate(submittedAt);
-  const due = parseDate(dueDate);
-  if (!submittedDate || !due) return false;
-  return submittedDate > due;
 };
 
 const resolveStudentSubmissionState = ({
@@ -35,7 +28,11 @@ const resolveStudentSubmissionState = ({
   const due = parseDate(dueDate);
   const now = new Date();
   const overdue = Boolean(due && due < now);
-  const late = submitted && isLateSubmission({ submissionStatus: normalizedSubmission, submittedAt, dueDate });
+  const late = submitted && isSubmissionLate({
+    status: normalizedSubmission,
+    submitted_at: submittedAt,
+    due_date: dueDate,
+  });
 
   if (reviewed) {
     return { status: 'reviewed', isSubmitted: true, isReviewed: true, isOverdue: false, isLate: late };
@@ -77,6 +74,47 @@ const getActiveStudentUserMap = async (studentIds) => {
 const shouldUseVerifiedStudentMap = (studentIds, studentMap) => (
   (studentIds || []).some(Boolean) && studentMap.size > 0
 );
+
+const reviewStudentKey = (classId, studentId) => `${classId || ''}:${studentId || ''}`;
+
+const hydrateReviewStudentIdentities = (submissions = [], enrollments = []) => {
+  const enrollmentByClassAndStudent = new Map();
+  const enrollmentByStudent = new Map();
+
+  (enrollments || []).forEach((enrollment) => {
+    const studentId = enrollment?.student_id;
+    const name = String(enrollment?.student_name || '').trim();
+    if (!studentId || !name) return;
+
+    enrollmentByClassAndStudent.set(
+      reviewStudentKey(enrollment.class_id, studentId),
+      enrollment
+    );
+    if (!enrollmentByStudent.has(studentId)) {
+      enrollmentByStudent.set(studentId, enrollment);
+    }
+  });
+
+  return (submissions || []).map((submission) => {
+    if (String(submission?.student?.name || '').trim()) return submission;
+
+    const enrollment = enrollmentByClassAndStudent.get(
+      reviewStudentKey(submission?.activity?.class_id, submission?.student_id)
+    ) || enrollmentByStudent.get(submission?.student_id);
+
+    if (!enrollment) return submission;
+
+    return {
+      ...submission,
+      student: {
+        ...(submission.student || {}),
+        id: submission.student_id,
+        name: enrollment.student_name,
+        email: enrollment.student_email || submission?.student?.email || '',
+      },
+    };
+  });
+};
 
 const getVerifiedOrEnrollmentStudentIds = async (enrollments) => {
   const studentIds = [...new Set((enrollments || []).map((row) => row.student_id).filter(Boolean))];
@@ -178,6 +216,7 @@ export const getTeacherClasses = async (teacherId) => {
       .from('classes')
       .select('*')
       .eq('teacher_id', teacherId)
+      .eq('is_active', true)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -201,6 +240,7 @@ export const getClassById = async (classId) => {
       .from('classes')
       .select('*')
       .eq('id', classId)
+      .eq('is_active', true)
       .single();
 
     if (error) throw error;
@@ -253,15 +293,17 @@ export const updateClass = async (classId, updates) => {
 
 export const deleteClass = async (classId) => {
   try {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('classes')
-      .delete()
-      .eq('id', classId);
+      .update({ is_active: false })
+      .eq('id', classId)
+      .select('id, is_active, disabled_at')
+      .single();
 
     if (error) throw error;
-    return { success: true };
+    return { success: true, data };
   } catch (error) {
-    console.error('Error deleting class:', error);
+    console.error('Error disabling class:', error);
     return { success: false, error: error.message };
   }
 };
@@ -399,7 +441,8 @@ export const getTeacherStudents = async (teacherId) => {
     const { data: teacherClasses, error: classError } = await supabase
       .from('classes')
       .select('id, name, grade')
-      .eq('teacher_id', teacherId);
+      .eq('teacher_id', teacherId)
+      .eq('is_active', true);
 
     console.log('Teacher classes:', teacherClasses, classError);
 
@@ -464,12 +507,13 @@ export const getTeacherStudents = async (teacherId) => {
     // Get submitted count for each student
     const { data: submissions } = await supabase
       .from('submissions')
-      .select('student_id, status')
+      .select('student_id, status, submitted_at, activity:activities(due_date)')
       .in('student_id', studentIds);
 
     // Count per student
     const pendingCounts = {};
     const submittedCounts = {};
+    const lateCounts = countLateSubmissionsByStudent(submissions || []);
     
     (pendingAssignments || []).forEach(a => {
       pendingCounts[a.student_id] = (pendingCounts[a.student_id] || 0) + 1;
@@ -484,7 +528,8 @@ export const getTeacherStudents = async (teacherId) => {
     const result = Array.from(studentMap.values()).map(student => ({
       ...student,
       pendingCount: pendingCounts[student.id] || 0,
-      submittedCount: submittedCounts[student.id] || 0
+      submittedCount: submittedCounts[student.id] || 0,
+      lateCount: lateCounts[student.id] || 0,
     }));
 
     console.log('Processed students with counts:', result);
@@ -625,7 +670,33 @@ export const getTeacherActivities = async (teacherId) => {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return { success: true, data };
+    const activities = data || [];
+    const activityIds = activities.map((activity) => activity.id).filter(Boolean);
+
+    if (activityIds.length === 0) return { success: true, data: [] };
+
+    const [assignmentResult, submissionResult] = await Promise.all([
+      supabase
+        .from('activity_assignments')
+        .select('id, activity_id, student_id, status')
+        .in('activity_id', activityIds),
+      supabase
+        .from('submissions')
+        .select('id, activity_id, student_id, status, submitted_at, reviewed_at')
+        .in('activity_id', activityIds),
+    ]);
+
+    if (assignmentResult.error) throw assignmentResult.error;
+    if (submissionResult.error) throw submissionResult.error;
+
+    return {
+      success: true,
+      data: summarizeTeacherActivities(
+        activities,
+        assignmentResult.data || [],
+        submissionResult.data || []
+      ),
+    };
   } catch (error) {
     console.error('Error fetching activities:', error);
     return { success: false, error: error.message };
@@ -661,46 +732,20 @@ export const createActivity = async (teacherIdOrPayload, activityDataInput) => {
       return { success: false, error: 'Missing teacher ID' };
     }
 
-    const { data, error } = await supabase
-      .from('activities')
-      .insert([{
-        teacher_id: teacherId,
-        title: activityData.title,
-        description: activityData.description,
-        class_id: activityData.class_id,
-        grade: activityData.grade,
-        subject: activityData.subject,
-        due_date: activityData.due_date,
-        status: activityData.status || 'active',
-        image_url: activityData.image_url
-      }])
-      .select()
-      .single();
+    const { data, error } = await supabase.rpc('create_activity_with_assignments', {
+      p_teacher_id: teacherId,
+      p_title: activityData.title,
+      p_description: activityData.description || null,
+      p_class_id: activityData.class_id || null,
+      p_grade: activityData.grade || null,
+      p_subject: activityData.subject || null,
+      p_due_date: activityData.due_date || null,
+      p_status: activityData.status || 'active',
+      p_image_url: activityData.image_url || null,
+      p_rubric_id: activityData.rubric_id || null,
+    });
 
     if (error) throw error;
-
-    // If activity has a class, assign it to all students in that class
-    if (data && activityData.class_id) {
-      const { data: students } = await supabase
-        .from('class_students')
-        .select('student_id')
-        .eq('class_id', activityData.class_id);
-
-      const activeStudentIds = await getVerifiedOrEnrollmentStudentIds(students || []);
-
-      if (activeStudentIds.length > 0) {
-        const assignments = activeStudentIds.map(studentId => ({
-          activity_id: data.id,
-          student_id: studentId,
-          status: 'pending'
-        }));
-
-        await supabase
-          .from('activity_assignments')
-          .insert(assignments);
-      }
-    }
-
     return { success: true, data };
   } catch (error) {
     console.error('Error creating activity:', error);
@@ -710,12 +755,15 @@ export const createActivity = async (teacherIdOrPayload, activityDataInput) => {
 
 export const updateActivity = async (activityId, updates) => {
   try {
-    const { data, error } = await supabase
-      .from('activities')
-      .update(updates)
-      .eq('id', activityId)
-      .select()
-      .single();
+    const { data, error } = await supabase.rpc('update_activity_with_rubric', {
+      p_activity_id: activityId,
+      p_title: updates.title,
+      p_description: updates.description || null,
+      p_due_date: updates.due_date || null,
+      p_image_url: updates.image_url || null,
+      p_rubric_action: updates.rubric_action || 'keep',
+      p_rubric_id: updates.rubric_id || null,
+    });
 
     if (error) throw error;
     return { success: true, data };
@@ -821,6 +869,28 @@ export const getTeacherGestureAlerts = async (teacherId) => {
   }
 };
 
+export const getTeacherActivityLockAlerts = async (teacherId) => {
+  try {
+    if (!teacherId) return { success: true, data: [] };
+    const { data, error } = await supabase
+      .from('activity_lock_alerts')
+      .select(`
+        id, student_id, activity_id, event_type, metadata, created_at,
+        student:users!activity_lock_alerts_student_id_fkey(id, name, email),
+        activity:activities!activity_lock_alerts_activity_id_fkey(
+          id, title, teacher_id, class:classes(id, name, grade, section)
+        )
+      `)
+      .eq('activity.teacher_id', teacherId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return { success: true, data: data || [] };
+  } catch (error) {
+    console.error('Error fetching teacher activity lock alerts:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 // ==================== SUBMISSIONS/REVIEWS ====================
 
 export const getAllSubmissions = async (teacherId) => {
@@ -835,14 +905,45 @@ export const getAllSubmissions = async (teacherId) => {
           title,
           description,
           due_date,
-          teacher_id
+          teacher_id,
+          class_id
         )
       `)
       .eq('activity.teacher_id', teacherId)
       .order('submitted_at', { ascending: false });
 
     if (error) throw error;
-    return { success: true, data };
+
+    const submissions = data || [];
+    const unresolvedSubmissions = submissions.filter(
+      (submission) => !String(submission?.student?.name || '').trim() && submission?.student_id
+    );
+
+    if (unresolvedSubmissions.length === 0) {
+      return { success: true, data: submissions };
+    }
+
+    const studentIds = [...new Set(unresolvedSubmissions.map((submission) => submission.student_id))];
+    const classIds = [...new Set(
+      unresolvedSubmissions.map((submission) => submission.activity?.class_id).filter(Boolean)
+    )];
+
+    let enrollmentQuery = supabase
+      .from('class_students')
+      .select('class_id, student_id, student_name, student_email')
+      .in('student_id', studentIds);
+
+    if (classIds.length > 0) {
+      enrollmentQuery = enrollmentQuery.in('class_id', classIds);
+    }
+
+    const { data: enrollments, error: enrollmentError } = await enrollmentQuery;
+    if (enrollmentError) throw enrollmentError;
+
+    return {
+      success: true,
+      data: hydrateReviewStudentIdentities(submissions, enrollments || []),
+    };
   } catch (error) {
     console.error('Error fetching submissions:', error);
     return { success: false, error: error.message };
@@ -869,20 +970,16 @@ export const getSubmissionById = async (submissionId) => {
   }
 };
 
-export const gradeSubmission = async (submissionId, teacherId, gradeData) => {
+export const gradeSubmission = async (submissionId, teacherId, gradeData, rubricEvidence = null) => {
   try {
-    const { data, error } = await supabase
-      .from('submissions')
-      .update({
-        score: gradeData.score,
-        feedback: gradeData.feedback,
-        status: 'reviewed',
-        reviewed_at: new Date().toISOString(),
-        reviewed_by: teacherId
-      })
-      .eq('id', submissionId)
-      .select()
-      .single();
+    const { data, error } = await supabase.rpc('finalize_submission_review', {
+      p_submission_id: submissionId,
+      p_teacher_id: teacherId,
+      p_score: gradeData.score,
+      p_feedback: gradeData.feedback || '',
+      p_observation: rubricEvidence?.observation || null,
+      p_criteria: rubricEvidence?.criteria || [],
+    });
 
     if (error) throw error;
     return { success: true, data };
@@ -917,7 +1014,8 @@ export const getDashboardStats = async (teacherId) => {
     const { data: classes, error: classError } = await supabase
       .from('classes')
       .select('id')
-      .eq('teacher_id', teacherId);
+      .eq('teacher_id', teacherId)
+      .eq('is_active', true);
 
     if (classError) throw classError;
 

@@ -16,8 +16,6 @@ function Sidebar({
   settingsPageKey = "settings",
   showAudit = false,
   auditPageKey = "audit",
-  showPasswordResets = false,
-  passwordResetsPageKey = "password-resets",
   showClasses = null,
 }) {
   const shouldShowClasses = showClasses ?? homePageKey !== "sa-dashboard";
@@ -275,44 +273,6 @@ function Sidebar({
           </button>
         )}
 
-        {showPasswordResets && (
-          <button
-            className={`dash-link ${active === passwordResetsPageKey ? "active" : ""}`}
-            type="button"
-            onClick={() => onNavigate?.(passwordResetsPageKey)}
-          >
-            <Icon>
-              <svg
-                viewBox="0 0 24 24"
-                width="20"
-                height="20"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  d="M7 11V8a5 5 0 0 1 10 0v3"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M6 11h12v9H6v-9Z"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M12 15v2"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </Icon>
-            Reset Requests
-          </button>
-        )}
-
         <button
           className={`dash-link ${active === settingsPageKey ? "active" : ""}`}
           type="button"
@@ -355,8 +315,6 @@ function AdminShell({
   settingsPageKey,
   showAudit,
   auditPageKey,
-  showPasswordResets,
-  passwordResetsPageKey,
   showClasses,
 }) {
   const rootClassName = ["dash", className].filter(Boolean).join(" ");
@@ -369,8 +327,6 @@ function AdminShell({
         settingsPageKey={settingsPageKey}
         showAudit={showAudit}
         auditPageKey={auditPageKey}
-        showPasswordResets={showPasswordResets}
-        passwordResetsPageKey={passwordResetsPageKey}
         showClasses={showClasses}
       />
       <main className="dash-main">{children}</main>

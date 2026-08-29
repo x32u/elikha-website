@@ -3,7 +3,9 @@ import { forwardRef, useEffect, useImperativeHandle } from 'react';
 interface CameraFeedProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   onReady?: () => void;
+  onError?: (message: string) => void;
   facingMode?: 'user' | 'environment';
+  enabled?: boolean;
 }
 
 export interface CameraFeedHandle {
@@ -11,14 +13,15 @@ export interface CameraFeedHandle {
 }
 
 export const CameraFeed = forwardRef<CameraFeedHandle, CameraFeedProps>(
-  ({ videoRef, onReady, facingMode = 'environment' }, ref) => {
+  ({ videoRef, onReady, onError, facingMode = 'environment', enabled = false }, ref) => {
     useImperativeHandle(ref, () => ({
       video: videoRef.current,
     }));
 
     useEffect(() => {
       const video = videoRef.current;
-      if (!video) return;
+      if (!video || !enabled) return;
+      let active = true;
 
       const startCamera = async () => {
         try {
@@ -41,6 +44,13 @@ export const CameraFeed = forwardRef<CameraFeedHandle, CameraFeedProps>(
             });
           }
 
+          // Permission can resolve after the student has already left the activity.
+          // Stop that stream immediately so the camera indicator never stays on.
+          if (!active) {
+            stream.getTracks().forEach((track) => track.stop());
+            return;
+          }
+
           video.srcObject = stream;
           video.onloadedmetadata = async () => {
             try {
@@ -52,18 +62,23 @@ export const CameraFeed = forwardRef<CameraFeedHandle, CameraFeedProps>(
           };
         } catch (error) {
           console.error('Failed to access camera:', error);
+          const message = error instanceof DOMException && error.name === 'NotAllowedError'
+            ? 'Camera permission was not allowed. Allow camera access in Chrome to continue this activity.'
+            : 'Unable to start the camera. Check that it is connected and not being used by another app.';
+          onError?.(message);
         }
       };
 
       startCamera();
 
       return () => {
+        active = false;
         if (video.srcObject) {
           const stream = video.srcObject as MediaStream;
           stream.getTracks().forEach((track) => track.stop());
         }
       };
-    }, [videoRef, facingMode, onReady]);
+    }, [enabled, facingMode, onError, onReady, videoRef]);
 
     return (
       <video

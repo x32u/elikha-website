@@ -97,7 +97,7 @@ const pickBestUrl = (urls = []) => {
   return urls[0];
 };
 
-const inferNameFromUrl = (url = '', fallback = 'model.gltf') => {
+const inferNameFromUrl = (url = '', fallback = 'model.glb') => {
   const clean = String(url || '').split('?')[0].trim();
   if (!clean) return fallback;
   const parts = clean.split('/').filter(Boolean);
@@ -131,17 +131,19 @@ export const resolveFreeModelImport = async (assetId) => {
   }
 
   const files = await response.json();
-  const gltfUrl = pickBestUrl(extractUrlsByExtension(files, 'gltf'));
   const glbUrl = pickBestUrl(extractUrlsByExtension(files, 'glb'));
   const objUrl = pickBestUrl(extractUrlsByExtension(files, 'obj'));
-  const modelUrl = gltfUrl || glbUrl || objUrl;
+  // Prefer a self-contained GLB. Standalone GLTF/OBJ files can reference
+  // external texture or material files that are not part of a single upload.
+  // The R2 import contract accepts a single object, so unsupported standalone
+  // GLTF manifests are intentionally not offered as a fallback.
+  const modelUrl = glbUrl || objUrl;
 
   if (!modelUrl) {
     throw new Error('No compatible model file found for this asset.');
   }
 
   let fileType = 'obj';
-  if (modelUrl.endsWith('.gltf')) fileType = 'gltf';
   if (modelUrl.endsWith('.glb')) fileType = 'glb';
 
   return {
@@ -153,4 +155,3 @@ export const resolveFreeModelImport = async (assetId) => {
     license: 'CC0',
   };
 };
-

@@ -1,0 +1,37 @@
+
+> elikha-studentweb@1.0.0 start
+> react-scripts start
+
+Starting the development server...
+
+Compiled with warnings.
+
+Failed to parse source map from 'C:\Users\NICOS RAPHAEL\Downloads\updated elikha-20260730T082441Z-1-001\updated elikha\elikha_web_transfer_2026-07-30\elikha_web\node_modules\@mediapipe\tasks-vision\vision_bundle_mjs.js.map' file: Error: ENOENT: no such file or directory, open 'C:\Users\NICOS RAPHAEL\Downloads\updated elikha-20260730T082441Z-1-001\updated elikha\elikha_web_transfer_2026-07-30\elikha_web\node_modules\@mediapipe\tasks-vision\vision_bundle_mjs.js.map'
+
+Failed to parse source map from 'C:\Users\NICOS RAPHAEL\Downloads\updated elikha-20260730T082441Z-1-001\updated elikha\elikha_web_transfer_2026-07-30\elikha_web\node_modules\@react-three\drei\node_modules\@mediapipe\tasks-vision\vision_bundle_mjs.js.map' file: Error: ENOENT: no such file or directory, open 'C:\Users\NICOS RAPHAEL\Downloads\updated elikha-20260730T082441Z-1-001\updated elikha\elikha_web_transfer_2026-07-30\elikha_web\node_modules\@react-three\drei\node_modules\@mediapipe\tasks-vision\vision_bundle_mjs.js.map'
+
+[eslint] 
+src\pages\teacher\Rubrics.jsx
+  Line 39:32:  React Hook useEffect has a missing dependency: 'load'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m./node_modules/@mediapipe/tasks-vision/vision_bundle.mjs[39m[22m
+[1mModule Warning (from ./node_modules/source-map-loader/dist/cjs.js):
+[1m[31mFailed[39m[22m[1m to parse source map from 'C:\Users\NICOS RAPHAEL\Downloads\updated elikha-20260730T082441Z-1-001\updated elikha\elikha_web_transfer_2026-07-30\elikha_web\node_modules\@mediapipe\tasks-vision\vision_bundle_mjs.js.map' file: [1m[31mError[39m[22m[1m: ENOENT: no such file or directory, open 'C:\Users\NICOS RAPHAEL\Downloads\updated elikha-20260730T082441Z-1-001\updated elikha\elikha_web_transfer_2026-07-30\elikha_web\node_modules\@mediapipe\tasks-vision\vision_bundle_mjs.js.map'[39m[22m
+
+[1m[33mWARNING[39m[22m in [1m./node_modules/@react-three/drei/node_modules/@mediapipe/tasks-vision/vision_bundle.mjs[39m[22m
+[1mModule Warning (from ./node_modules/source-map-loader/dist/cjs.js):
+[1m[31mFailed[39m[22m[1m to parse source map from 'C:\Users\NICOS RAPHAEL\Downloads\updated elikha-20260730T082441Z-1-001\updated elikha\elikha_web_transfer_2026-07-30\elikha_web\node_modules\@react-three\drei\node_modules\@mediapipe\tasks-vision\vision_bundle_mjs.js.map' file: [1m[31mError[39m[22m[1m: ENOENT: no such file or directory, open 'C:\Users\NICOS RAPHAEL\Downloads\updated elikha-20260730T082441Z-1-001\updated elikha\elikha_web_transfer_2026-07-30\elikha_web\node_modules\@react-three\drei\node_modules\@mediapipe\tasks-vision\vision_bundle_mjs.js.map'[39m[22m
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\pages\teacher\Rubrics.jsx
+  Line 39:32:  React Hook useEffect has a missing dependency: 'load'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+webpack compiled with [1m[33m3 warnings[39m[22m
+Files successfully emitted, waiting for typecheck results...
+Issues checking in progress...
+No issues found.

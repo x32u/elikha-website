@@ -317,6 +317,322 @@
   line-height: 1.45;
 }
 
+.activity-rubric-section {
+  padding: 18px;
+}
+
+.activity-rubric-heading,
+.final-review-heading,
+.final-criterion-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.activity-rubric-heading .section-title {
+  padding: 0;
+}
+
+.activity-rubric-eyebrow,
+.final-review-eyebrow {
+  margin: 0 0 4px;
+  color: #3156e0;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.activity-rubric-version {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3156e0;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.activity-rubric-intro {
+  margin-top: 14px;
+  padding: 13px 14px;
+  border-radius: 12px;
+  background: #f6f8ff;
+  color: #3e5077;
+}
+
+.activity-rubric-intro h4,
+.activity-rubric-intro p,
+.activity-rubric-criterion h4,
+.activity-rubric-status {
+  margin: 0;
+}
+
+.activity-rubric-intro h4 {
+  color: #162957;
+  font-size: 17px;
+}
+
+.activity-rubric-intro p {
+  margin-top: 5px;
+  line-height: 1.5;
+}
+
+.activity-rubric-status {
+  margin-top: 12px;
+  color: #5f739b;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.activity-rubric-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 12px;
+  padding: 13px 14px;
+  border: 1px solid #d8e1f7;
+  border-radius: 12px;
+  background: #f7f9ff;
+}
+
+.activity-rubric-error .activity-rubric-status {
+  margin-top: 0;
+}
+
+.activity-rubric-retry {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 9px 13px;
+  border: 1px solid #3156e0;
+  border-radius: 10px;
+  background: #3156e0;
+  color: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.activity-rubric-retry:focus-visible {
+  outline: 3px solid rgba(49, 86, 224, 0.3);
+  outline-offset: 2px;
+}
+
+.activity-rubric-retry:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.activity-rubric-criteria {
+  display: grid;
+  gap: 12px;
+  margin-top: 13px;
+}
+
+.activity-rubric-criterion {
+  padding: 14px;
+  border: 1px solid #dae3fb;
+  border-radius: 13px;
+  background: #ffffff;
+}
+
+.activity-rubric-criterion h4 {
+  color: #172b59;
+  font-size: 15px;
+}
+
+.activity-rubric-criterion dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 11px 0 0;
+}
+
+.activity-rubric-criterion dl > div {
+  padding: 10px;
+  border-radius: 10px;
+  background: #f7f9ff;
+}
+
+.activity-rubric-criterion dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #263f78;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.activity-rubric-criterion dt span {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  background: #3156e0;
+  color: #ffffff;
+}
+
+.activity-rubric-criterion dd {
+  margin: 7px 0 0;
+  color: #52658d;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.final-review-heading {
+  margin-bottom: 12px;
+}
+
+.final-review-heading h4,
+.final-criteria > h4,
+.teacher-guidance h4,
+.approved-color-suggestion h4 {
+  margin: 0;
+  color: #174a22;
+  font-size: 16px;
+}
+
+.final-review-heading > span {
+  color: #55705b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.final-review-callout,
+.teacher-guidance,
+.approved-color-suggestion {
+  margin-top: 12px;
+  padding: 12px 13px;
+  border-radius: 10px;
+  background: #f5faf6;
+  color: #315a37;
+}
+
+.final-review-callout > strong {
+  color: #174a22;
+  font-size: 13px;
+}
+
+.final-review-callout p,
+.teacher-guidance p,
+.approved-color-suggestion p {
+  margin: 5px 0 0;
+  line-height: 1.5;
+}
+
+.final-criteria {
+  display: grid;
+  gap: 9px;
+  margin-top: 15px;
+}
+
+.final-criterion {
+  padding: 12px;
+  border: 1px solid #d4e6d8;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.final-criterion h5,
+.final-criterion p {
+  margin: 0;
+}
+
+.final-criterion h5 {
+  color: #234a2b;
+  font-size: 14px;
+}
+
+.final-criterion > p {
+  margin-top: 8px;
+  color: #506d56;
+  line-height: 1.45;
+}
+
+.final-criterion-rating {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #e7f4ea;
+  color: #1d5b2d;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.final-criterion-rating.rating-no,
+.final-criterion-rating.rating-na {
+  background: #f1f1f1;
+  color: #5f5f5f;
+}
+
+.final-criterion-note {
+  padding-top: 8px;
+  border-top: 1px solid #e1eee4;
+}
+
+.teacher-guidance a {
+  display: inline-block;
+  margin-top: 8px;
+  color: #2448c7;
+  font-weight: 800;
+}
+
+.approved-color-suggestion {
+  border: 1px solid #ddd5ff;
+  background: #f8f6ff;
+  color: #514878;
+}
+
+.approved-color-suggestion h4 {
+  color: #2f2189;
+}
+
+.approved-color-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.approved-color-list > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #403753;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.approved-color-list i {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(30, 24, 48, 0.22);
+}
+
+.approved-color-suggestion small {
+  display: block;
+  margin-top: 9px;
+  line-height: 1.45;
+}
+
+.final-review-pending {
+  margin: 12px 0 0;
+  padding: 11px;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #55705b !important;
+  line-height: 1.45;
+}
+
 .progress-section {
   padding: 12px 16px 14px;
   gap: 8px;
@@ -383,6 +699,10 @@
   .activity-details-page {
     padding: 16px 14px 96px;
   }
+
+  .activity-rubric-criterion dl {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 480px) {
@@ -392,5 +712,20 @@
 
   .hero-text h2 {
     font-size: 24px;
+  }
+
+  .activity-rubric-heading,
+  .final-review-heading,
+  .final-criterion-heading {
+    flex-direction: column;
+  }
+
+  .activity-rubric-error {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .activity-rubric-retry {
+    width: 100%;
   }
 }

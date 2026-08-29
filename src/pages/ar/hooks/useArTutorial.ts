@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { GrabState } from './useHandTrackingV2';
+import { normalizeVoiceGuideText, shouldSpeakVoiceAnnouncement } from '../utils/voiceGuidance';
 
 interface UseArTutorialOptions {
   grabState: GrabState;
   enabled?: boolean;
+  voiceEnabled?: boolean;
+}
+
+interface ArAnnouncementOptions {
+  debounceMs?: number;
+  dedupeMs?: number;
+  force?: boolean;
 }
 
 interface TutorialStep {
@@ -32,20 +40,14 @@ function pickVoice(): SpeechSynthesisVoice | null {
   );
 }
 
-function speak(text: string, voice: SpeechSynthesisVoice | null) {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return;
-  const utter = new SpeechSynthesisUtterance(text);
-  if (voice) utter.voice = voice;
-  utter.rate = 0.95;
-  utter.pitch = 1.15;
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(utter);
-}
-
-export function useArTutorial({ grabState, enabled = true }: UseArTutorialOptions) {
+export function useArTutorial({ grabState, enabled = true, voiceEnabled = true }: UseArTutorialOptions) {
   const [stepIndex, setStepIndex] = useState(0);
   const [needsGesture, setNeedsGesture] = useState(false);
-  const [ttsAvailable, setTtsAvailable] = useState(true);
+  const [ttsAvailable, setTtsAvailable] = useState(() => (
+    typeof window !== 'undefined'
+    && Boolean(window.speechSynthesis)
+    && typeof SpeechSynthesisUtterance !== 'undefined'
+  ));
   const [currentTexts, setCurrentTexts] = useState<string[]>([]);
   const grabRef = useRef(grabState);
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
@@ -57,6 +59,8 @@ export function useArTutorial({ grabState, enabled = true }: UseArTutorialOption
   const pendingSpeakTimeoutsRef = useRef<number[]>([]);
   const pendingSpeakRef = useRef<{ texts: string[]; gapMs: number; baseDelay: number } | null>(null);
   const tapListenerRef = useRef<(() => void) | null>(null);
+  const actionSpeakTimeoutRef = useRef<number | null>(null);
+  const lastAnnouncementRef = useRef<{ text: string; at: number } | null>(null);
   const transitionDelayMs = 1000;
 
   useEffect(() => {
@@ -115,25 +119,25 @@ export function useArTutorial({ grabState, enabled = true }: UseArTutorialOption
     []
   );
 
-  const clearPendingTimeouts = () => {
+  const clearPendingTimeouts = useCallback(() => {
     pendingSpeakTimeoutsRef.current.forEach((id) => window.clearTimeout(id));
     pendingSpeakTimeoutsRef.current = [];
-  };
+  }, []);
 
-  const removeTapListener = () => {
+  const removeTapListener = useCallback(() => {
     if (tapListenerRef.current) {
       window.removeEventListener('pointerdown', tapListenerRef.current);
       window.removeEventListener('touchstart', tapListenerRef.current);
       tapListenerRef.current = null;
     }
-  };
+  }, []);
 
-  const buildUtterance = (text: string, onStart?: () => void) => {
+  const buildUtterance = useCallback((text: string, onStart?: () => void) => {
     const utter = new SpeechSynthesisUtterance(text);
     if (voiceRef.current) utter.voice = voiceRef.current;
     utter.lang = voiceRef.current?.lang || 'en-US';
     utter.volume = 1;
-    utter.rate = 0.95;
+    utter.rate = 0.9;
     utter.pitch = 1.15;
     utter.onstart = () => {
       lastStartRef.current = performance.now();
@@ -152,15 +156,15 @@ export function useArTutorial({ grabState, enabled = true }: UseArTutorialOption
       setNeedsGesture(true);
     };
     return utter;
-  };
+  }, [removeTapListener]);
 
-  const cancelTutorialAudio = () => {
+  const cancelTutorialAudio = useCallback(() => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
     if (isTutorialSpeakingRef.current || window.speechSynthesis.speaking || window.speechSynthesis.pending) {
       window.speechSynthesis.cancel();
     }
     isTutorialSpeakingRef.current = false;
-  };
+  }, []);
 
   const speakImmediate = useCallback((texts: string[], gapMs: number) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
@@ -190,9 +194,9 @@ export function useArTutorial({ grabState, enabled = true }: UseArTutorialOption
     };
 
     attemptSpeak(0);
-  }, []);
+  }, [buildUtterance, cancelTutorialAudio]);
 
-  const speakSequence = (texts: string[], gapMs: number, baseDelay: number) => {
+  const speakSequence = useCallback((texts: string[], gapMs: number, baseDelay: number) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
 
     let started = false;
@@ -218,7 +222,7 @@ export function useArTutorial({ grabState, enabled = true }: UseArTutorialOption
       pendingSpeakTimeoutsRef.current.push(firstId, secondId);
     }
 
-    window.setTimeout(() => {
+    const watchdogId = window.setTimeout(() => {
       if (!started) {
         pendingSpeakRef.current = { texts, gapMs, baseDelay: 0 };
         setNeedsGesture(true);
@@ -234,19 +238,87 @@ export function useArTutorial({ grabState, enabled = true }: UseArTutorialOption
         }
       }
     }, 500);
-  };
+    pendingSpeakTimeoutsRef.current.push(watchdogId);
+  }, [buildUtterance, cancelTutorialAudio, clearPendingTimeouts, speakImmediate]);
 
   const triggerSpeak = useCallback(() => {
-    if (!enabled) return;
+    if (!enabled || !voiceEnabled) return;
     if (stepIndex < 0 || stepIndex >= steps.length) return;
     clearPendingTimeouts();
     const step = steps[stepIndex];
     const gap = step.gapMs ?? 0;
     speakImmediate(step.texts, gap);
-  }, [enabled, stepIndex, steps, speakImmediate]);
+  }, [clearPendingTimeouts, enabled, stepIndex, steps, speakImmediate, voiceEnabled]);
+
+  const announce = useCallback((text: string, options: ArAnnouncementOptions = {}) => {
+    const message = normalizeVoiceGuideText(text);
+    if (!message || typeof window === 'undefined') return;
+
+    const { debounceMs = 0, dedupeMs = 450, force = false } = options;
+    const now = Date.now();
+    const lastAnnouncement = lastAnnouncementRef.current;
+    if (!shouldSpeakVoiceAnnouncement({
+      text: message,
+      voiceEnabled,
+      force,
+      previousText: lastAnnouncement?.text,
+      previousAt: lastAnnouncement?.at,
+      now,
+      dedupeMs,
+    })) {
+      return;
+    }
+
+    const performAnnouncement = () => {
+      actionSpeakTimeoutRef.current = null;
+      lastAnnouncementRef.current = { text: message, at: Date.now() };
+      setCurrentTexts([message]);
+
+      if (!window.speechSynthesis || typeof SpeechSynthesisUtterance === 'undefined') {
+        setTtsAvailable(false);
+        return;
+      }
+
+      clearPendingTimeouts();
+      cancelTutorialAudio();
+      window.speechSynthesis.resume();
+
+      const utterance = new SpeechSynthesisUtterance(message);
+      if (voiceRef.current) utterance.voice = voiceRef.current;
+      utterance.lang = voiceRef.current?.lang || 'en-US';
+      utterance.volume = 1;
+      utterance.rate = 0.9;
+      utterance.pitch = 1.1;
+      utterance.onstart = () => {
+        setTtsAvailable(true);
+        setNeedsGesture(false);
+      };
+      utterance.onerror = () => {
+        setTtsAvailable(false);
+      };
+      window.speechSynthesis.speak(utterance);
+    };
+
+    if (actionSpeakTimeoutRef.current) {
+      window.clearTimeout(actionSpeakTimeoutRef.current);
+      actionSpeakTimeoutRef.current = null;
+    }
+
+    if (debounceMs > 0) {
+      actionSpeakTimeoutRef.current = window.setTimeout(performAnnouncement, debounceMs);
+    } else {
+      performAnnouncement();
+    }
+  }, [cancelTutorialAudio, clearPendingTimeouts, voiceEnabled]);
+
+  const repeatCurrent = useCallback(() => {
+    if (!voiceEnabled || currentTexts.length === 0) return;
+    clearPendingTimeouts();
+    speakImmediate(currentTexts, currentTexts.length > 1 ? 900 : 0);
+  }, [clearPendingTimeouts, currentTexts, speakImmediate, voiceEnabled]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !voiceEnabled) return;
     if (stepIndex < 0 || stepIndex >= steps.length) return;
     if (lastSpokenRef.current === stepIndex) return;
     lastSpokenRef.current = stepIndex;
@@ -259,10 +331,10 @@ export function useArTutorial({ grabState, enabled = true }: UseArTutorialOption
     const baseDelay = stepIndex === 0 ? 0 : transitionDelayMs;
 
     speakSequence(step.texts, gap, baseDelay);
-  }, [enabled, stepIndex, steps, transitionDelayMs]);
+  }, [clearPendingTimeouts, enabled, speakSequence, stepIndex, steps, transitionDelayMs, voiceEnabled]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !voiceEnabled) return;
     let rafId = 0;
 
     const tick = () => {
@@ -292,14 +364,43 @@ export function useArTutorial({ grabState, enabled = true }: UseArTutorialOption
 
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, [enabled, stepIndex, steps]);
+  }, [enabled, stepIndex, steps, voiceEnabled]);
+
+  useEffect(() => {
+    if (voiceEnabled) return;
+
+    clearPendingTimeouts();
+    removeTapListener();
+    if (actionSpeakTimeoutRef.current) {
+      window.clearTimeout(actionSpeakTimeoutRef.current);
+      actionSpeakTimeoutRef.current = null;
+    }
+    cancelTutorialAudio();
+    pendingSpeakRef.current = null;
+    lastSpokenRef.current = -1;
+    progressRef.current = 0;
+    setNeedsGesture(false);
+    setCurrentTexts([]);
+  }, [cancelTutorialAudio, clearPendingTimeouts, removeTapListener, voiceEnabled]);
 
   useEffect(() => {
     return () => {
       clearPendingTimeouts();
       removeTapListener();
+      if (actionSpeakTimeoutRef.current) {
+        window.clearTimeout(actionSpeakTimeoutRef.current);
+        actionSpeakTimeoutRef.current = null;
+      }
     };
-  }, []);
+  }, [clearPendingTimeouts, removeTapListener]);
 
-  return { stepIndex, needsGesture, triggerSpeak, ttsAvailable, currentTexts };
+  return {
+    stepIndex,
+    needsGesture,
+    triggerSpeak,
+    repeatCurrent,
+    ttsAvailable,
+    currentTexts,
+    announce,
+  };
 }

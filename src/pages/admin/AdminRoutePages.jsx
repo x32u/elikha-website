@@ -13,7 +13,6 @@ import SuperAdminModels from '../superadmin/SuperAdminModels';
 import SuperAdminReports from '../superadmin/SuperAdminReports';
 import SuperAdminSettings from '../superadmin/SuperAdminSettings';
 import SuperAdminAudit from '../superadmin/SuperAdminAudit';
-import SuperAdminPasswordResets from '../superadmin/SuperAdminPasswordResets';
 
 const ADMIN_ROUTE_MAP = {
   homepage: '/admin',
@@ -32,7 +31,6 @@ const SUPERADMIN_ROUTE_MAP = {
   reports: '/superadmin/reports',
   settings: '/superadmin/settings',
   audit: '/superadmin/audit',
-  'password-resets': '/superadmin/password-resets',
 };
 
 const normalizeRole = (role) => String(role || '').toLowerCase().replace(/[_\s-]/g, '');
@@ -145,9 +143,4 @@ export function SuperAdminSettingsRoute() {
 export function SuperAdminAuditRoute() {
   const onNavigate = useMappedNavigation(SUPERADMIN_ROUTE_MAP);
   return <SuperAdminAudit onNavigate={onNavigate} />;
-}
-
-export function SuperAdminPasswordResetsRoute() {
-  const onNavigate = useMappedNavigation(SUPERADMIN_ROUTE_MAP);
-  return <SuperAdminPasswordResets onNavigate={onNavigate} />;
 }

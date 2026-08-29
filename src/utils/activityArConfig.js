@@ -3,9 +3,34 @@ const CUSTOM_AR_MODEL_KEY = 'elikha_custom_ar_models_v1';
 const CUSTOM_AR_MODEL_DB_NAME = 'elikha_custom_ar_models_db_v1';
 const CUSTOM_AR_MODEL_DB_VERSION = 1;
 const CUSTOM_AR_MODEL_DB_STORE = 'model_files';
+const R2_AR_MODEL_KEY = 'elikha_r2_ar_models_v1';
+const R2_MODEL_API_BASE = String(process.env.REACT_APP_R2_MODEL_API_URL || '').trim().replace(/\/+$/, '');
 export const AR_MODEL_LIBRARY_UPDATED_EVENT = 'elikha-ar-model-library-updated';
 
-export const AR_OBJECT_LIBRARY = Object.freeze([
+const resolveBuiltInModelUrl = (id, localUrl) => (
+  R2_MODEL_API_BASE
+    ? `${R2_MODEL_API_BASE}/models/files/${encodeURIComponent(id)}`
+    : localUrl
+);
+
+const compareArLibraryItems = (a, b) => {
+  const labelA = String(a?.label || a?.name || a?.id || '').trim();
+  const labelB = String(b?.label || b?.name || b?.id || '').trim();
+  const byLabel = labelA.localeCompare(labelB, undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  });
+  return byLabel || String(a?.id || '').localeCompare(String(b?.id || ''), undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  });
+};
+
+export const sortArLibraryItems = (items = []) => (
+  (Array.isArray(items) ? items : []).slice().sort(compareArLibraryItems)
+);
+
+export const AR_OBJECT_LIBRARY = Object.freeze(sortArLibraryItems([
   {
     id: 'cube',
     label: 'Cube',
@@ -42,13 +67,13 @@ export const AR_OBJECT_LIBRARY = Object.freeze([
     defaultScale: 0.32,
     color: '#ffffff',
   },
-]);
+]));
 
 const BUILT_IN_AR_MODELS = Object.freeze([
   {
     id: 'mask',
     label: 'Latin Mask',
-    modelUrl: '/models/13137_LatinMask1_v1.obj',
+    modelUrl: resolveBuiltInModelUrl('mask', '/models/13137_LatinMask1_v1.obj'),
     fileType: 'obj',
     aliases: ['latin-mask', 'kabuki-mask'],
     isCustom: false,
@@ -56,7 +81,7 @@ const BUILT_IN_AR_MODELS = Object.freeze([
   {
     id: 'bottle',
     label: 'Bottle',
-    modelUrl: '/models/Bottle Coca-Cola N080710.3ds',
+    modelUrl: resolveBuiltInModelUrl('bottle', '/models/Bottle Coca-Cola N080710.3ds'),
     fileType: '3ds',
     aliases: ['coca-cola-bottle'],
     isCustom: false,
@@ -64,7 +89,7 @@ const BUILT_IN_AR_MODELS = Object.freeze([
   {
     id: 'cactus',
     label: 'Cactus',
-    modelUrl: '/models/cute_cactus.glb',
+    modelUrl: resolveBuiltInModelUrl('cactus', '/models/cute_cactus.glb'),
     fileType: 'glb',
     aliases: ['cute-cactus', 'cute_cactus'],
     isCustom: false,
@@ -72,7 +97,7 @@ const BUILT_IN_AR_MODELS = Object.freeze([
   {
     id: 'tree',
     label: 'Tree',
-    modelUrl: '/models/maple_tree.glb',
+    modelUrl: resolveBuiltInModelUrl('tree', '/models/maple_tree.glb'),
     fileType: 'glb',
     aliases: ['maple-tree', 'maple_tree'],
     isCustom: false,
@@ -80,7 +105,7 @@ const BUILT_IN_AR_MODELS = Object.freeze([
   {
     id: 'paper-cup',
     label: 'Paper Cup',
-    modelUrl: '/models/paper_cup.glb',
+    modelUrl: resolveBuiltInModelUrl('paper-cup', '/models/paper_cup.glb'),
     fileType: 'glb',
     aliases: ['paper_cup'],
     isCustom: false,
@@ -88,7 +113,7 @@ const BUILT_IN_AR_MODELS = Object.freeze([
   {
     id: 'button',
     label: 'Button',
-    modelUrl: '/models/simple_button.glb',
+    modelUrl: resolveBuiltInModelUrl('button', '/models/simple_button.glb'),
     fileType: 'glb',
     aliases: ['simple-button', 'simple_button'],
     isCustom: false,
@@ -96,7 +121,7 @@ const BUILT_IN_AR_MODELS = Object.freeze([
   {
     id: 'torii-shrine',
     label: 'Torii Shrine',
-    modelUrl: '/models/torii shrine.glb',
+    modelUrl: resolveBuiltInModelUrl('torii-shrine', '/models/torii shrine.glb'),
     fileType: 'glb',
     aliases: ['torii', 'torii-shrine-gate'],
     isCustom: false,
@@ -104,21 +129,21 @@ const BUILT_IN_AR_MODELS = Object.freeze([
   {
     id: 'sarcophagus',
     label: 'Sarcophagus',
-    modelUrl: '/models/sarcophagus.glb',
+    modelUrl: resolveBuiltInModelUrl('sarcophagus', '/models/sarcophagus.glb'),
     fileType: 'glb',
     isCustom: false,
   },
   {
     id: 'lion',
     label: 'Lion',
-    modelUrl: '/models/lion.glb',
+    modelUrl: resolveBuiltInModelUrl('lion', '/models/lion.glb'),
     fileType: 'glb',
     isCustom: false,
   },
   {
     id: 'flower',
     label: 'Flower',
-    modelUrl: '/models/flowers.glb',
+    modelUrl: resolveBuiltInModelUrl('flower', '/models/flowers.glb'),
     fileType: 'glb',
     aliases: ['flowers'],
     isCustom: false,
@@ -126,7 +151,7 @@ const BUILT_IN_AR_MODELS = Object.freeze([
   {
     id: 'popsicle-stick',
     label: 'Popsicle Stick',
-    modelUrl: '/models/popsicle_stick.glb',
+    modelUrl: resolveBuiltInModelUrl('popsicle-stick', '/models/popsicle_stick.glb'),
     fileType: 'glb',
     aliases: ['popsicle_stick'],
     isCustom: false,
@@ -134,7 +159,7 @@ const BUILT_IN_AR_MODELS = Object.freeze([
   {
     id: 'sakura-tree',
     label: 'Sakura Tree',
-    modelUrl: '/models/sakura tree.glb',
+    modelUrl: resolveBuiltInModelUrl('sakura-tree', '/models/sakura tree.glb'),
     fileType: 'glb',
     aliases: ['sakura', 'sakura_tree'],
     isCustom: false,
@@ -142,7 +167,7 @@ const BUILT_IN_AR_MODELS = Object.freeze([
   {
     id: 'sphinx',
     label: 'Sphinx',
-    modelUrl: '/models/the_great_sphinx_of_giza_-_egypt.glb',
+    modelUrl: resolveBuiltInModelUrl('sphinx', '/models/the_great_sphinx_of_giza_-_egypt.glb'),
     fileType: 'glb',
     aliases: ['great-sphinx', 'great-sphinx-of-giza', 'the-great-sphinx-of-giza-egypt'],
     isCustom: false,
@@ -206,6 +231,7 @@ const inferFileTypeFromPath = (path = '') => {
   if (clean.endsWith('.gltf')) return 'gltf';
   if (clean.endsWith('.fbx')) return 'fbx';
   if (clean.endsWith('.3ds')) return '3ds';
+  if (clean.endsWith('.blend')) return 'blend';
   return 'obj';
 };
 
@@ -251,8 +277,68 @@ const normalizeCustomModelEntry = (entry) => {
     fileName: fileName || `model.${fileType}`,
     description: String(entry?.description || '').trim(),
     isCustom: true,
+    storageProvider: 'browser',
   };
 };
+
+const normalizeR2ModelEntry = (entry) => {
+  const id = slugifyId(entry?.id);
+  const modelUrl = String(entry?.modelUrl || '').trim();
+  if (!id || !modelUrl) return null;
+
+  const fileName = String(entry?.fileName || '').trim();
+  const fileType = String(entry?.fileType || inferFileTypeFromPath(fileName || modelUrl))
+    .trim()
+    .toLowerCase();
+  const isBuiltIn = entry?.isBuiltIn === true || entry?.isCustom === false;
+
+  return {
+    id,
+    label: String(entry?.label || id.replace(/-/g, ' ')).trim().slice(0, 80),
+    description: String(entry?.description || '').trim(),
+    modelUrl,
+    fileType,
+    fileName: fileName || `model.${fileType}`,
+    size: Number(entry?.size) || 0,
+    uploadedAt: String(entry?.uploadedAt || ''),
+    updatedAt: String(entry?.updatedAt || ''),
+    uploadedByRole: String(entry?.uploadedByRole || ''),
+    isBuiltIn,
+    isCustom: !isBuiltIn,
+    storageProvider: 'r2',
+    source: String(entry?.source || ''),
+    license: String(entry?.license || ''),
+  };
+};
+
+const readR2ModelLibrary = () => {
+  if (!isBrowser) return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(R2_AR_MODEL_KEY) || '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(normalizeR2ModelEntry).filter(Boolean);
+  } catch {
+    return [];
+  }
+};
+
+export const replaceR2ArModelLibrary = (models = []) => {
+  if (!isBrowser) return [];
+  const normalized = Array.isArray(models)
+    ? models.map(normalizeR2ModelEntry).filter(Boolean)
+    : [];
+
+  try {
+    window.localStorage.setItem(R2_AR_MODEL_KEY, JSON.stringify(normalized));
+    emitModelLibraryUpdated();
+  } catch {
+    // The current page still receives the fetched result even when persistent
+    // browser storage is unavailable.
+  }
+  return normalized;
+};
+
+export const getR2ArModels = () => readR2ModelLibrary();
 
 const readCustomModelLibrary = () => {
   if (!isBrowser) return [];
@@ -529,6 +615,28 @@ export const getArModelLibrary = () => {
     dedupe.set(model.id, model);
   });
 
+  readR2ModelLibrary().forEach((model) => {
+    const canonicalId = normalizeModelLookupId(model.id);
+    const existing = canonicalId ? dedupe.get(canonicalId) : null;
+    if (existing && model.isCustom === false) {
+      dedupe.set(canonicalId, {
+        ...existing,
+        ...model,
+        id: canonicalId,
+        aliases: existing.aliases,
+      });
+      return;
+    }
+
+    let id = model.id;
+    if (dedupe.has(id)) {
+      let index = 1;
+      while (dedupe.has(`${id}-${index}`)) index += 1;
+      id = `${id}-${index}`;
+    }
+    dedupe.set(id, { ...model, id });
+  });
+
   readCustomModelLibrary().forEach((model) => {
     const canonicalId = normalizeModelLookupId(model.id);
     const canonicalModel = canonicalId ? dedupe.get(canonicalId) : null;
@@ -537,6 +645,9 @@ export const getArModelLibrary = () => {
     }
 
     let id = model.id;
+    if (Array.from(dedupe.values()).some((item) => item.storageProvider === 'r2' && item.id === id)) {
+      return;
+    }
     if (dedupe.has(id)) {
       let index = 1;
       while (dedupe.has(`${id}-${index}`)) {
@@ -550,8 +661,12 @@ export const getArModelLibrary = () => {
     });
   });
 
-  return Array.from(dedupe.values());
+  return sortArLibraryItems(Array.from(dedupe.values()));
 };
+
+export const getArRenderableModelLibrary = () => getArModelLibrary().filter((model) =>
+  ['obj', '3ds', 'glb', 'gltf'].includes(String(model?.fileType || '').trim().toLowerCase())
+);
 
 const getArModelById = () => {
   const modelMap = new Map();

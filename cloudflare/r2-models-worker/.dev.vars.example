@@ -1,0 +1,4 @@
+# Copy this file to `.dev.vars` for local Worker development.
+# This is the public Supabase client key used to validate browser sessions; do
+# not commit the real value even though it is not a service-role credential.
+SUPABASE_ANON_KEY="replace-with-the-project-anon-or-publishable-key"

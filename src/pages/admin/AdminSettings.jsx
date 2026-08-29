@@ -148,7 +148,6 @@ function Settings({ onNavigate, role, onLogout }) {
       className="page-settings"
       homePageKey={homePageKey}
       showAudit={isSuperAdmin}
-      showPasswordResets={isSuperAdmin}
       auditPageKey="audit"
     >
       <div className="set-container">

@@ -13,9 +13,8 @@
 }
 
 /* ===== Students List View ===== */
-.students-header {
-  margin-bottom: 32px;
-}
+.students-header { margin-bottom:32px; display:flex; justify-content:space-between; align-items:flex-end; gap:16px; }
+.section-export{position:relative}.export-grades-btn{border:1px solid #5267df;border-radius:8px;background:#5267df;color:#fff;padding:10px 14px;font:600 14px 'Lexend',sans-serif;cursor:pointer}.export-grades-btn span{margin-left:6px}.section-export-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:5;display:grid;min-width:165px;overflow:hidden;border:1px solid #d5dcf2;border-radius:8px;background:#fff;box-shadow:0 10px 24px rgba(30,49,96,.16)}.section-export-menu button{border:0;background:#fff;color:#243b75;padding:10px 14px;text-align:left;font:600 13px 'Lexend',sans-serif;cursor:pointer}.section-export-menu button:hover{background:#eef0ff}.export-grades-btn:disabled,.section-export-menu button:disabled{opacity:.6;cursor:not-allowed}@media(max-width:600px){.students-header{align-items:flex-start;flex-direction:column}}
 
 .students-title {
   font-size: 32px;
@@ -771,6 +770,28 @@
   .gallery-description {
     font-size: 12px;
   }
+}
+
+/* Student search/filter layout */
+.student-search-container { min-width: 0; margin-bottom: 14px; }
+.student-search-input-wrapper { position: relative; display: flex; align-items: center; min-height: 44px; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; }
+.student-search-input-wrapper:focus-within { border-color: #5267df; box-shadow: 0 0 0 3px rgba(82, 103, 223, .14); }
+.student-search-input-wrapper .search-icon { display: none !important; }
+.student-search-icon-svg { flex: 0 0 auto; width: 19px; height: 19px; margin: 0 12px 0 15px; fill: none; stroke: #667085; stroke-width: 2; stroke-linecap: round; }
+.student-search-input { width: 100%; min-width: 0; border: 0; outline: none; color: #24324b; font: 500 15px inherit; }
+.student-search-input::placeholder { color: #98a2b3; }
+.student-clear-search-btn { display: grid; flex: 0 0 auto; width: 32px; height: 32px; margin-right: 6px; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #667085; cursor: pointer; font-size: 0; }
+.student-clear-search-btn:hover { background: #eef0ff; color: #3148c8; }
+.student-clear-search-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.student-filters-container { display: grid; grid-template-columns: repeat(3, minmax(160px, 220px)); justify-content: start; gap: 14px; margin-bottom: 28px; }
+.student-filters-container .filter-group { min-width: 0; }
+
+@media (max-width: 850px) {
+  .student-filters-container { grid-template-columns: repeat(2, minmax(160px, 1fr)); }
+}
+
+@media (max-width: 520px) {
+  .student-filters-container { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 480px) {

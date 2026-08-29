@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import Header from '../../components/Header';
 import Navbar from '../../components/Navbar';
 import {
   getClassById,
@@ -18,13 +17,17 @@ import {
   DEFAULT_MODEL_ID,
   DEFAULT_PUZZLE_PIECES,
   encodeActivityDescription,
-  getArModelLibrary,
+  getArRenderableModelLibrary,
   parseActivityDescription,
   PUZZLE_PIECE_OPTIONS,
 } from '../../utils/activityArConfig';
 import { createActivityThumbnailDataUrl } from '../../utils/activityThumbnail';
 import { uploadActivityThumbnail } from '../../services/activityThumbnailStorage';
 import { formatClassLabel } from '../../utils/classLabels';
+import {
+  getActivityRubricManagementState,
+  getActivityRubricOptions,
+} from '../../services/rubricApi';
 import './ClassDetails.css';
 
 const MAX_MODEL_QUANTITY = 12;
@@ -46,6 +49,8 @@ const ClassDetails = () => {
   const [classData, setClassData] = useState(null);
   const [students, setStudents] = useState([]);
   const [activities, setActivities] = useState([]);
+  const [rubrics, setRubrics] = useState([]);
+  const [minimizedActivityIds, setMinimizedActivityIds] = useState(() => new Set());
   const [enrollEmail, setEnrollEmail] = useState('');
   const [enrollBusy, setEnrollBusy] = useState(false);
   const [enrollError, setEnrollError] = useState('');
@@ -62,6 +67,7 @@ const ClassDetails = () => {
   const [activityAllowedObjects, setActivityAllowedObjects] = useState([...DEFAULT_ALLOWED_OBJECT_IDS]);
   const [activityModelIds, setActivityModelIds] = useState([DEFAULT_MODEL_ID]);
   const [activityPuzzlePieces, setActivityPuzzlePieces] = useState(DEFAULT_PUZZLE_PIECES);
+  const [activityRubricId, setActivityRubricId] = useState('');
   const [editingActivityId, setEditingActivityId] = useState(null);
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -73,20 +79,17 @@ const ClassDetails = () => {
   const [editAllowedObjects, setEditAllowedObjects] = useState([...DEFAULT_ALLOWED_OBJECT_IDS]);
   const [editModelIds, setEditModelIds] = useState([DEFAULT_MODEL_ID]);
   const [editPuzzlePieces, setEditPuzzlePieces] = useState(DEFAULT_PUZZLE_PIECES);
-  const [modelOptions, setModelOptions] = useState(() => getArModelLibrary());
+  const [editRubricId, setEditRubricId] = useState('');
+  const [originalEditRubricId, setOriginalEditRubricId] = useState('');
+  const [editRubricLocked, setEditRubricLocked] = useState(false);
+  const [editRubricHasSubmissions, setEditRubricHasSubmissions] = useState(false);
+  const [editRubricMessage, setEditRubricMessage] = useState('');
+  const [loadingEditRubric, setLoadingEditRubric] = useState(false);
+  const [modelOptions, setModelOptions] = useState(() => getArRenderableModelLibrary());
   const [savingEdit, setSavingEdit] = useState(false);
+  const editRubricRequestRef = useRef(0);
 
-  useEffect(() => {
-    loadClassData();
-  }, [classId]);
-
-  useEffect(() => {
-    const refreshModels = () => setModelOptions(getArModelLibrary());
-    window.addEventListener(AR_MODEL_LIBRARY_UPDATED_EVENT, refreshModels);
-    return () => window.removeEventListener(AR_MODEL_LIBRARY_UPDATED_EVENT, refreshModels);
-  }, []);
-
-  const loadClassData = async () => {
+  const loadClassData = useCallback(async () => {
     setLoading(true);
     try {
       // Load class info
@@ -105,13 +108,32 @@ const ClassDetails = () => {
       const activitiesResult = await getClassActivities(classId);
       if (activitiesResult.success) {
         setActivities(activitiesResult.data);
+        setMinimizedActivityIds(new Set(activitiesResult.data.map((activity) => activity.id)));
+      }
+
+      const userInfo = JSON.parse(sessionStorage.getItem('userInfo') || '{}');
+      const rubricResult = await getActivityRubricOptions(userInfo.id);
+      if (rubricResult.success) {
+        setRubrics(rubricResult.data);
+      } else {
+        setRubrics([]);
       }
     } catch (error) {
       console.error('Error loading class data:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [classId]);
+
+  useEffect(() => {
+    loadClassData();
+  }, [loadClassData]);
+
+  useEffect(() => {
+    const refreshModels = () => setModelOptions(getArRenderableModelLibrary());
+    window.addEventListener(AR_MODEL_LIBRARY_UPDATED_EVENT, refreshModels);
+    return () => window.removeEventListener(AR_MODEL_LIBRARY_UPDATED_EVENT, refreshModels);
+  }, []);
 
   const handleThumbnailChange = async (file, setUrl, setName, setError) => {
     if (!file) return;
@@ -136,6 +158,7 @@ const ClassDetails = () => {
     setActivityAllowedObjects([...DEFAULT_ALLOWED_OBJECT_IDS]);
     setActivityModelIds([DEFAULT_MODEL_ID]);
     setActivityPuzzlePieces(DEFAULT_PUZZLE_PIECES);
+    setActivityRubricId('');
   };
 
   const handleAddActivity = async () => {
@@ -161,13 +184,14 @@ const ClassDetails = () => {
           class_id: classId,
           due_date: activityDueDate || null,
           status: 'active',
-          image_url: uploadedThumbnailUrl
+          image_url: uploadedThumbnailUrl,
+          rubric_id: activityRubricId || null,
         });
 
         if (result.success) {
-          setActivities([...activities, result.data]);
           resetCreateActivityForm();
           setShowActivityForm(false);
+          await loadClassData();
         } else {
           setActivityThumbnailError(result.error || 'Failed to create activity.');
           console.error('Failed to create activity:', result.error);
@@ -248,7 +272,9 @@ const ClassDetails = () => {
     return date.toISOString().split('T')[0];
   };
 
-  const handleEditClick = (activity) => {
+  const handleEditClick = async (activity) => {
+    const requestId = editRubricRequestRef.current + 1;
+    editRubricRequestRef.current = requestId;
     const parsedDescription = parseActivityDescription(activity.description);
     setShowActivityForm(false);
     setEditingActivityId(activity.id);
@@ -266,9 +292,32 @@ const ClassDetails = () => {
         : [parsedDescription.modelId || DEFAULT_MODEL_ID]
     );
     setEditPuzzlePieces(parsedDescription.puzzlePieces || DEFAULT_PUZZLE_PIECES);
+    setEditRubricId('');
+    setOriginalEditRubricId('');
+    setEditRubricLocked(false);
+    setEditRubricHasSubmissions(false);
+    setEditRubricMessage('');
+    setLoadingEditRubric(true);
+
+    const rubricState = await getActivityRubricManagementState(activity.id);
+    if (editRubricRequestRef.current !== requestId) return;
+    setLoadingEditRubric(false);
+    if (!rubricState.success) {
+      setEditRubricLocked(true);
+      setEditRubricMessage(rubricState.error || 'Could not load this activity rubric.');
+      return;
+    }
+
+    const selectedRubricId = rubricState.data.rubricId || '';
+    setEditRubricId(selectedRubricId);
+    setOriginalEditRubricId(selectedRubricId);
+    setEditRubricLocked(rubricState.data.changeLocked);
+    setEditRubricHasSubmissions(rubricState.data.hasSubmissions);
+    setEditRubricMessage(rubricState.data.lockReason || '');
   };
 
   const handleCancelEdit = () => {
+    editRubricRequestRef.current += 1;
     setEditingActivityId(null);
     setEditName('');
     setEditDescription('');
@@ -280,6 +329,12 @@ const ClassDetails = () => {
     setEditAllowedObjects([...DEFAULT_ALLOWED_OBJECT_IDS]);
     setEditModelIds([DEFAULT_MODEL_ID]);
     setEditPuzzlePieces(DEFAULT_PUZZLE_PIECES);
+    setEditRubricId('');
+    setOriginalEditRubricId('');
+    setEditRubricLocked(false);
+    setEditRubricHasSubmissions(false);
+    setEditRubricMessage('');
+    setLoadingEditRubric(false);
   };
 
   const handleSaveEdit = async () => {
@@ -302,17 +357,20 @@ const ClassDetails = () => {
         title: editName.trim(),
         description: encodedDescription,
         due_date: editDueDate || null,
-        image_url: uploadedThumbnailUrl
+        image_url: uploadedThumbnailUrl,
+        rubric_action: editRubricId === originalEditRubricId
+          ? 'keep'
+          : editRubricId
+            ? 'set'
+            : 'remove',
+        rubric_id: editRubricId || null,
       });
 
       if (result.success) {
-        setActivities((prev) =>
-          prev.map((activity) =>
-            activity.id === editingActivityId ? { ...activity, ...result.data } : activity
-          )
-        );
         handleCancelEdit();
+        await loadClassData();
       } else {
+        setEditRubricMessage(result.error || 'Failed to update activity.');
         console.error('Failed to update activity:', result.error);
       }
     } catch (error) {
@@ -355,7 +413,6 @@ const ClassDetails = () => {
   if (loading) {
     return (
       <div className="page-container">
-        <Header />
         <main className="page-content">
           <div className="class-details-shell">
             <p>Loading...</p>
@@ -369,7 +426,6 @@ const ClassDetails = () => {
   if (!classData) {
     return (
       <div className="page-container">
-        <Header />
         <main className="page-content">
           <div className="class-details-shell">
             <p>Class not found</p>
@@ -385,7 +441,6 @@ const ClassDetails = () => {
 
   return (
     <div className="page-container">
-      <Header />
       <main className="page-content">
         <div className="class-details-shell">
           <header className="class-details-header">
@@ -405,31 +460,29 @@ const ClassDetails = () => {
             {/* Students Section */}
             <section className="class-section students-section">
               <h2>Students in This Class</h2>
-              <div className="enroll-box">
-                <p className="enroll-title">Add Student to Class</p>
-                <div className="enroll-row">
-                  <input
-                    type="email"
-                    placeholder="Student email"
-                    value={enrollEmail}
-                    onChange={(event) => {
-                      setEnrollEmail(event.target.value);
-                      if (enrollError) setEnrollError('');
-                      if (enrollNotice) setEnrollNotice('');
-                    }}
-                    className="form-input enroll-input"
-                  />
-                  <button
-                    className="btn-submit enroll-btn"
-                    onClick={handleEnrollStudent}
-                    disabled={enrollBusy}
-                  >
-                    {enrollBusy ? 'Adding...' : 'Add to Class'}
-                  </button>
-                </div>
-                {enrollError ? <p className="enroll-msg error">{enrollError}</p> : null}
-                {enrollNotice ? <p className="enroll-msg success">{enrollNotice}</p> : null}
+              <p className="enroll-title">Add Student to Class</p>
+              <div className="enroll-row">
+                <input
+                  type="email"
+                  placeholder="Student email"
+                  value={enrollEmail}
+                  onChange={(event) => {
+                    setEnrollEmail(event.target.value);
+                    if (enrollError) setEnrollError('');
+                    if (enrollNotice) setEnrollNotice('');
+                  }}
+                  className="form-input enroll-input"
+                />
+                <button
+                  className="btn-submit enroll-btn"
+                  onClick={handleEnrollStudent}
+                  disabled={enrollBusy}
+                >
+                  {enrollBusy ? 'Adding...' : 'Add to Class'}
+                </button>
               </div>
+              {enrollError ? <p className="enroll-msg error">{enrollError}</p> : null}
+              {enrollNotice ? <p className="enroll-msg success">{enrollNotice}</p> : null}
               <div className="students-list">
                 {students.length === 0 ? (
                   <p className="no-students">No students added yet.</p>
@@ -509,6 +562,24 @@ const ClassDetails = () => {
                     onChange={(e) => setActivityDueDate(e.target.value)}
                     className="form-input"
                   />
+                  <label className="activity-rubric-field">
+                    <span className="form-label">Rubric (optional)</span>
+                    <select
+                      className="form-input"
+                      value={activityRubricId}
+                      onChange={(event) => setActivityRubricId(event.target.value)}
+                    >
+                      <option value="">No rubric</option>
+                      {rubrics.map((rubric) => (
+                        <option key={rubric.id} value={rubric.id}>
+                          {rubric.title}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="activity-rubric-help">
+                      The selected rubric is saved with this activity and becomes the AI checking guide.
+                    </span>
+                  </label>
                   <div className="activity-thumbnail-upload">
                     <label className="form-label">Activity Thumbnail</label>
                     {activityThumbnailUrl && (
@@ -651,8 +722,19 @@ const ClassDetails = () => {
                 {activities.length === 0 ? (
                   <p className="no-activities">No activities yet. Create one to get started!</p>
                 ) : (
-                  activities.map((activity) => (
-                    <div key={activity.id} className="activity-item">
+                  activities.map((activity) => {
+                    const isMinimized = minimizedActivityIds.has(activity.id);
+                    const toggleActivitySize = () => {
+                      setMinimizedActivityIds((current) => {
+                        const next = new Set(current);
+                        if (next.has(activity.id)) next.delete(activity.id);
+                        else next.add(activity.id);
+                        return next;
+                      });
+                    };
+
+                    return (
+                    <div key={activity.id} className={`activity-item ${isMinimized ? 'is-minimized' : ''}`}>
                       {editingActivityId === activity.id ? (
                         <div className="activity-form activity-edit-form">
                           <input
@@ -683,6 +765,40 @@ const ClassDetails = () => {
                             onChange={(e) => setEditDueDate(e.target.value)}
                             className="form-input"
                           />
+                          <label className="activity-rubric-field">
+                            <span className="form-label">Rubric (optional)</span>
+                            <select
+                              className="form-input"
+                              value={editRubricId}
+                              onChange={(event) => {
+                                setEditRubricId(event.target.value);
+                                if (!editRubricLocked) setEditRubricMessage('');
+                              }}
+                              disabled={loadingEditRubric || editRubricLocked}
+                            >
+                              <option value="">
+                                {loadingEditRubric ? 'Loading rubric...' : 'No rubric'}
+                              </option>
+                              {rubrics.map((rubric) => (
+                                <option key={rubric.id} value={rubric.id}>
+                                  {rubric.title}
+                                </option>
+                              ))}
+                            </select>
+                            {editRubricMessage ? (
+                              <span className={editRubricLocked ? 'activity-rubric-lock' : 'activity-rubric-error'}>
+                                {editRubricMessage}
+                              </span>
+                            ) : editRubricHasSubmissions && !editRubricId ? (
+                              <span className="activity-rubric-warning">
+                                Student work already exists. You may attach the first rubric now, but it will lock after evaluation begins.
+                              </span>
+                            ) : (
+                              <span className="activity-rubric-help">
+                                Choose the rubric students will see and teachers will use during review.
+                              </span>
+                            )}
+                          </label>
                           <div className="activity-thumbnail-upload">
                             <label className="form-label">Activity Thumbnail</label>
                             {editThumbnailUrl && (
@@ -807,7 +923,11 @@ const ClassDetails = () => {
                             <button className="btn-cancel" onClick={handleCancelEdit}>
                               Cancel
                             </button>
-                            <button className="btn-submit" onClick={handleSaveEdit} disabled={savingEdit}>
+                            <button
+                              className="btn-submit"
+                              onClick={handleSaveEdit}
+                              disabled={savingEdit || loadingEditRubric || Boolean(editRubricMessage && !originalEditRubricId)}
+                            >
                               {savingEdit ? 'Saving...' : 'Save'}
                             </button>
                           </div>
@@ -891,17 +1011,39 @@ const ClassDetails = () => {
                                 })()}
                               </div>
                             )}
+                            {!isMinimized && (
+                              <button type="button" className="btn-edit activity-edit-button" onClick={() => handleEditClick(activity)}>
+                                <span aria-hidden="true">✎</span>
+                                Edit
+                              </button>
+                            )}
                                 </>
                               );
                             })()}
                           </div>
                           <div className="activity-action">
-                            <button className="btn-edit" onClick={() => handleEditClick(activity)}>Edit</button>
+                            <button
+                              type="button"
+                              className="btn-toggle-activity"
+                              onClick={toggleActivitySize}
+                              aria-expanded={!isMinimized}
+                              aria-label={isMinimized ? 'Expand activity' : 'Collapse activity'}
+                              title={isMinimized ? 'Expand activity' : 'Collapse activity'}
+                            >
+                              <svg className="activity-toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="m6 9 6 6 6-6" />
+                              </svg>
+                            </button>
+                            {!isMinimized && <button type="button" className="btn-edit" onClick={() => handleEditClick(activity)}>
+                              <span aria-hidden="true">✎</span>
+                              Edit
+                            </button>}
                           </div>
                         </>
                       )}
                     </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </section>

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
-import { getTeacherGestureAlerts } from '../../services/teacherApi';
+import { getTeacherActivityLockAlerts, getTeacherGestureAlerts } from '../../services/teacherApi';
 import './GestureAlerts.css';
 
 const formatDateTime = (value) => {
@@ -16,6 +16,14 @@ const formatGestureType = (value) => {
   if (normalized === 'middle_finger') return 'Middle Finger';
   if (!normalized) return 'Unknown';
   return normalized.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const formatAlertType = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'student_unlocked') return 'Activity Unlocked';
+  if (normalized === 'left_activity') return 'Left Activity';
+  if (normalized === 'fullscreen_exited') return 'Fullscreen Exited';
+  return formatGestureType(value);
 };
 
 const GestureAlerts = () => {
@@ -41,15 +49,18 @@ const GestureAlerts = () => {
       setLoading(true);
       setError('');
 
-      const result = await getTeacherGestureAlerts(userInfo.id);
-      if (!result.success) {
-        setError(result.error || 'Failed to load gesture alerts.');
+      const [gestureResult, lockResult] = await Promise.all([
+        getTeacherGestureAlerts(userInfo.id),
+        getTeacherActivityLockAlerts(userInfo.id),
+      ]);
+      if (!gestureResult.success) {
+        setError(gestureResult.error || 'Failed to load behavior alerts.');
         setAlerts([]);
         setLoading(false);
         return;
       }
 
-      const transformed = (result.data || []).map((alertItem) => ({
+      const gestureAlerts = (gestureResult.data || []).map((alertItem) => ({
         id: alertItem.id,
         studentId: alertItem.student_id,
         studentName: alertItem.student?.name || 'Student',
@@ -57,16 +68,35 @@ const GestureAlerts = () => {
         activityId: alertItem.activity_id,
         activityTitle: alertItem.activity?.title || 'Untitled activity',
         className: alertItem.activity?.class?.name || 'No class',
-        gestureType: formatGestureType(alertItem.gesture_type),
+        gestureType: formatAlertType(alertItem.metadata?.activityLockEvent || alertItem.gesture_type),
         createdAt: alertItem.created_at,
         sourceTool: alertItem.metadata?.tool || null,
       }));
 
-      setAlerts(transformed);
+      // A missing table means the SQL setup has not been applied yet; gesture
+      // alerts remain available while the page explains how to enable lock alerts.
+      const lockAlerts = (lockResult.success ? lockResult.data : []).map((alertItem) => ({
+        id: `lock-${alertItem.id}`,
+        studentId: alertItem.student_id,
+        studentName: alertItem.student?.name || 'Student',
+        studentEmail: alertItem.student?.email || 'No email',
+        activityId: alertItem.activity_id,
+        activityTitle: alertItem.activity?.title || 'Untitled activity',
+        className: alertItem.activity?.class?.name || 'No class',
+        gestureType: formatAlertType(alertItem.event_type),
+        createdAt: alertItem.created_at,
+        sourceTool: 'Activity Lock',
+      }));
+
+      setAlerts([...gestureAlerts, ...lockAlerts].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
       setLoading(false);
     };
 
     loadAlerts();
+    // Polling keeps a proctor's open alert screen current even when Supabase
+    // Realtime is not enabled for the table.
+    const refreshId = window.setInterval(loadAlerts, 10000);
+    return () => window.clearInterval(refreshId);
   }, [userInfo.id]);
 
   const uniqueClasses = useMemo(
@@ -124,8 +154,15 @@ const GestureAlerts = () => {
       <Navbar />
       <main className="gesture-alerts-content">
         <header className="gesture-alerts-header">
-          <h1>Behavior Alerts</h1>
-          <p>AR gesture reports from student sessions.</p>
+          <div>
+            <p className="gesture-alerts-eyebrow">Classroom monitoring</p>
+            <h1>Behavior Alerts</h1>
+            <p>Review activity-lock and AR gesture reports from student sessions.</p>
+          </div>
+          <div className="gesture-alerts-count" aria-label={`${alerts.length} total alerts`}>
+            <strong>{alerts.length}</strong>
+            <span>Total alerts</span>
+          </div>
         </header>
 
         {!loading && !error && alerts.length > 0 && (
@@ -185,7 +222,7 @@ const GestureAlerts = () => {
           <div className="gesture-alerts-error">
             <strong>Unable to load alerts:</strong> {error}
             <div className="gesture-alerts-error-help">
-              If this is a new setup, apply <code>react-app/database/gesture_alerts.sql</code> in Supabase.
+              If this is a new setup, apply the alert SQL files in the <code>database</code> folder in Supabase.
             </div>
           </div>
         )}
@@ -201,9 +238,14 @@ const GestureAlerts = () => {
         {!loading && !error && filteredAlerts.length > 0 && (
           <section className="gesture-alerts-list" aria-label="Behavior alert list">
             {filteredAlerts.map((alertItem) => (
-              <article key={alertItem.id} className="gesture-alert-card">
+              <article
+                key={alertItem.id}
+                className={`gesture-alert-card ${alertItem.sourceTool === 'Activity Lock' ? 'gesture-alert-card--lock' : ''}`}
+              >
                 <div className="gesture-alert-top">
-                  <span className="gesture-pill">{alertItem.gestureType}</span>
+                  <span className={`gesture-pill ${alertItem.sourceTool === 'Activity Lock' ? 'gesture-pill--lock' : ''}`}>
+                    {alertItem.gestureType}
+                  </span>
                   <time>{formatDateTime(alertItem.createdAt)}</time>
                 </div>
 

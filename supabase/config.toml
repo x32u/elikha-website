@@ -1,0 +1,13 @@
+[auth.email]
+otp_length = 6
+otp_expiry = 3600
+
+[auth.email.template.recovery]
+subject = "Your e-Likha password reset code"
+content_path = "./supabase/templates/recovery.html"
+
+[functions.grade-ar-submission]
+verify_jwt = true
+
+[functions.manage-platform-user]
+verify_jwt = true

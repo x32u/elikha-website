@@ -12,7 +12,25 @@ import { createPaintDecal } from '../utils/decals';
 import { recolorModel } from '../utils/decals';
 import type { PaintStamp } from '../utils/decals';
 import { isPointingGesture } from '../utils/gestures';
+import {
+  BASE_MODEL_PAINT_STAMP_LIMIT,
+  SCENE_OBJECT_PAINT_STAMP_LIMIT,
+} from '../utils/performanceLimits';
 import { getArObjectDefinition } from '../../../utils/activityArConfig';
+import { canDirectlyManipulateModel, resolvePinchedModelId } from '../utils/modelSelection';
+import { getPuzzleInteractionPoint } from '../utils/puzzleInteraction';
+import {
+  applyBaseModelTransform,
+  canTransformBaseModel,
+  getBaseModelSelectionColor,
+  isBaseModelEditingLocked,
+  normalizeSerializedBaseModelState,
+  serializeBaseModelTransform,
+  toggleBaseModelEditingLocked,
+} from '../utils/baseModelTransform';
+import type { SerializedBaseModelTransform } from '../utils/baseModelTransform';
+
+export type { SerializedBaseModelTransform } from '../utils/baseModelTransform';
 
 export interface SerializedPaintDecal {
   id: string;
@@ -46,6 +64,19 @@ export interface SerializedSceneObject {
   gluedTo?: string | null;
   groupId?: string | null;
   paint?: SerializedSceneObjectPaintDecal[];
+  editingLocked?: boolean;
+}
+
+export interface SceneObjectSelection {
+  id: string;
+  objectId: string;
+  locked: boolean;
+}
+
+export interface SceneObjectActionRequest {
+  requestId: number;
+  objectId: string;
+  action: 'duplicate' | 'toggleLock';
 }
 
 export interface SerializedPuzzlePiece {
@@ -55,11 +86,15 @@ export interface SerializedPuzzlePiece {
   spawned?: boolean;
 }
 
-export interface SerializedBaseModelTransform {
+export interface ModelSelection {
   id: string;
-  position: [number, number, number];
-  rotation: [number, number, number];
-  scale: [number, number, number];
+  locked: boolean;
+}
+
+export interface ModelActionRequest {
+  requestId: number;
+  modelId: string;
+  action: 'toggleLock';
 }
 
 export interface SerializedArGroupTransform {
@@ -109,8 +144,15 @@ interface ARSceneV2Props {
   initialSceneState?: SerializedSceneObject[];
   onSceneStateChange?: (sceneState: SerializedSceneObject[]) => void;
   spawnObjectRequest?: ObjectSpawnRequest | null;
+  sceneObjectActionRequest?: SceneObjectActionRequest | null;
+  onSceneObjectSelectionChange?: (selection: SceneObjectSelection | null) => void;
+  onSceneObjectFeedback?: (message: string) => void;
+  hideSceneObjectSelection?: boolean;
   puzzlePieceSpawnRequest?: PuzzlePieceSpawnRequest | null;
   selectedModelId?: string | null;
+  modelActionRequest?: ModelActionRequest | null;
+  onModelSelectionChange?: (selection: ModelSelection | null) => void;
+  onModelFeedback?: (message: string) => void;
   groupBaseModels?: boolean;
   puzzlePieces?: number;
   initialModelState?: SerializedBaseModelTransform[];
@@ -119,7 +161,12 @@ interface ARSceneV2Props {
   onGroupStateChange?: (groupState: SerializedArGroupTransform) => void;
   initialPuzzleState?: SerializedPuzzlePiece[];
   onPuzzleStateChange?: (puzzleState: SerializedPuzzlePiece[]) => void;
+  renderQuality?: 'auto' | 'high' | 'medium' | 'low';
+  dataSaver?: boolean;
+  onModelLoadError?: (message: string) => void;
 }
+
+type PinchInteractionOwner = 'model' | 'scene-object' | 'group' | `puzzle-piece:${string}` | null;
 
 const PRIMITIVE_GEOMETRIES: Record<string, THREE.BufferGeometry> = {
   box: new THREE.BoxGeometry(1, 1, 1),
@@ -127,8 +174,6 @@ const PRIMITIVE_GEOMETRIES: Record<string, THREE.BufferGeometry> = {
   cone: new THREE.ConeGeometry(0.55, 1.1, 20),
   cylinder: new THREE.CylinderGeometry(0.45, 0.45, 1, 20),
 };
-const SCENE_OBJECT_PAINT_STAMP_LIMIT = Number.POSITIVE_INFINITY;
-const BASE_MODEL_PAINT_STAMP_LIMIT = Number.POSITIVE_INFINITY;
 const DEFAULT_GROUP_TRANSFORM: SerializedArGroupTransform = {
   position: [0, 0, -3],
   rotation: [0, 0, 0],
@@ -182,42 +227,6 @@ function isFiniteVector3Tuple(value: unknown): value is [number, number, number]
   );
 }
 
-function normalizeSerializedModelState(inputState?: SerializedBaseModelTransform[]): SerializedBaseModelTransform[] {
-  if (!Array.isArray(inputState)) return [];
-
-  return inputState
-    .map((entry) => {
-      const id = String(entry?.id || '').trim();
-      if (!id) return null;
-
-      return {
-        id,
-        position: isFiniteVector3Tuple(entry.position) ? [...entry.position] : [0, 0, 0],
-        rotation: isFiniteVector3Tuple(entry.rotation) ? [...entry.rotation] : [0, 0, 0],
-        scale: isFiniteVector3Tuple(entry.scale) ? [...entry.scale] : [1, 1, 1],
-      } as SerializedBaseModelTransform;
-    })
-    .filter(Boolean) as SerializedBaseModelTransform[];
-}
-
-function serializeBaseModelTransform(id: string, model: THREE.Object3D): SerializedBaseModelTransform {
-  return {
-    id,
-    position: [model.position.x, model.position.y, model.position.z],
-    rotation: [model.rotation.x, model.rotation.y, model.rotation.z],
-    scale: [model.scale.x, model.scale.y, model.scale.z],
-  };
-}
-
-function applyBaseModelTransform(model: THREE.Object3D, transform?: SerializedBaseModelTransform | null) {
-  if (!transform) return;
-
-  model.position.set(...transform.position);
-  model.rotation.set(...transform.rotation);
-  model.scale.set(...transform.scale);
-  model.updateMatrixWorld(true);
-}
-
 function normalizeSerializedGroupTransform(inputState?: SerializedArGroupTransform | null): SerializedArGroupTransform | null {
   if (!inputState || typeof inputState !== 'object') return null;
 
@@ -251,24 +260,31 @@ function SceneModelLoader({
   scale,
   initialTransform,
   onModelLoad,
+  onModelError,
 }: {
   model: Required<BaseArModelConfig>;
   position: [number, number, number];
   scale: number;
   initialTransform?: SerializedBaseModelTransform | null;
   onModelLoad: (instanceId: string, model: THREE.Group) => void;
+  onModelError: (instanceId: string, label: string, message: string) => void;
 }) {
   const [loadedModel, setLoadedModel] = useState<THREE.Group | null>(null);
   const instanceId = model.instanceId || model.id;
 
   const handleLoad = useCallback((nextModel: THREE.Group) => {
+    onModelError(instanceId, model.label, '');
     setLoadedModel(nextModel);
-  }, []);
+  }, [instanceId, model.label, onModelError]);
+
+  const handleError = useCallback((message: string) => {
+    onModelError(instanceId, model.label, message);
+  }, [instanceId, model.label, onModelError]);
 
   useEffect(() => {
     if (!loadedModel) return;
-    applyBaseModelTransform(loadedModel, initialTransform);
     onModelLoad(instanceId, loadedModel);
+    applyBaseModelTransform(loadedModel, initialTransform);
   }, [initialTransform, instanceId, loadedModel, onModelLoad]);
 
   return (
@@ -278,6 +294,7 @@ function SceneModelLoader({
       position={position}
       scale={scale}
       onLoad={handleLoad}
+      onError={handleError}
     />
   );
 }
@@ -432,6 +449,7 @@ function normalizeSerializedSceneState(inputState?: SerializedSceneObject[]): Se
         gluedTo: typeof item.gluedTo === 'string' ? item.gluedTo : null,
         groupId: typeof item.groupId === 'string' ? item.groupId : null,
         paint: normalizeSerializedSceneObjectPaintState(item.paint),
+        editingLocked: item.editingLocked === true,
       } as SerializedSceneObject;
     })
     .filter(Boolean) as SerializedSceneObject[];
@@ -1170,6 +1188,7 @@ function buildSceneObjectMesh(serialized: SerializedSceneObject): THREE.Object3D
   const group = new THREE.Group();
   group.userData.sceneObjectId = serialized.id;
   group.userData.objectId = serialized.objectId;
+  group.userData.sceneObjectEditingLocked = serialized.editingLocked === true;
   group.add(mesh);
   group.position.set(...serialized.position);
   group.rotation.set(...serialized.rotation);
@@ -1465,45 +1484,7 @@ function HandSkeleton({
   );
 }
 
-// Palm center indicator
-function PalmCenterIndicator({ palmCenter }: { palmCenter: PalmPosition | null }) {
-  const meshRef = useRef<THREE.Mesh>(null);
-
-  useFrame(({ camera, size }) => {
-    if (!palmCenter || !meshRef.current) return;
-
-    const distance = 3;
-    const fov = (camera as THREE.PerspectiveCamera).fov * (Math.PI / 180);
-    const height = 2 * Math.tan(fov / 2) * distance;
-    const width = height * (size.width / size.height);
-
-    const ndcX = palmCenter.x * 2 - 1;
-    const ndcY = -(palmCenter.y * 2 - 1);
-
-    meshRef.current.position.set(
-      ndcX * width / 2,
-      ndcY * height / 2,
-      -distance + palmCenter.z * -2
-    );
-  });
-
-  if (!palmCenter) return null;
-
-  return (
-    <mesh ref={meshRef} renderOrder={12}>
-      <sphereGeometry args={[0.05, 16, 16]} />
-      <meshBasicMaterial
-        color="#ffff00"
-        transparent
-        opacity={0.8}
-        depthTest={false}
-        depthWrite={false}
-      />
-    </mesh>
-  );
-}
-
-// Model rotation controller using quaternion-based rotation
+// Model rotation controller using quaternion-based rotation.
 function ModelRotationController({
   anchorRef,
   targetQuaternion,
@@ -1548,17 +1529,22 @@ function ModelRotationController({
   return null;
 }
 
-// Move model while pinching (screen-space palm tracking)
+// Move the whole AR anchor while pinching. Fist input is reserved for
+// rotation, matching the controls used by regular non-puzzle activities.
 function PinchMoveController({
   anchorRef,
   palmCenter,
   isPinching,
+  pinchInteractionOwnerRef,
+  claimOwner = false,
   disabled = false,
   onTransformChange,
 }: {
   anchorRef: React.RefObject<THREE.Group | null>;
   palmCenter: PalmPosition | null;
   isPinching: boolean;
+  pinchInteractionOwnerRef?: React.MutableRefObject<PinchInteractionOwner>;
+  claimOwner?: boolean;
   disabled?: boolean;
   onTransformChange?: () => void;
 }) {
@@ -1569,15 +1555,38 @@ function PinchMoveController({
   const startAnchorRef = useRef<THREE.Vector3>(new THREE.Vector3());
   const pinchActiveRef = useRef(false);
 
+  useEffect(() => () => {
+    if (claimOwner && pinchInteractionOwnerRef?.current === 'group') {
+      pinchInteractionOwnerRef.current = null;
+    }
+  }, [claimOwner, pinchInteractionOwnerRef]);
+
   useFrame(() => {
+    const owner = pinchInteractionOwnerRef?.current || null;
+
     if (disabled) {
       pinchActiveRef.current = false;
+      if (claimOwner && owner === 'group') {
+        pinchInteractionOwnerRef.current = null;
+      }
       return;
     }
 
-    if (!anchorRef.current || !palmCenter || !isPinching) {
+    if (
+      !anchorRef.current ||
+      !palmCenter ||
+      !isPinching ||
+      (claimOwner && owner && owner !== 'group')
+    ) {
       pinchActiveRef.current = false;
+      if (claimOwner && owner === 'group') {
+        pinchInteractionOwnerRef.current = null;
+      }
       return;
+    }
+
+    if (claimOwner && pinchInteractionOwnerRef && !owner) {
+      pinchInteractionOwnerRef.current = 'group';
     }
 
     const anchor = anchorRef.current;
@@ -1621,6 +1630,7 @@ function PinchMoveController({
 function MultiModelMoveController({
   modelIds,
   modelRefsByIdRef,
+  interactionRootRef,
   selectedModelId,
   handLandmarks,
   isPinching,
@@ -1628,12 +1638,18 @@ function MultiModelMoveController({
   isGrabbing,
   isZooming,
   zoomDelta,
+  mirrorX = true,
   disabled = false,
+  hideSelection = false,
+  pinchInteractionOwnerRef,
+  onModelSelectionChange,
+  onModelFeedback,
   onModelMoveActiveChange,
   onModelTransformChange,
 }: {
   modelIds: string[];
   modelRefsByIdRef: React.MutableRefObject<Map<string, React.RefObject<THREE.Group | null>>>;
+  interactionRootRef: React.RefObject<THREE.Group | null>;
   selectedModelId?: string | null;
   handLandmarks: HandLandmarks | null;
   isPinching: boolean;
@@ -1641,11 +1657,16 @@ function MultiModelMoveController({
   isGrabbing: boolean;
   isZooming: boolean;
   zoomDelta: number;
+  mirrorX?: boolean;
   disabled?: boolean;
+  hideSelection?: boolean;
+  pinchInteractionOwnerRef: React.MutableRefObject<PinchInteractionOwner>;
+  onModelSelectionChange?: (selection: ModelSelection | null) => void;
+  onModelFeedback?: (message: string) => void;
   onModelMoveActiveChange?: (active: boolean) => void;
   onModelTransformChange?: () => void;
 }) {
-  const { camera, size } = useThree();
+  const { camera, scene, size } = useThree();
   const activeModelIdRef = useRef<string | null>(null);
   const pinchMoveActiveRef = useRef(false);
   const pinchStartPalmRef = useRef<PalmPosition | null>(null);
@@ -1657,6 +1678,11 @@ function MultiModelMoveController({
   const rotationStartPalmRef = useRef<PalmPosition | null>(null);
   const rotationStartQuatRef = useRef<THREE.Quaternion>(new THREE.Quaternion());
   const lastTransformEmitRef = useRef(0);
+  const selectionHelperRef = useRef<THREE.BoxHelper | null>(null);
+  const selectionHelperModelIdRef = useRef<string | null>(null);
+  const selectionHelperLockedRef = useRef<boolean | null>(null);
+  const lockedPinchActiveRef = useRef(false);
+  const lastSelectionNotificationRef = useRef<string | null>(null);
 
   const setMoveActive = useCallback((active: boolean) => {
     if (lastMoveActiveRef.current === active) return;
@@ -1664,16 +1690,57 @@ function MultiModelMoveController({
     onModelMoveActiveChange?.(active);
   }, [onModelMoveActiveChange]);
 
+  const removeSelectionHelper = useCallback(() => {
+    const helper = selectionHelperRef.current;
+    if (!helper) return;
+    helper.parent?.remove(helper);
+    helper.geometry.dispose();
+    if (Array.isArray(helper.material)) {
+      helper.material.forEach((material) => material.dispose());
+    } else {
+      helper.material.dispose();
+    }
+    selectionHelperRef.current = null;
+    selectionHelperModelIdRef.current = null;
+    selectionHelperLockedRef.current = null;
+  }, []);
+
+  const showSelectionHelper = useCallback((modelId: string, model: THREE.Object3D, locked: boolean) => {
+    if (
+      selectionHelperModelIdRef.current === modelId &&
+      selectionHelperLockedRef.current === locked &&
+      selectionHelperRef.current
+    ) return;
+    removeSelectionHelper();
+    const helper = new THREE.BoxHelper(model, getBaseModelSelectionColor(locked));
+    helper.userData.elikhaModelSelectionHelper = true;
+    scene.add(helper);
+    selectionHelperRef.current = helper;
+    selectionHelperModelIdRef.current = modelId;
+    selectionHelperLockedRef.current = locked;
+  }, [removeSelectionHelper, scene]);
+
+  const notifyModelSelection = useCallback((modelId: string | null, locked = false) => {
+    const notificationKey = modelId ? `${modelId}:${locked ? 'locked' : 'unlocked'}` : 'none';
+    if (lastSelectionNotificationRef.current === notificationKey) return;
+    lastSelectionNotificationRef.current = notificationKey;
+    onModelSelectionChange?.(modelId ? { id: modelId, locked } : null);
+  }, [onModelSelectionChange]);
+
   const resetMove = useCallback(() => {
     if (pinchMoveActiveRef.current && onModelTransformChange) {
       lastTransformEmitRef.current = performance.now();
       onModelTransformChange();
     }
     pinchMoveActiveRef.current = false;
+    lockedPinchActiveRef.current = false;
     activeModelIdRef.current = null;
     pinchStartPalmRef.current = null;
+    if (pinchInteractionOwnerRef.current === 'model') {
+      pinchInteractionOwnerRef.current = null;
+    }
     setMoveActive(false);
-  }, [onModelTransformChange, setMoveActive]);
+  }, [onModelTransformChange, pinchInteractionOwnerRef, setMoveActive]);
 
   const getSelectableModels = useCallback(() => {
     const selectable = new Map<string, THREE.Object3D>();
@@ -1695,24 +1762,52 @@ function MultiModelMoveController({
   }, [onModelTransformChange]);
 
   useEffect(() => {
-    resetMove();
+    if (
+      pinchMoveActiveRef.current &&
+      activeModelIdRef.current &&
+      selectedModelId !== activeModelIdRef.current
+    ) {
+      resetMove();
+    }
     zoomActiveRef.current = false;
   }, [resetMove, selectedModelId]);
 
-  useEffect(() => () => setMoveActive(false), [setMoveActive]);
+  useEffect(() => () => {
+    if (pinchInteractionOwnerRef.current === 'model') {
+      pinchInteractionOwnerRef.current = null;
+    }
+    setMoveActive(false);
+    removeSelectionHelper();
+  }, [pinchInteractionOwnerRef, removeSelectionHelper, setMoveActive]);
 
   useFrame(() => {
-    if (disabled || !selectedModelId) {
-      resetMove();
-      zoomActiveRef.current = false;
-      rotationActiveRef.current = false;
-      rotationStartPalmRef.current = null;
-      return;
-    }
-
     const selectableModels = getSelectableModels();
-    const selectedModel = selectableModels.get(selectedModelId);
-    if (!selectedModel) {
+    // A single-model activity has no model toolbar. Let a fist immediately
+    // rotate that model without requiring a prior pinch selection; multi-model
+    // activities still require selecting the model first.
+    const activeSelectionId = selectedModelId || (
+      modelIds.length === 1 && isGrabbing && !isPinching
+        ? modelIds[0]
+        : null
+    );
+    const selectedModel = activeSelectionId ? selectableModels.get(activeSelectionId) : null;
+    const selectedModelLocked = isBaseModelEditingLocked(selectedModel);
+
+    if (selectedModel && activeSelectionId) {
+      showSelectionHelper(activeSelectionId, selectedModel, selectedModelLocked);
+      notifyModelSelection(activeSelectionId, selectedModelLocked);
+      selectionHelperRef.current?.update();
+      if (selectionHelperRef.current) {
+        selectionHelperRef.current.visible = !hideSelection;
+      }
+    } else {
+      removeSelectionHelper();
+      if (!selectedModelId) {
+        notifyModelSelection(null);
+      }
+    }
+
+    if (disabled || (pinchInteractionOwnerRef.current && pinchInteractionOwnerRef.current !== 'model')) {
       resetMove();
       zoomActiveRef.current = false;
       rotationActiveRef.current = false;
@@ -1720,7 +1815,17 @@ function MultiModelMoveController({
       return;
     }
 
-    if (isGrabbing && palmCenter && !isZooming) {
+    if (!selectedModel) {
+      zoomActiveRef.current = false;
+      rotationActiveRef.current = false;
+      rotationStartPalmRef.current = null;
+    } else if (
+      canTransformBaseModel(selectedModel) &&
+      isGrabbing &&
+      !isPinching &&
+      palmCenter &&
+      !isZooming
+    ) {
       if (!rotationActiveRef.current) {
         rotationStartPalmRef.current = { ...palmCenter };
         rotationStartQuatRef.current.copy(selectedModel.quaternion);
@@ -1753,7 +1858,7 @@ function MultiModelMoveController({
       rotationStartPalmRef.current = null;
     }
 
-    if (isZooming) {
+    if (canTransformBaseModel(selectedModel) && isZooming) {
       if (!zoomActiveRef.current) {
         zoomStartScaleRef.current.copy(selectedModel.scale);
         zoomActiveRef.current = true;
@@ -1774,20 +1879,48 @@ function MultiModelMoveController({
       return;
     }
 
+    if (lockedPinchActiveRef.current) return;
+
     if (!pinchMoveActiveRef.current) {
-      activeModelIdRef.current = selectedModelId;
+      const interactionRoot = interactionRootRef.current;
+      if (!interactionRoot) return;
+
+      const pinchX = (handLandmarks.indexTip.x + handLandmarks.thumbTip.x) * 0.5;
+      const pinchY = (handLandmarks.indexTip.y + handLandmarks.thumbTip.y) * 0.5;
+      const pointerX = mirrorX ? 1 - pinchX : pinchX;
+      const pointerY = pinchY;
+      const hits = raycastFromFingertip(pointerX, pointerY, camera, [interactionRoot]);
+      const resolvedModelId = resolvePinchedModelId(hits, selectableModels);
+      const pinchedModel = resolvedModelId ? selectableModels.get(resolvedModelId) : null;
+      if (!resolvedModelId || !pinchedModel) return;
+
+      const pinchedModelLocked = isBaseModelEditingLocked(pinchedModel);
+      notifyModelSelection(resolvedModelId, pinchedModelLocked);
+      showSelectionHelper(resolvedModelId, pinchedModel, pinchedModelLocked);
+
+      if (pinchedModelLocked) {
+        pinchInteractionOwnerRef.current = 'model';
+        activeModelIdRef.current = resolvedModelId;
+        lockedPinchActiveRef.current = true;
+        setMoveActive(false);
+        onModelFeedback?.('This 3D model is locked. Unlock it before moving, rotating, or resizing it.');
+        return;
+      }
+
+      pinchInteractionOwnerRef.current = 'model';
+      activeModelIdRef.current = resolvedModelId;
       pinchMoveActiveRef.current = true;
       pinchStartPalmRef.current = { ...palmCenter };
-      selectedModel.getWorldPosition(pinchStartWorldRef.current);
+      pinchedModel.getWorldPosition(pinchStartWorldRef.current);
       setMoveActive(true);
       return;
     }
 
     const selectedId = activeModelIdRef.current;
-    const activeSelectedModel = selectedId === selectedModelId ? selectedModel : null;
+    const activeSelectedModel = selectedId ? selectableModels.get(selectedId) : null;
     const startPalm = pinchStartPalmRef.current;
 
-    if (!activeSelectedModel || !startPalm) {
+    if (!canTransformBaseModel(activeSelectedModel) || !startPalm) {
       resetMove();
       return;
     }
@@ -1805,6 +1938,7 @@ function MultiModelMoveController({
 
     activeSelectedModel.position.lerp(parent.worldToLocal(targetWorld), 0.35);
     emitTransformChange();
+    selectionHelperRef.current?.update();
   });
 
   return null;
@@ -1860,6 +1994,10 @@ function SceneObjectSystem({
   initialSceneState,
   onSceneStateChange,
   spawnObjectRequest,
+  sceneObjectActionRequest,
+  onSceneObjectSelectionChange,
+  onSceneObjectFeedback,
+  hideSceneObjectSelection = false,
   handLandmarks,
   isPinching,
   isRemoveTool = false,
@@ -1873,11 +2011,16 @@ function SceneObjectSystem({
   onObjectMoveActiveChange,
   mirrorX = true,
   movementDisabled = false,
+  pinchInteractionOwnerRef,
 }: {
   objectRootRef: React.RefObject<THREE.Group | null>;
   initialSceneState?: SerializedSceneObject[];
   onSceneStateChange?: (sceneState: SerializedSceneObject[]) => void;
   spawnObjectRequest?: ObjectSpawnRequest | null;
+  sceneObjectActionRequest?: SceneObjectActionRequest | null;
+  onSceneObjectSelectionChange?: (selection: SceneObjectSelection | null) => void;
+  onSceneObjectFeedback?: (message: string) => void;
+  hideSceneObjectSelection?: boolean;
   handLandmarks: HandLandmarks | null;
   isPinching: boolean;
   isRemoveTool?: boolean;
@@ -1891,12 +2034,18 @@ function SceneObjectSystem({
   onObjectMoveActiveChange?: (active: boolean) => void;
   mirrorX?: boolean;
   movementDisabled?: boolean;
+  pinchInteractionOwnerRef: React.MutableRefObject<PinchInteractionOwner>;
 }) {
-  const { camera, size } = useThree();
+  const { camera, scene, size } = useThree();
   const objectsRef = useRef<Map<string, THREE.Object3D>>(new Map());
   const serializedSceneRef = useRef<SerializedSceneObject[]>([]);
   const hydrationKeyRef = useRef<string>('');
   const lastSpawnRequestRef = useRef<number>(0);
+  const lastActionRequestRef = useRef<number>(0);
+  const selectedObjectIdRef = useRef<string | null>(null);
+  const selectionHelperRef = useRef<THREE.BoxHelper | null>(null);
+  const snapTargetIdRef = useRef<string | null>(null);
+  const lockedFeedbackIdRef = useRef<string | null>(null);
   const activeObjectIdRef = useRef<string | null>(null);
   const pinchMoveActiveRef = useRef(false);
   const pinchStartPalmRef = useRef<PalmPosition | null>(null);
@@ -1915,6 +2064,50 @@ function SceneObjectSystem({
     onObjectMoveActiveChange?.(active);
   }, [onObjectMoveActiveChange]);
 
+  const removeSelectionHelper = useCallback(() => {
+    const helper = selectionHelperRef.current;
+    if (!helper) return;
+    helper.parent?.remove(helper);
+    helper.geometry.dispose();
+    if (Array.isArray(helper.material)) {
+      helper.material.forEach((material) => material.dispose());
+    } else {
+      helper.material.dispose();
+    }
+    selectionHelperRef.current = null;
+  }, []);
+
+  const selectSceneObject = useCallback((objectId: string | null, forceRefresh = false) => {
+    if (!objectId) {
+      selectedObjectIdRef.current = null;
+      removeSelectionHelper();
+      onSceneObjectSelectionChange?.(null);
+      return;
+    }
+
+    const object = objectsRef.current.get(objectId);
+    const serialized = serializedSceneRef.current.find((entry) => entry.id === objectId);
+    if (!object || !serialized) return;
+
+    const selectionChanged = selectedObjectIdRef.current !== objectId;
+    selectedObjectIdRef.current = objectId;
+    if (selectionChanged || forceRefresh || !selectionHelperRef.current) {
+      removeSelectionHelper();
+      const helper = new THREE.BoxHelper(object, serialized.editingLocked ? 0xffa62b : 0x36d7ff);
+      helper.userData.elikhaSelectionHelper = true;
+      scene.add(helper);
+      selectionHelperRef.current = helper;
+    }
+
+    if (selectionChanged || forceRefresh) {
+      onSceneObjectSelectionChange?.({
+        id: serialized.id,
+        objectId: serialized.objectId,
+        locked: serialized.editingLocked === true,
+      });
+    }
+  }, [onSceneObjectSelectionChange, removeSelectionHelper, scene]);
+
   const emitSceneState = useCallback(() => {
     if (!onSceneStateChange) return;
     onSceneStateChange(
@@ -1923,6 +2116,7 @@ function SceneObjectSystem({
         position: [...entry.position] as [number, number, number],
         rotation: [...entry.rotation] as [number, number, number],
         paint: normalizeSerializedSceneObjectPaintState(entry.paint),
+        editingLocked: entry.editingLocked === true,
       }))
     );
   }, [onSceneStateChange]);
@@ -1943,11 +2137,14 @@ function SceneObjectSystem({
   }, []);
 
   const clearSceneObjects = useCallback(() => {
+    selectedObjectIdRef.current = null;
+    removeSelectionHelper();
+    onSceneObjectSelectionChange?.(null);
     objectsRef.current.forEach((object) => disposeSceneObject(object));
     objectsRef.current.clear();
     scenePaintStampsRef.current.clear();
     serializedSceneRef.current = [];
-  }, [disposeSceneObject]);
+  }, [disposeSceneObject, onSceneObjectSelectionChange, removeSelectionHelper]);
 
   const removeSceneObject = useCallback((objectId: string) => {
     const object = objectsRef.current.get(objectId);
@@ -1956,15 +2153,26 @@ function SceneObjectSystem({
     disposeSceneObject(object);
     objectsRef.current.delete(objectId);
     scenePaintStampsRef.current.delete(objectId);
-    serializedSceneRef.current = serializedSceneRef.current.filter((entry) => entry.id !== objectId);
+    serializedSceneRef.current = serializedSceneRef.current
+      .filter((entry) => entry.id !== objectId)
+      .map((entry) => (
+        entry.gluedTo === objectId
+          ? { ...entry, gluedTo: null, groupId: null }
+          : entry
+      ));
     if (activeObjectIdRef.current === objectId) {
       activeObjectIdRef.current = null;
       pinchMoveActiveRef.current = false;
       setMoveActive(false);
     }
+    if (selectedObjectIdRef.current === objectId) {
+      selectedObjectIdRef.current = null;
+      removeSelectionHelper();
+      onSceneObjectSelectionChange?.(null);
+    }
     emitSceneState();
     return true;
-  }, [disposeSceneObject, emitSceneState, setMoveActive]);
+  }, [disposeSceneObject, emitSceneState, onSceneObjectSelectionChange, removeSelectionHelper, setMoveActive]);
 
   const recolorSceneObject = useCallback((objectId: string, color: THREE.Color) => {
     const object = objectsRef.current.get(objectId);
@@ -2144,10 +2352,13 @@ function SceneObjectSystem({
 
   useEffect(() => {
     return () => {
+      if (pinchInteractionOwnerRef.current === 'scene-object') {
+        pinchInteractionOwnerRef.current = null;
+      }
       setMoveActive(false);
       clearSceneObjects();
     };
-  }, [clearSceneObjects, setMoveActive]);
+  }, [clearSceneObjects, pinchInteractionOwnerRef, setMoveActive]);
 
   useEffect(() => {
     const objectRoot = objectRootRef.current;
@@ -2208,6 +2419,7 @@ function SceneObjectSystem({
       gluedTo: null,
       groupId: null,
       paint: [],
+      editingLocked: false,
     };
 
     const mesh = buildSceneObjectMesh(serializedObject);
@@ -2218,9 +2430,88 @@ function SceneObjectSystem({
     scenePaintStampsRef.current.set(objectId, []);
     serializedSceneRef.current = [...serializedSceneRef.current, serializedObject];
     emitSceneState();
-  }, [objectRootRef, emitSceneState, spawnObjectRequest]);
+    selectSceneObject(objectId, true);
+  }, [objectRootRef, emitSceneState, selectSceneObject, spawnObjectRequest]);
+
+  useEffect(() => {
+    if (!sceneObjectActionRequest) return;
+    if (sceneObjectActionRequest.requestId === lastActionRequestRef.current) return;
+    lastActionRequestRef.current = sceneObjectActionRequest.requestId;
+
+    const source = serializedSceneRef.current.find(
+      (entry) => entry.id === sceneObjectActionRequest.objectId
+    );
+    const sourceObject = objectsRef.current.get(sceneObjectActionRequest.objectId);
+    const objectRoot = objectRootRef.current;
+    if (!source || !sourceObject || !objectRoot) return;
+
+    if (sceneObjectActionRequest.action === 'toggleLock') {
+      const nextLocked = source.editingLocked !== true;
+      serializedSceneRef.current = serializedSceneRef.current.map((entry) => (
+        entry.id === source.id ? { ...entry, editingLocked: nextLocked } : entry
+      ));
+      sourceObject.userData.sceneObjectEditingLocked = nextLocked;
+      if (nextLocked && activeObjectIdRef.current === source.id) {
+        activeObjectIdRef.current = null;
+        pinchMoveActiveRef.current = false;
+        pinchStartPalmRef.current = null;
+        setMoveActive(false);
+      }
+      emitSceneState();
+      selectSceneObject(source.id, true);
+      onSceneObjectFeedback?.(`${nextLocked ? 'Locked' : 'Unlocked'} selected object.`);
+      return;
+    }
+
+    const duplicateId = `scene-object-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const duplicate: SerializedSceneObject = {
+      ...source,
+      id: duplicateId,
+      position: [source.position[0] + 0.22, source.position[1] + 0.14, source.position[2]],
+      gluedTo: null,
+      groupId: null,
+      editingLocked: false,
+      paint: normalizeSerializedSceneObjectPaintState(source.paint).map((stamp, index) => ({
+        ...stamp,
+        id: `${duplicateId}-paint-${index}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: Date.now() + index,
+      })),
+    };
+    const duplicateObject = buildSceneObjectMesh(duplicate);
+    if (!duplicateObject) return;
+
+    objectRoot.add(duplicateObject);
+    objectsRef.current.set(duplicateId, duplicateObject);
+    const duplicatePaintStamps: PaintStamp[] = [];
+    duplicateObject.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.userData?.isSceneObjectPaintDecal) {
+        duplicatePaintStamps.push({
+          id: child.userData.sceneObjectPaintDecalId || `${duplicateId}-paint-${duplicatePaintStamps.length}`,
+          mesh: child,
+          timestamp: duplicate.paint?.[duplicatePaintStamps.length]?.timestamp || Date.now(),
+        });
+      }
+    });
+    scenePaintStampsRef.current.set(duplicateId, duplicatePaintStamps);
+    serializedSceneRef.current = [...serializedSceneRef.current, duplicate];
+    emitSceneState();
+    selectSceneObject(duplicateId, true);
+    onSceneObjectFeedback?.('Object duplicated. The copy is selected and unlocked.');
+  }, [
+    emitSceneState,
+    objectRootRef,
+    onSceneObjectFeedback,
+    sceneObjectActionRequest,
+    selectSceneObject,
+    setMoveActive,
+  ]);
 
   useFrame(() => {
+    if (selectionHelperRef.current) {
+      selectionHelperRef.current.visible = !hideSceneObjectSelection;
+    }
+    selectionHelperRef.current?.update();
+
     if (isRemoveTool) {
       pinchMoveActiveRef.current = false;
       activeObjectIdRef.current = null;
@@ -2264,7 +2555,15 @@ function SceneObjectSystem({
       }
 
       if (selectedId) {
-        removeSceneObject(selectedId);
+        selectSceneObject(selectedId);
+        const selectedState = serializedSceneRef.current.find((entry) => entry.id === selectedId);
+        if (selectedState?.editingLocked) {
+          onSceneObjectFeedback?.('This object is locked. Unlock it before removing it.');
+        } else {
+          if (removeSceneObject(selectedId)) {
+            onSceneObjectFeedback?.('Object removed.');
+          }
+        }
         removeArmedRef.current = true;
       }
       return;
@@ -2288,16 +2587,28 @@ function SceneObjectSystem({
         if (!hitInfo) {
           colorArmedRef.current = false;
           lastObjectPaintPosRef.current = null;
+          lockedFeedbackIdRef.current = null;
+        } else if (serializedSceneRef.current.find((entry) => entry.id === hitInfo.objectId)?.editingLocked) {
+          selectSceneObject(hitInfo.objectId);
+          colorArmedRef.current = true;
+          lastObjectPaintPosRef.current = null;
+          if (lockedFeedbackIdRef.current !== hitInfo.objectId) {
+            lockedFeedbackIdRef.current = hitInfo.objectId;
+            onSceneObjectFeedback?.('Selected object is locked. Unlock it before editing it.');
+          }
         } else if (isBucketFill) {
+          selectSceneObject(hitInfo.objectId);
           if (!colorArmedRef.current) {
             recolorSceneObject(hitInfo.objectId, paintColor);
             colorArmedRef.current = true;
           }
           lastObjectPaintPosRef.current = null;
         } else if (isEraser) {
+          selectSceneObject(hitInfo.objectId);
           colorArmedRef.current = false;
           eraseSceneObjectPaint(hitInfo);
         } else {
+          selectSceneObject(hitInfo.objectId);
           colorArmedRef.current = false;
           paintSceneObject(hitInfo);
         }
@@ -2307,17 +2618,30 @@ function SceneObjectSystem({
       lastObjectPaintPosRef.current = null;
     }
 
-    if (movementDisabled || !isPinching || !palmCenter || !handLandmarks) {
+    if (
+      movementDisabled ||
+      !isPinching ||
+      !palmCenter ||
+      !handLandmarks ||
+      (pinchInteractionOwnerRef.current && pinchInteractionOwnerRef.current !== 'scene-object')
+    ) {
       pinchMoveActiveRef.current = false;
       activeObjectIdRef.current = null;
       pinchStartPalmRef.current = null;
+      if (pinchInteractionOwnerRef.current === 'scene-object') {
+        pinchInteractionOwnerRef.current = null;
+      }
       setMoveActive(false);
+      lockedFeedbackIdRef.current = null;
       return;
     }
 
     if (objectsRef.current.size === 0) {
       pinchMoveActiveRef.current = false;
       activeObjectIdRef.current = null;
+      if (pinchInteractionOwnerRef.current === 'scene-object') {
+        pinchInteractionOwnerRef.current = null;
+      }
       setMoveActive(false);
       return;
     }
@@ -2354,10 +2678,22 @@ function SceneObjectSystem({
 
       if (!selectedId || !objectsRef.current.has(selectedId)) return;
 
+      selectSceneObject(selectedId);
+      const selectedState = serializedSceneRef.current.find((entry) => entry.id === selectedId);
+      if (selectedState?.editingLocked) {
+        if (lockedFeedbackIdRef.current !== selectedId) {
+          lockedFeedbackIdRef.current = selectedId;
+          onSceneObjectFeedback?.('Selected object is locked. Use Unlock before moving it.');
+        }
+        setMoveActive(false);
+        return;
+      }
+
       activeObjectIdRef.current = selectedId;
       pinchMoveActiveRef.current = true;
       pinchStartPalmRef.current = { ...palmCenter };
       pinchStartObjectPosRef.current.copy(objectsRef.current.get(selectedId)!.position);
+      pinchInteractionOwnerRef.current = 'scene-object';
       setMoveActive(true);
       return;
     }
@@ -2368,6 +2704,9 @@ function SceneObjectSystem({
     if (!selectedId || !selectedObject || !startPalm) {
       pinchMoveActiveRef.current = false;
       activeObjectIdRef.current = null;
+      if (pinchInteractionOwnerRef.current === 'scene-object') {
+        pinchInteractionOwnerRef.current = null;
+      }
       setMoveActive(false);
       return;
     }
@@ -2428,7 +2767,12 @@ function SceneObjectSystem({
         }
         return entry;
       });
+      if (snapTargetIdRef.current !== nearest.id) {
+        snapTargetIdRef.current = nearest.id;
+        onSceneObjectFeedback?.('Object snapped beside another shape.');
+      }
     } else {
+      snapTargetIdRef.current = null;
       serializedSceneRef.current = serializedSceneRef.current.map((entry) => {
         if (entry.id !== selectedId) return entry;
         return {
@@ -2441,6 +2785,7 @@ function SceneObjectSystem({
     }
 
     emitSceneState();
+    selectionHelperRef.current?.update();
   });
 
   return null;
@@ -2457,6 +2802,7 @@ function PuzzlePieceSystem({
   puzzlePieceSpawnRequest,
   handLandmarks,
   isPinching,
+  isZooming,
   isRemoveTool = false,
   stateVersion = 0,
   palmCenter,
@@ -2464,7 +2810,10 @@ function PuzzlePieceSystem({
   disabled = false,
   onPuzzleMoveActiveChange,
   onPuzzleReady,
+  onPuzzleFeedback,
   mirrorX = true,
+  pinchInteractionOwnerRef,
+  showTraceWhileDisabled = false,
 }: {
   modelRef: React.RefObject<THREE.Group | null>;
   modelReadyTick: number;
@@ -2476,6 +2825,7 @@ function PuzzlePieceSystem({
   puzzlePieceSpawnRequest?: PuzzlePieceSpawnRequest | null;
   handLandmarks: HandLandmarks | null;
   isPinching: boolean;
+  isZooming: boolean;
   isRemoveTool?: boolean;
   stateVersion?: number;
   palmCenter: PalmPosition | null;
@@ -2483,7 +2833,10 @@ function PuzzlePieceSystem({
   disabled?: boolean;
   onPuzzleMoveActiveChange?: (active: boolean) => void;
   onPuzzleReady?: () => void;
+  onPuzzleFeedback?: (message: string) => void;
   mirrorX?: boolean;
+  pinchInteractionOwnerRef?: React.MutableRefObject<PinchInteractionOwner>;
+  showTraceWhileDisabled?: boolean;
 }) {
   const { camera, size } = useThree();
   const piecesRef = useRef<Map<string, { id: string; group: THREE.Object3D; targetPosition: THREE.Vector3; locked: boolean; spawned: boolean }>>(new Map());
@@ -2503,6 +2856,9 @@ function PuzzlePieceSystem({
       ? globalId.slice(pieceIdPrefix.length)
       : globalId
   ), [pieceIdPrefix]);
+  // Each puzzle model gets its own owner token so multiple puzzle systems do
+  // not move different pieces during the same pinch gesture.
+  const puzzleInteractionOwner = `puzzle-piece:${pieceIdPrefix || 'default'}`;
 
   const setMoveActive = useCallback((active: boolean) => {
     if (lastMoveActiveRef.current === active) return;
@@ -2519,15 +2875,14 @@ function PuzzlePieceSystem({
 
   const syncPuzzleTraceVisibility = useCallback(() => {
     const shouldShowTrace = Boolean(
-      editingEnabled &&
-      !disabled &&
       normalizePuzzlePieceCount(puzzlePieces) &&
-      !isPuzzleComplete()
+      !isPuzzleComplete() &&
+      (editingEnabled || showTraceWhileDisabled)
     );
     if (lastTraceVisibleRef.current === shouldShowTrace) return;
     lastTraceVisibleRef.current = shouldShowTrace;
     setPuzzleTargetGuidesVisible(modelRef.current, shouldShowTrace);
-  }, [disabled, editingEnabled, isPuzzleComplete, modelRef, puzzlePieces]);
+  }, [editingEnabled, isPuzzleComplete, modelRef, puzzlePieces, showTraceWhileDisabled]);
 
 
   const emitPuzzleState = useCallback(() => {
@@ -2577,6 +2932,9 @@ function PuzzlePieceSystem({
     if (activePieceIdRef.current === pieceId) {
       activePieceIdRef.current = null;
       pinchMoveActiveRef.current = false;
+      if (pinchInteractionOwnerRef?.current === puzzleInteractionOwner) {
+        pinchInteractionOwnerRef.current = null;
+      }
       setMoveActive(false);
     }
 
@@ -2584,11 +2942,16 @@ function PuzzlePieceSystem({
     lastTraceVisibleRef.current = null;
     syncPuzzleTraceVisibility();
     return true;
-  }, [emitPuzzleState, modelRef, setMoveActive, syncPuzzleTraceVisibility]);
+  }, [emitPuzzleState, modelRef, pinchInteractionOwnerRef, puzzleInteractionOwner, setMoveActive, syncPuzzleTraceVisibility]);
 
   useEffect(() => {
-    return () => setMoveActive(false);
-  }, [setMoveActive]);
+    return () => {
+      if (pinchInteractionOwnerRef?.current === puzzleInteractionOwner) {
+        pinchInteractionOwnerRef.current = null;
+      }
+      setMoveActive(false);
+    };
+  }, [pinchInteractionOwnerRef, puzzleInteractionOwner, setMoveActive]);
 
   useEffect(() => {
     const modelRoot = modelRef.current;
@@ -2608,6 +2971,9 @@ function PuzzlePieceSystem({
     lastTraceVisibleRef.current = null;
     activePieceIdRef.current = null;
     pinchMoveActiveRef.current = false;
+    if (pinchInteractionOwnerRef?.current === puzzleInteractionOwner) {
+      pinchInteractionOwnerRef.current = null;
+    }
     setMoveActive(false);
 
     if (!modelRoot || !normalizedCount) {
@@ -2652,6 +3018,8 @@ function PuzzlePieceSystem({
     syncPuzzleTraceVisibility,
     stateVersion,
     pieceIdPrefix,
+    pinchInteractionOwnerRef,
+    puzzleInteractionOwner,
     toGlobalPieceId,
     toLocalPieceId,
   ]);
@@ -2681,10 +3049,17 @@ function PuzzlePieceSystem({
   useFrame(() => {
     syncPuzzleTraceVisibility();
 
+    if (!isPinching && pinchInteractionOwnerRef?.current === puzzleInteractionOwner) {
+      pinchInteractionOwnerRef.current = null;
+    }
+
     if (isRemoveTool) {
       pinchMoveActiveRef.current = false;
       activePieceIdRef.current = null;
       pinchStartPalmRef.current = null;
+      if (pinchInteractionOwnerRef?.current === puzzleInteractionOwner) {
+        pinchInteractionOwnerRef.current = null;
+      }
       setMoveActive(false);
 
       if (!editingEnabled || disabled || !handLandmarks || isPinching || piecesRef.current.size === 0 || !isPointingGesture(handLandmarks)) {
@@ -2735,7 +3110,9 @@ function PuzzlePieceSystem({
       }
 
       if (selectedId) {
-        resetPuzzlePiece(selectedId);
+        if (resetPuzzlePiece(selectedId)) {
+          onPuzzleFeedback?.('Puzzle part removed. You can add it again.');
+        }
         removeArmedRef.current = true;
       }
       return;
@@ -2743,10 +3120,26 @@ function PuzzlePieceSystem({
 
     removeArmedRef.current = false;
 
-    if (!editingEnabled || disabled || !isPinching || !palmCenter || !handLandmarks) {
+    const interactionPoint = getPuzzleInteractionPoint({
+      isPinching,
+      handLandmarks,
+    });
+
+    if (
+      !editingEnabled ||
+      disabled ||
+      isZooming ||
+      !isPinching ||
+      !palmCenter ||
+      !interactionPoint ||
+      (pinchInteractionOwnerRef?.current && pinchInteractionOwnerRef.current !== puzzleInteractionOwner)
+    ) {
       pinchMoveActiveRef.current = false;
       activePieceIdRef.current = null;
       pinchStartPalmRef.current = null;
+      if (pinchInteractionOwnerRef?.current === puzzleInteractionOwner) {
+        pinchInteractionOwnerRef.current = null;
+      }
       setMoveActive(false);
       return;
     }
@@ -2759,9 +3152,9 @@ function PuzzlePieceSystem({
     }
 
     if (!pinchMoveActiveRef.current) {
-      const pinchX = (handLandmarks.indexTip.x + handLandmarks.thumbTip.x) * 0.5;
-      const pinchY = (handLandmarks.indexTip.y + handLandmarks.thumbTip.y) * 0.5;
-      const mirroredX = mirrorX ? 1 - pinchX : pinchX;
+      // Pinch landmarks are raw camera coordinates and need one display
+      // mirror to line up with the mirrored camera feed.
+      const pointerX = mirrorX ? 1 - interactionPoint.x : interactionPoint.x;
       const unlockedGroups = Array.from(piecesRef.current.values())
         .filter((piece) =>
           (piece.spawned || piece.group.userData.puzzleSpawned === true) &&
@@ -2773,7 +3166,7 @@ function PuzzlePieceSystem({
 
       if (unlockedGroups.length === 0) return;
 
-      const hits = raycastFromFingertip(mirroredX, pinchY, camera, unlockedGroups);
+      const hits = raycastFromFingertip(pointerX, interactionPoint.y, camera, unlockedGroups);
       let selectedId: string | null = null;
 
       if (hits.length > 0) {
@@ -2797,8 +3190,8 @@ function PuzzlePieceSystem({
         );
         selectedId = pickSceneObjectNearPointer(
           selectable,
-          mirroredX,
-          pinchY,
+          pointerX,
+          interactionPoint.y,
           camera,
           size,
           Math.max(90, Math.min(size.width, size.height) * 0.22)
@@ -2813,6 +3206,9 @@ function PuzzlePieceSystem({
       pinchMoveActiveRef.current = true;
       pinchStartPalmRef.current = { ...palmCenter };
       selected.group.getWorldPosition(pinchStartWorldRef.current);
+      if (pinchInteractionOwnerRef) {
+        pinchInteractionOwnerRef.current = puzzleInteractionOwner;
+      }
       setMoveActive(true);
       return;
     }
@@ -2824,6 +3220,9 @@ function PuzzlePieceSystem({
     if (!selected || !startPalm) {
       pinchMoveActiveRef.current = false;
       activePieceIdRef.current = null;
+      if (pinchInteractionOwnerRef?.current === puzzleInteractionOwner) {
+        pinchInteractionOwnerRef.current = null;
+      }
       setMoveActive(false);
       return;
     }
@@ -2849,10 +3248,21 @@ function PuzzlePieceSystem({
       selected.group.userData.puzzleLocked = true;
       selected.group.userData.puzzleSpawned = true;
       selected.group.visible = true;
+      const puzzleComplete = Array.from(piecesRef.current.values()).every((piece) => (
+        piece === selected || piece.locked || piece.group.userData.puzzleLocked === true
+      ));
       pinchMoveActiveRef.current = false;
       activePieceIdRef.current = null;
+      if (pinchInteractionOwnerRef?.current === puzzleInteractionOwner) {
+        pinchInteractionOwnerRef.current = null;
+      }
       setMoveActive(false);
       syncPuzzleTraceVisibility();
+      onPuzzleFeedback?.(
+        puzzleComplete
+          ? 'Puzzle complete. Great job!'
+          : 'Puzzle part snapped into place.'
+      );
     }
 
     emitPuzzleState();
@@ -3457,8 +3867,15 @@ function SceneContent({
   initialSceneState,
   onSceneStateChange,
   spawnObjectRequest,
+  sceneObjectActionRequest,
+  onSceneObjectSelectionChange,
+  onSceneObjectFeedback,
+  hideSceneObjectSelection,
   puzzlePieceSpawnRequest,
   selectedModelId,
+  modelActionRequest,
+  onModelSelectionChange,
+  onModelFeedback,
   groupBaseModels = false,
   puzzlePieces = 0,
   initialModelState,
@@ -3467,13 +3884,18 @@ function SceneContent({
   onGroupStateChange,
   initialPuzzleState,
   onPuzzleStateChange,
+  onModelLoadError,
 }: ARSceneV2Props) {
   const anchorRef = useRef<THREE.Group | null>(null);
   const objectRootRef = useRef<THREE.Group | null>(null);
   const modelGroupRef = useRef<THREE.Group | null>(null);
   const modelRef = useRef<THREE.Group | null>(null);
   const modelRefsByIdRef = useRef<Map<string, React.RefObject<THREE.Group | null>>>(new Map());
+  const defaultModelStateByIdRef = useRef<Map<string, SerializedBaseModelTransform>>(new Map());
+  const pinchInteractionOwnerRef = useRef<PinchInteractionOwner>(null);
   const puzzleStateByModelRef = useRef<Map<string, SerializedPuzzlePiece[]>>(new Map());
+  const modelErrorsByIdRef = useRef<Map<string, string>>(new Map());
+  const processedModelActionRequestRef = useRef<number | null>(null);
   const [modelReadyTick, setModelReadyTick] = useState(0);
   const [isMovingSceneObject, setIsMovingSceneObject] = useState(false);
   const [isMovingPuzzlePiece, setIsMovingPuzzlePiece] = useState(false);
@@ -3485,7 +3907,6 @@ function SceneContent({
     [modelConfigs, modelFileType, modelUrl]
   );
   const isMultiModel = baseModels.length > 1;
-  const groupMultiModelControls = groupBaseModels && isMultiModel && normalizedPuzzlePieces === 0;
   const normalizedInitialGroupState = useMemo(
     () => normalizeSerializedGroupTransform(initialGroupState),
     [initialGroupState]
@@ -3494,7 +3915,7 @@ function SceneContent({
     baseModels.map((model) => model.instanceId || model.id)
   ), [baseModels]);
   const normalizedInitialModelState = useMemo(
-    () => normalizeSerializedModelState(initialModelState),
+    () => normalizeSerializedBaseModelState(initialModelState),
     [initialModelState]
   );
   const initialModelStateById = useMemo(() => {
@@ -3505,6 +3926,30 @@ function SceneContent({
     return stateById;
   }, [normalizedInitialModelState]);
   const puzzleSeed = `${baseModels[0]?.modelUrl || modelUrl || '/models/13137_LatinMask1_v1.obj'}:${baseModels[0]?.modelFileType || modelFileType || 'obj'}:${normalizedPuzzlePieces}`;
+  const baseModelLoadKey = useMemo(
+    () => baseModels.map((model) => (
+      `${model.instanceId || model.id}:${model.modelUrl}:${model.modelFileType}`
+    )).join('|'),
+    [baseModels]
+  );
+
+  const handleModelError = useCallback((instanceId: string, label: string, message: string) => {
+    if (message) {
+      modelErrorsByIdRef.current.set(
+        instanceId,
+        `${label || '3D model'} could not be loaded. ${message}`
+      );
+    } else {
+      modelErrorsByIdRef.current.delete(instanceId);
+    }
+
+    onModelLoadError?.(Array.from(modelErrorsByIdRef.current.values()).join(' '));
+  }, [onModelLoadError]);
+
+  useEffect(() => {
+    modelErrorsByIdRef.current.clear();
+    onModelLoadError?.('');
+  }, [baseModelLoadKey, onModelLoadError]);
 
   const getModelRefObject = useCallback((instanceId: string) => {
     if (!modelRefsByIdRef.current.has(instanceId)) {
@@ -3515,18 +3960,44 @@ function SceneContent({
 
   const handleModelLoad = useCallback((model: THREE.Group) => {
     console.log('Model loaded successfully:', model);
+    const baseModel = baseModels[0];
+    handleModelError(baseModel?.instanceId || baseModel?.id || 'model-0', baseModel?.label || '3D model', '');
     modelRef.current = model;
+    const instanceId = baseModel?.instanceId || baseModel?.id || 'model-0';
+    const refObject = getModelRefObject(instanceId);
+    refObject.current = model;
+    if (!defaultModelStateByIdRef.current.has(instanceId)) {
+      defaultModelStateByIdRef.current.set(instanceId, serializeBaseModelTransform(instanceId, model));
+    }
     setPuzzleReadyTick(0);
     setModelReadyTick((prev) => prev + 1);
-  }, []);
+  }, [baseModels, getModelRefObject, handleModelError]);
+
+  const handleSingleSceneModelLoad = useCallback((_instanceId: string, model: THREE.Group) => {
+    handleModelLoad(model);
+  }, [handleModelLoad]);
 
   const handleMultiModelLoad = useCallback((instanceId: string, model: THREE.Group) => {
     console.log('Model loaded successfully:', instanceId, model);
+    const baseModel = baseModels.find((candidate) => (
+      (candidate.instanceId || candidate.id) === instanceId
+    ));
+    handleModelError(instanceId, baseModel?.label || '3D model', '');
     const refObject = getModelRefObject(instanceId);
     refObject.current = model;
+    if (!defaultModelStateByIdRef.current.has(instanceId)) {
+      defaultModelStateByIdRef.current.set(instanceId, serializeBaseModelTransform(instanceId, model));
+    }
     setPuzzleReadyTick(0);
     setModelReadyTick((prev) => prev + 1);
-  }, [getModelRefObject]);
+  }, [baseModels, getModelRefObject, handleModelError]);
+
+  useEffect(() => () => {
+    modelRefsByIdRef.current.forEach((refObject) => {
+      refObject.current = null;
+    });
+    defaultModelStateByIdRef.current.clear();
+  }, [baseModelLoadKey]);
 
   const emitBaseModelState = useCallback(() => {
     if (!onModelStateChange) return;
@@ -3544,6 +4015,37 @@ function SceneContent({
     }
   }, [baseModels, onModelStateChange]);
 
+  useEffect(() => {
+    if (!modelActionRequest) return;
+    if (processedModelActionRequestRef.current === modelActionRequest.requestId) return;
+    processedModelActionRequestRef.current = modelActionRequest.requestId;
+
+    if (modelActionRequest.action !== 'toggleLock') return;
+    const modelObject = modelRefsByIdRef.current.get(modelActionRequest.modelId)?.current;
+    if (!modelObject) {
+      onModelFeedback?.('The selected 3D model is not ready yet. Please try again.');
+      return;
+    }
+
+    const nextLocked = toggleBaseModelEditingLocked(modelObject);
+    if (nextLocked) {
+      setIsMovingBaseModel(false);
+      if (pinchInteractionOwnerRef.current === 'model') {
+        pinchInteractionOwnerRef.current = null;
+      }
+    }
+
+    emitBaseModelState();
+    if (selectedModelId === modelActionRequest.modelId) {
+      onModelSelectionChange?.({ id: modelActionRequest.modelId, locked: nextLocked });
+    }
+    onModelFeedback?.(
+      nextLocked
+        ? '3D model locked. It can still be selected, but it cannot be moved, rotated, or resized individually.'
+        : '3D model unlocked. You can move, rotate, and resize it individually again.'
+    );
+  }, [emitBaseModelState, modelActionRequest, onModelFeedback, onModelSelectionChange, selectedModelId]);
+
   const emitGroupState = useCallback(() => {
     if (!onGroupStateChange || !anchorRef.current) return;
     onGroupStateChange(serializeGroupTransform(anchorRef.current));
@@ -3556,16 +4058,16 @@ function SceneContent({
   }, [normalizedInitialGroupState, stateVersion]);
 
   useEffect(() => {
-    if (!isMultiModel) return;
     baseModels.forEach((model) => {
       const instanceId = model.instanceId || model.id;
       const transform = initialModelStateById.get(instanceId);
+      const defaultTransform = defaultModelStateByIdRef.current.get(instanceId);
       const modelObject = modelRefsByIdRef.current.get(instanceId)?.current;
-      if (modelObject && transform) {
-        applyBaseModelTransform(modelObject, transform);
+      if (modelObject) {
+        applyBaseModelTransform(modelObject, transform || defaultTransform);
       }
     });
-  }, [baseModels, initialModelStateById, isMultiModel, stateVersion]);
+  }, [baseModels, initialModelStateById, modelReadyTick, stateVersion]);
 
   const handleScopedPuzzleStateChange = useCallback((instanceId: string, puzzleState: SerializedPuzzlePiece[]) => {
     puzzleStateByModelRef.current.set(instanceId, puzzleState);
@@ -3601,16 +4103,18 @@ function SceneContent({
                 scale={1.25}
                 initialTransform={initialModelStateById.get(model.instanceId || model.id)}
                 onModelLoad={handleMultiModelLoad}
+                onModelError={handleModelError}
               />
             ))}
           </group>
         ) : (
-          <ModelLoader
-            url={baseModels[0]?.modelUrl || modelUrl || '/models/13137_LatinMask1_v1.obj'}
-            fileType={baseModels[0]?.modelFileType || modelFileType || undefined}
+          <SceneModelLoader
+            model={baseModels[0]}
             position={[0, 0, 0]}
             scale={1.5}
-            onLoad={handleModelLoad}
+            initialTransform={initialModelStateById.get(baseModels[0].instanceId || baseModels[0].id)}
+            onModelLoad={handleSingleSceneModelLoad}
+            onModelError={handleModelError}
           />
         )}
         <group ref={objectRootRef} position={[0, 0, 0]} />
@@ -3629,7 +4133,11 @@ function SceneContent({
       <ModelRotationController
         anchorRef={anchorRef}
         targetQuaternion={targetQuaternion}
-        isGrabbing={grabState.isGrabbing && !(isMultiModel && normalizedPuzzlePieces === 0 && !groupMultiModelControls)}
+        // A closed fist always rotates the shared AR content. In a puzzle,
+        // that includes the trace, loose pieces, and the completed assembly.
+        // Regular non-puzzle Move mode keeps its existing per-model rotation
+        // controller below, so the anchor rotates only for Grab All there.
+        isGrabbing={grabState.isGrabbing && !grabState.isPinching && !grabState.isZooming && Boolean(handLandmarks) && !isRemoveTool && (normalizedPuzzlePieces > 0 || groupBaseModels)}
         onTransformChange={emitGroupState}
       />
 
@@ -3637,7 +4145,8 @@ function SceneContent({
         anchorRef={anchorRef}
         palmCenter={grabState.currentPosition}
         isPinching={grabState.isPinching}
-        disabled={isMovingSceneObject || isMovingPuzzlePiece || isMovingBaseModel || (normalizedPuzzlePieces > 0 && !paintMode && !groupBaseModels) || (isMultiModel && normalizedPuzzlePieces === 0 && !groupMultiModelControls)}
+        pinchInteractionOwnerRef={pinchInteractionOwnerRef}
+        disabled={!groupBaseModels || !handLandmarks || isMovingSceneObject || isMovingPuzzlePiece || isMovingBaseModel}
         onTransformChange={emitGroupState}
       />
 
@@ -3645,14 +4154,15 @@ function SceneContent({
         anchorRef={anchorRef}
         isZooming={grabState.isZooming}
         zoomDelta={grabState.zoomDelta}
-        disabled={isMovingPuzzlePiece || isMovingSceneObject || isMovingBaseModel || (isMultiModel && normalizedPuzzlePieces === 0 && !groupMultiModelControls)}
+        disabled={!groupBaseModels || !handLandmarks || isMovingPuzzlePiece || isMovingSceneObject || isMovingBaseModel}
         onTransformChange={emitGroupState}
       />
 
-      {isMultiModel && normalizedPuzzlePieces === 0 && !groupMultiModelControls && (
+      {normalizedPuzzlePieces === 0 && !groupBaseModels && (
         <MultiModelMoveController
           modelIds={baseModelIds}
           modelRefsByIdRef={modelRefsByIdRef}
+          interactionRootRef={anchorRef}
           selectedModelId={selectedModelId}
           handLandmarks={handLandmarks}
           isPinching={grabState.isPinching}
@@ -3660,7 +4170,17 @@ function SceneContent({
           isGrabbing={grabState.isGrabbing}
           isZooming={grabState.isZooming}
           zoomDelta={grabState.zoomDelta}
-          disabled={paintMode || isMovingSceneObject || isMovingPuzzlePiece}
+          disabled={!canDirectlyManipulateModel({
+            hasHandLandmarks: Boolean(handLandmarks),
+            isRemoveTool,
+            isMovingSceneObject,
+            isMovingPuzzlePiece,
+          })}
+          mirrorX={mirrorX}
+          hideSelection={hideSceneObjectSelection}
+          pinchInteractionOwnerRef={pinchInteractionOwnerRef}
+          onModelSelectionChange={onModelSelectionChange}
+          onModelFeedback={onModelFeedback}
           onModelMoveActiveChange={setIsMovingBaseModel}
           onModelTransformChange={emitBaseModelState}
         />
@@ -3671,6 +4191,10 @@ function SceneContent({
         initialSceneState={initialSceneState}
         onSceneStateChange={onSceneStateChange}
         spawnObjectRequest={spawnObjectRequest}
+        sceneObjectActionRequest={sceneObjectActionRequest}
+        onSceneObjectSelectionChange={onSceneObjectSelectionChange}
+        onSceneObjectFeedback={onSceneObjectFeedback}
+        hideSceneObjectSelection={hideSceneObjectSelection}
         handLandmarks={handLandmarks}
         isPinching={grabState.isPinching}
         isRemoveTool={isRemoveTool}
@@ -3684,6 +4208,7 @@ function SceneContent({
         onObjectMoveActiveChange={setIsMovingSceneObject}
         mirrorX={mirrorX}
         movementDisabled={groupBaseModels}
+        pinchInteractionOwnerRef={pinchInteractionOwnerRef}
       />
 
       {isMultiModel ? (
@@ -3699,14 +4224,18 @@ function SceneContent({
             puzzlePieceSpawnRequest={puzzlePieceSpawnRequest}
             handLandmarks={handLandmarks}
             isPinching={grabState.isPinching}
+            isZooming={grabState.isZooming}
             isRemoveTool={isRemoveTool}
             stateVersion={stateVersion}
             palmCenter={grabState.currentPosition}
-            editingEnabled={!paintMode && !groupBaseModels}
-            disabled={isMovingSceneObject || groupBaseModels}
+            editingEnabled={!isRemoveTool && !groupBaseModels}
+            disabled={isMovingSceneObject || isMovingBaseModel || groupBaseModels}
             onPuzzleMoveActiveChange={setIsMovingPuzzlePiece}
             onPuzzleReady={() => setPuzzleReadyTick((prev) => prev + 1)}
+            onPuzzleFeedback={onSceneObjectFeedback}
             mirrorX={mirrorX}
+            pinchInteractionOwnerRef={pinchInteractionOwnerRef}
+            showTraceWhileDisabled={groupBaseModels}
           />
         ))
       ) : (
@@ -3720,14 +4249,33 @@ function SceneContent({
           puzzlePieceSpawnRequest={puzzlePieceSpawnRequest}
           handLandmarks={handLandmarks}
           isPinching={grabState.isPinching}
+          isZooming={grabState.isZooming}
           isRemoveTool={isRemoveTool}
           stateVersion={stateVersion}
           palmCenter={grabState.currentPosition}
-          editingEnabled={!paintMode && !groupBaseModels}
-          disabled={isMovingSceneObject || groupBaseModels}
+          editingEnabled={!isRemoveTool && !groupBaseModels}
+          disabled={isMovingSceneObject || isMovingBaseModel || groupBaseModels}
           onPuzzleMoveActiveChange={setIsMovingPuzzlePiece}
           onPuzzleReady={() => setPuzzleReadyTick((prev) => prev + 1)}
+          onPuzzleFeedback={onSceneObjectFeedback}
           mirrorX={mirrorX}
+          pinchInteractionOwnerRef={pinchInteractionOwnerRef}
+          showTraceWhileDisabled={groupBaseModels}
+        />
+      )}
+
+      {/* In ordinary puzzle Move mode, a pinch over the trace or a completed
+          (locked) assembly moves the shared anchor. PuzzlePieceSystem claims
+          the gesture first whenever the pinch lands on an unlocked piece. */}
+      {normalizedPuzzlePieces > 0 && !groupBaseModels && !isRemoveTool && (
+        <PinchMoveController
+          anchorRef={anchorRef}
+          palmCenter={grabState.currentPosition}
+          isPinching={grabState.isPinching}
+          pinchInteractionOwnerRef={pinchInteractionOwnerRef}
+          claimOwner
+          disabled={!handLandmarks || isMovingSceneObject || isMovingPuzzlePiece || isMovingBaseModel}
+          onTransformChange={emitGroupState}
         />
       )}
 
@@ -3759,9 +4307,18 @@ function SceneContent({
 }
 
 export function ARSceneV2(props: ARSceneV2Props) {
+  const lowPerformance = props.dataSaver || props.renderQuality === 'low';
+  const dpr: number | [number, number] = lowPerformance
+    ? 1
+    : props.renderQuality === 'high'
+      ? [1, 2]
+      : props.renderQuality === 'medium'
+        ? [1, 1.35]
+        : [1, 1.5];
+
   return (
     <Canvas
-      dpr={[1, 1.25]}
+      dpr={dpr}
       style={{
         position: 'absolute',
         top: 0,
@@ -3773,9 +4330,9 @@ export function ARSceneV2(props: ARSceneV2Props) {
       }}
       gl={{
         alpha: true,
-        antialias: true,
+        antialias: !lowPerformance,
         preserveDrawingBuffer: true,
-        powerPreference: 'high-performance',
+        powerPreference: lowPerformance ? 'low-power' : 'high-performance',
       }}
       camera={{ fov: 60, near: 0.1, far: 1000, position: [0, 0, 0] }}
       onCreated={({ gl }) => {

@@ -3,52 +3,44 @@ import * as THREE from 'three';
 import paintbrushIcon from '../../../assets/ar-icons/paintbrush.svg';
 import bucketIcon from '../../../assets/ar-icons/paint-bucket.svg';
 import eraserIcon from '../../../assets/ar-icons/eraser.svg';
+import { AR_PRESET_COLORS } from '../utils/colorPalette';
 
 export type PaintTool = 'move' | 'grabAll' | 'paint' | 'bucket' | 'eraser' | 'remove';
 
 interface ControlPanelProps {
   paintColor: THREE.Color;
-  onPaintColorChange: (color: THREE.Color) => void;
+  onPaintColorChange: (color: THREE.Color, colorName?: string) => void;
   activeTool: PaintTool;
   onToolChange: (tool: PaintTool) => void;
   brushLevel: number;
   onBrushLevelChange: (level: number) => void;
   canUndo?: boolean;
   onUndo?: () => void;
+  canRedo?: boolean;
+  onRedo?: () => void;
+  selectedSceneObject?: { label: string; locked: boolean } | null;
+  onDuplicateSceneObject?: () => void;
+  onToggleSceneObjectLock?: () => void;
   availableObjects?: Array<{ id: string; label: string; icon?: string }>;
   onAddObject?: (objectId: string) => void;
   modelItems?: Array<{ id: string; label: string }>;
   selectedModelId?: string | null;
   onSelectModel?: (modelId: string) => void;
+  selectedModel?: { label: string; locked: boolean } | null;
+  onToggleModelLock?: () => void;
   puzzlePieces?: Array<{ id: string; label: string; spawned: boolean; locked: boolean }>;
   onSpawnPuzzlePiece?: (pieceId: string) => void;
+  voiceGuideEnabled?: boolean;
+  canRepeatVoiceGuide?: boolean;
+  onToggleVoiceGuide?: () => void;
+  onRepeatVoiceGuide?: () => void;
+  allowedTools?: PaintTool[];
   compact?: boolean;
   vrMode?: boolean;
   vrEye?: 'left' | 'right';
 }
 
-const PRESET_COLORS = [
-  // Primary colors
-  '#ff0000',
-  '#ffff00',
-  '#0000ff',
-  // Secondary colors
-  '#00a651',
-  '#ff8c00',
-  '#7b2cff',
-  // Tertiary colors
-  '#ff4500',
-  '#ffc300',
-  '#b6e600',
-  '#00b8a9',
-  '#2563eb',
-  '#c026d3',
-  // Helpful neutrals and art tones
-  '#8b5a2b',
-  '#f2c29b',
-  '#ffffff',
-  '#000000',
-];
+const ALL_TOOLS: PaintTool[] = ['move', 'grabAll', 'paint', 'bucket', 'eraser', 'remove'];
 
 export function ControlPanel({
   paintColor,
@@ -59,13 +51,25 @@ export function ControlPanel({
   onBrushLevelChange,
   canUndo = false,
   onUndo,
+  canRedo = false,
+  onRedo,
+  selectedSceneObject = null,
+  onDuplicateSceneObject,
+  onToggleSceneObjectLock,
   availableObjects = [],
   onAddObject,
   modelItems = [],
   selectedModelId = null,
   onSelectModel,
+  selectedModel = null,
+  onToggleModelLock,
   puzzlePieces = [],
   onSpawnPuzzlePiece,
+  voiceGuideEnabled = true,
+  canRepeatVoiceGuide = false,
+  onToggleVoiceGuide,
+  onRepeatVoiceGuide,
+  allowedTools = ALL_TOOLS,
   compact = false,
   vrMode = false,
   vrEye,
@@ -74,6 +78,9 @@ export function ControlPanel({
     typeof window !== 'undefined' ? window.innerWidth > window.innerHeight : true
   );
   const currentColorHex = `#${paintColor.getHexString()}`;
+  const enabledTools = new Set(allowedTools);
+  const showColors = enabledTools.has('paint') || enabledTools.has('bucket');
+  const showBrushSize = enabledTools.has('paint') || enabledTools.has('eraser');
 
   useEffect(() => {
     const onResize = () => {
@@ -116,8 +123,44 @@ export function ControlPanel({
         gap: compact ? 4 : 10,
         alignItems: 'flex-start',
       }}
-    >
-      <div
+      >
+        {(onToggleVoiceGuide || onRepeatVoiceGuide) && (
+          <div className="control-row voice-guide-row" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {onToggleVoiceGuide && (
+              <button
+                type="button"
+                data-gesture-target="true"
+                onClick={onToggleVoiceGuide}
+                className={`tool-button ${voiceGuideEnabled ? 'active' : ''}`}
+                aria-pressed={voiceGuideEnabled}
+                aria-label={`Turn voice instructions ${voiceGuideEnabled ? 'off' : 'on'}`}
+                title={`Voice instructions are ${voiceGuideEnabled ? 'on' : 'off'}`}
+              >
+                <span aria-hidden="true">{voiceGuideEnabled ? '🔊' : '🔇'}</span>
+                <span>Voice {voiceGuideEnabled ? 'On' : 'Off'}</span>
+              </button>
+            )}
+            {onRepeatVoiceGuide && (
+              <button
+                type="button"
+                data-gesture-target="true"
+                disabled={!voiceGuideEnabled || !canRepeatVoiceGuide}
+                onClick={onRepeatVoiceGuide}
+                className="tool-button"
+                aria-label="Repeat the last voice instruction"
+                style={{
+                  opacity: voiceGuideEnabled && canRepeatVoiceGuide ? 1 : 0.5,
+                  cursor: voiceGuideEnabled && canRepeatVoiceGuide ? 'pointer' : 'not-allowed',
+                }}
+              >
+                <span aria-hidden="true">↻</span>
+                <span>Repeat</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        <div
         className="control-card"
         style={{
           width: '100%',
@@ -127,27 +170,40 @@ export function ControlPanel({
           backdropFilter: 'none',
         }}
       >
-        {onUndo && (
-          <button
-            type="button"
-            data-gesture-target="true"
-            disabled={!canUndo}
-            onClick={onUndo}
-            className={`tool-button ${canUndo ? '' : 'disabled'}`}
-            style={{
-              marginBottom: 10,
-              opacity: canUndo ? 1 : 0.5,
-              cursor: canUndo ? 'pointer' : 'not-allowed',
-            }}
-          >
-            <span aria-hidden="true">↶</span>
-            <span>Undo</span>
-          </button>
+        {(onUndo || onRedo) && (
+          <div className="control-row history-row" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+            {onUndo && (
+              <button
+                type="button"
+                data-gesture-target="true"
+                disabled={!canUndo}
+                onClick={onUndo}
+                className={`tool-button ${canUndo ? '' : 'disabled'}`}
+                style={{ opacity: canUndo ? 1 : 0.5, cursor: canUndo ? 'pointer' : 'not-allowed' }}
+              >
+                <span aria-hidden="true">↶</span>
+                <span>Undo</span>
+              </button>
+            )}
+            {onRedo && (
+              <button
+                type="button"
+                data-gesture-target="true"
+                disabled={!canRedo}
+                onClick={onRedo}
+                className={`tool-button ${canRedo ? '' : 'disabled'}`}
+                style={{ opacity: canRedo ? 1 : 0.5, cursor: canRedo ? 'pointer' : 'not-allowed' }}
+              >
+                <span aria-hidden="true">↷</span>
+                <span>Redo</span>
+              </button>
+            )}
+          </div>
         )}
 
         <div className="control-label" style={{ fontSize: 12, color: '#111', marginBottom: 10 }}>Tools</div>
         <div className="control-row" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-          <button
+          {enabledTools.has('move') && <button
             type="button"
             data-gesture-target="true"
             onClick={() => onToolChange('move')}
@@ -155,8 +211,8 @@ export function ControlPanel({
           >
             <span aria-hidden="true">✋</span>
             <span>Move</span>
-          </button>
-          <button
+          </button>}
+          {enabledTools.has('grabAll') && <button
             type="button"
             data-gesture-target="true"
             onClick={() => onToolChange("grabAll")}
@@ -164,8 +220,8 @@ export function ControlPanel({
           >
             <span aria-hidden="true">All</span>
             <span>Grab All</span>
-          </button>
-          <button
+          </button>}
+          {enabledTools.has('paint') && <button
             type="button"
             data-gesture-target="true"
             onClick={() => onToolChange('paint')}
@@ -173,8 +229,8 @@ export function ControlPanel({
           >
             <img src={paintbrushIcon} alt="Paint tool" className="tool-icon" />
             <span>Paint</span>
-          </button>
-          <button
+          </button>}
+          {enabledTools.has('bucket') && <button
             type="button"
             data-gesture-target="true"
             onClick={() => onToolChange('bucket')}
@@ -182,8 +238,8 @@ export function ControlPanel({
           >
             <img src={bucketIcon} alt="Paint bucket tool" className="tool-icon" />
             <span>Bucket</span>
-          </button>
-          <button
+          </button>}
+          {enabledTools.has('eraser') && <button
             type="button"
             data-gesture-target="true"
             onClick={() => onToolChange('eraser')}
@@ -191,8 +247,8 @@ export function ControlPanel({
           >
             <img src={eraserIcon} alt="Eraser tool" className="tool-icon" />
             <span>Eraser</span>
-          </button>
-          <button
+          </button>}
+          {enabledTools.has('remove') && <button
             type="button"
             data-gesture-target="true"
             onClick={() => onToolChange('remove')}
@@ -200,7 +256,7 @@ export function ControlPanel({
           >
             <span aria-hidden="true">🗑️</span>
             <span>Remove</span>
-          </button>
+          </button>}
         </div>
 
         {availableObjects.length > 0 && onAddObject && (
@@ -223,6 +279,47 @@ export function ControlPanel({
           </>
         )}
 
+        {(onDuplicateSceneObject || onToggleSceneObjectLock) && (
+          <>
+            <div className="control-label" style={{ fontSize: 12, color: '#111', marginBottom: 6 }}>
+              Selected Shape
+            </div>
+            <div className={`selected-shape-status ${selectedSceneObject ? 'has-selection' : ''}`} role="status">
+              {selectedSceneObject
+                ? `${selectedSceneObject.label} • ${selectedSceneObject.locked ? 'Locked' : 'Unlocked'}`
+                : 'Pinch a shape to select it'}
+            </div>
+            <div className="control-row" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+              {onDuplicateSceneObject && (
+                <button
+                  type="button"
+                  data-gesture-target="true"
+                  disabled={!selectedSceneObject}
+                  onClick={onDuplicateSceneObject}
+                  className="tool-button"
+                  style={{ opacity: selectedSceneObject ? 1 : 0.5 }}
+                >
+                  <span aria-hidden="true">⧉</span>
+                  <span>Duplicate</span>
+                </button>
+              )}
+              {onToggleSceneObjectLock && (
+                <button
+                  type="button"
+                  data-gesture-target="true"
+                  disabled={!selectedSceneObject}
+                  onClick={onToggleSceneObjectLock}
+                  className={`tool-button ${selectedSceneObject?.locked ? 'active' : ''}`}
+                  style={{ opacity: selectedSceneObject ? 1 : 0.5 }}
+                >
+                  <span aria-hidden="true">{selectedSceneObject?.locked ? '🔓' : '🔒'}</span>
+                  <span>{selectedSceneObject?.locked ? 'Unlock' : 'Lock'}</span>
+                </button>
+              )}
+            </div>
+          </>
+        )}
+
         {modelItems.length > 0 && onSelectModel && (
           <>
             <div className="control-label" style={{ fontSize: 12, color: '#111', marginBottom: 10 }}>Models</div>
@@ -241,6 +338,33 @@ export function ControlPanel({
                   <span>{modelItem.label}</span>
                 </button>
               ))}
+            </div>
+          </>
+        )}
+
+        {onToggleModelLock && (
+          <>
+            <div className="control-label" style={{ fontSize: 12, color: '#111', marginBottom: 6 }}>
+              Selected 3D Model
+            </div>
+            <div className={`selected-shape-status ${selectedModel ? 'has-selection' : ''}`} role="status">
+              {selectedModel
+                ? `${selectedModel.label} • ${selectedModel.locked ? 'Locked' : 'Unlocked'}`
+                : 'Select or pinch a 3D model'}
+            </div>
+            <div className="control-row" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+              <button
+                type="button"
+                data-gesture-target="true"
+                disabled={!selectedModel}
+                onClick={onToggleModelLock}
+                className={`tool-button ${selectedModel?.locked ? 'active' : ''}`}
+                style={{ opacity: selectedModel ? 1 : 0.5 }}
+                aria-label={selectedModel?.locked ? 'Unlock selected 3D model' : 'Lock selected 3D model'}
+              >
+                <span aria-hidden="true">{selectedModel?.locked ? '🔓' : '🔒'}</span>
+                <span>{selectedModel?.locked ? 'Unlock' : 'Lock'}</span>
+              </button>
             </div>
           </>
         )}
@@ -274,63 +398,73 @@ export function ControlPanel({
           </>
         )}
 
-        <div className="control-label" style={{ fontSize: 12, color: '#111', marginBottom: 10 }}>
-          Color {activeTool === 'paint' || activeTool === 'bucket' ? '' : '(Paint/Bucket only)'}
-        </div>
-        <div
-          className="control-row color-row"
-          style={{
-            display: 'flex',
-            gap: 10,
-            flexWrap: 'wrap',
-            opacity: activeTool === 'paint' || activeTool === 'bucket' ? 1 : 0.55,
-          }}
-        >
-          {PRESET_COLORS.map((color) => (
-            <button
-              type="button"
-              key={color}
-              data-gesture-target="true"
-              disabled={activeTool !== 'paint' && activeTool !== 'bucket'}
-              onClick={() => onPaintColorChange(new THREE.Color(color))}
-              className="color-swatch"
+        {showColors && (
+          <>
+            <div className="control-label" style={{ fontSize: 12, color: '#111', marginBottom: 10 }}>
+              Color {activeTool === 'paint' || activeTool === 'bucket' ? '' : '(Paint/Bucket only)'}
+            </div>
+            <div
+              className="control-row color-row"
               style={{
-                background: color,
-                border:
-                  currentColorHex === color.toLowerCase()
-                    ? '3px solid white'
-                    : '1px solid rgba(255,255,255,0.35)',
+                display: 'flex',
+                gap: 10,
+                flexWrap: 'wrap',
+                opacity: activeTool === 'paint' || activeTool === 'bucket' ? 1 : 0.55,
               }}
-            />
-          ))}
-        </div>
+            >
+              {AR_PRESET_COLORS.map(({ hex, name }) => (
+                <button
+                  type="button"
+                  key={hex}
+                  data-gesture-target="true"
+                  disabled={activeTool !== 'paint' && activeTool !== 'bucket'}
+                  onClick={() => onPaintColorChange(new THREE.Color(hex), name)}
+                  className="color-swatch"
+                  aria-label={`Select ${name}`}
+                  title={name}
+                  style={{
+                    background: hex,
+                    border:
+                      currentColorHex === hex.toLowerCase()
+                        ? '3px solid white'
+                        : '1px solid rgba(255,255,255,0.35)',
+                  }}
+                />
+              ))}
+            </div>
+          </>
+        )}
 
-        <div className="control-label" style={{ fontSize: 12, color: '#111', margin: '12px 0 8px 0' }}>
-          Brush Size {activeTool === 'paint' || activeTool === 'eraser' ? '' : '(Paint/Eraser only)'}
-        </div>
-        <div
-          className="brush-control"
-          style={{
-            display: 'grid',
-            gap: 8,
-            width: '100%',
-            opacity: activeTool === 'paint' || activeTool === 'eraser' ? 1 : 0.55,
-          }}
-        >
-          <input
-            type="range"
-            min={1}
-            max={10}
-            step={1}
-            value={brushLevel}
-            data-gesture-target="true"
-            disabled={activeTool !== 'paint' && activeTool !== 'eraser'}
-            className="gesture-slider"
-            aria-label="Brush size slider"
-            onChange={(event) => onBrushLevelChange(Number(event.target.value))}
-          />
-          <span className="brush-size-value">Size {brushLevel}/10</span>
-        </div>
+        {showBrushSize && (
+          <>
+            <div className="control-label" style={{ fontSize: 12, color: '#111', margin: '12px 0 8px 0' }}>
+              Brush Size {activeTool === 'paint' || activeTool === 'eraser' ? '' : '(Paint/Eraser only)'}
+            </div>
+            <div
+              className="brush-control"
+              style={{
+                display: 'grid',
+                gap: 8,
+                width: '100%',
+                opacity: activeTool === 'paint' || activeTool === 'eraser' ? 1 : 0.55,
+              }}
+            >
+              <input
+                type="range"
+                min={1}
+                max={10}
+                step={1}
+                value={brushLevel}
+                data-gesture-target="true"
+                disabled={activeTool !== 'paint' && activeTool !== 'eraser'}
+                className="gesture-slider"
+                aria-label="Brush size slider"
+                onChange={(event) => onBrushLevelChange(Number(event.target.value))}
+              />
+              <span className="brush-size-value">Size {brushLevel}/10</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

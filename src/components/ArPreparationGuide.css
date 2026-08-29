@@ -1,0 +1,154 @@
+.ar-preparation-guide {
+  --ar-guide-accent: #3156e0;
+  padding: clamp(18px, 3vw, 26px);
+  border: 1px solid #cddcff;
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 94% 5%, rgba(255, 208, 115, 0.22), transparent 145px),
+    linear-gradient(145deg, #ffffff 0%, #f4f7ff 100%);
+  box-shadow: 0 12px 28px rgba(44, 68, 140, 0.1);
+  color: #13213f;
+}
+
+.ar-preparation-guide__header {
+  max-width: 720px;
+}
+
+.ar-preparation-guide__eyebrow {
+  margin: 0 0 5px;
+  color: var(--ar-guide-accent);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ar-preparation-guide__header h2 {
+  margin: 0;
+  color: #13213f;
+  font-size: clamp(22px, 3vw, 28px);
+  line-height: 1.15;
+  font-weight: 900;
+}
+
+.ar-preparation-guide__header > p:last-child {
+  margin: 8px 0 0;
+  color: #53678f;
+  font-size: 15px;
+  line-height: 1.5;
+  font-weight: 650;
+}
+
+.ar-preparation-guide__steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: none;
+}
+
+.ar-preparation-guide__step {
+  position: relative;
+  min-width: 0;
+  padding: 15px 13px;
+  border: 1px solid #dce5fb;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.ar-preparation-guide__number {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #e9efff;
+  color: #2448c7;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ar-preparation-guide__icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #fff4d9;
+  font-size: 20px;
+}
+
+.ar-preparation-guide__step h3 {
+  margin: 10px 0 4px;
+  color: #18294e;
+  font-size: 15px;
+  line-height: 1.25;
+  font-weight: 900;
+}
+
+.ar-preparation-guide__step p {
+  margin: 0;
+  color: #5a6d92;
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 600;
+}
+
+.ar-preparation-guide__permission-note {
+  margin: 14px 0 0;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: #eef8ff;
+  color: #2d5372;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ar-preparation-guide--compact {
+  margin-top: 22px;
+  padding: 18px;
+  box-shadow: none;
+}
+
+.ar-preparation-guide--compact .ar-preparation-guide__header h2 {
+  font-size: 22px;
+}
+
+.ar-preparation-guide--compact .ar-preparation-guide__steps {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 760px) {
+  .ar-preparation-guide__steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .ar-preparation-guide,
+  .ar-preparation-guide--compact {
+    padding: 17px;
+    border-radius: 17px;
+  }
+
+  .ar-preparation-guide__steps,
+  .ar-preparation-guide--compact .ar-preparation-guide__steps {
+    grid-template-columns: 1fr;
+  }
+
+  .ar-preparation-guide__step {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    align-items: start;
+    gap: 11px;
+  }
+
+  .ar-preparation-guide__step h3 {
+    margin-top: 1px;
+  }
+}

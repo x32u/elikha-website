@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Header from '../../components/Header';
 import ProfileSection from '../../components/ProfileSection';
 import ArtworkCarousel from '../../components/ArtworkCarousel';
 import ActivityCard from '../../components/ActivityCard';
@@ -53,7 +52,7 @@ const Homepage = () => {
         const classLabel = formatStudentClassLabel(classesResult.data);
         setUser((prev) => ({ ...prev, classLabel }));
       } else {
-        setUser((prev) => ({ ...prev, classLabel: 'No class assigned' }));
+        setUser((prev) => ({ ...prev, classLabel: 'Unable to load class' }));
       }
 
       if (activitiesResult.success) {
@@ -182,8 +181,6 @@ const Homepage = () => {
   return (
     <div className="homepage-container student-shell">
       <div className="homepage-wrapper">
-        <Header />
-        
         <main className="main-content">
           {/* Main Content */}
           <div className="content-area">

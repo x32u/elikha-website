@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import './Classes.css';
 import { getTeacherClasses, createClass } from '../../services/teacherApi';
 import { formatClassLabel } from '../../utils/classLabels';
+
+const CLASS_COLORS = ['#1800AD', '#8A7861', '#1C170D', '#6B5A4D', '#AD5900'];
 
 const Classes = () => {
   const navigate = useNavigate();
@@ -14,13 +16,7 @@ const Classes = () => {
   const [newClassGrade, setNewClassGrade] = useState('');
   const [creating, setCreating] = useState(false);
 
-  const classColors = ['#1800AD', '#8A7861', '#1C170D', '#6B5A4D', '#AD5900'];
-
-  useEffect(() => {
-    loadClasses();
-  }, []);
-
-  const loadClasses = async () => {
+  const loadClasses = useCallback(async () => {
     setLoading(true);
     try {
       const userInfo = JSON.parse(sessionStorage.getItem('userInfo') || '{}');
@@ -32,7 +28,7 @@ const Classes = () => {
           ...klass,
           icon: formatClassLabel(klass).charAt(0),
           label: formatClassLabel(klass),
-          color: classColors[index % classColors.length],
+          color: CLASS_COLORS[index % CLASS_COLORS.length],
           pending: klass.pending_assignments || 0
         }));
         setClasses(transformedClasses);
@@ -44,7 +40,11 @@ const Classes = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadClasses();
+  }, [loadClasses]);
 
   const handleCreateClass = async () => {
     if (!newClassName.trim() || !newClassGrade) {
@@ -100,8 +100,7 @@ const Classes = () => {
             Loading classes...
           </div>
         ) : (
-          <div className="classes-container">
-            <div className="classes-list">
+          <div className="classes-list">
               {classes.length === 0 ? (
                 <div style={{ padding: '40px', textAlign: 'center', color: '#6B5A4D' }}>
                   No classes yet. Click "+ New Class" to create one.
@@ -126,7 +125,6 @@ const Classes = () => {
                   </div>
                 ))
               )}
-            </div>
           </div>
         )}
 

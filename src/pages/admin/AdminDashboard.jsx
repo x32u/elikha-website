@@ -4,15 +4,17 @@ import AdminShell from './components/AdminShell';
 import {
   createAdminActivity,
   fetchAdminDashboardData,
+  fetchAdminStorageUsage,
   fetchClassDirectory,
 } from '../../services/adminApi';
 import {
   AR_MODEL_LIBRARY_UPDATED_EVENT,
   DEFAULT_MODEL_ID,
   DEFAULT_PUZZLE_PIECES,
-  getArModelLibrary,
+  getArRenderableModelLibrary,
   PUZZLE_PIECE_OPTIONS,
 } from '../../utils/activityArConfig';
+import { getActivityRubricOptions } from '../../services/rubricApi';
 
 const formatDate = (value) => {
   if (!value) return '—';
@@ -32,6 +34,21 @@ const statusClass = (status) => {
   return 'pending';
 };
 
+const formatStorage = (bytes) => {
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value <= 0) return '0 B';
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const unitIndex = Math.min(
+    Math.floor(Math.log(value) / Math.log(1024)),
+    units.length - 1
+  );
+  const amount = value / (1024 ** unitIndex);
+  const maximumFractionDigits = amount >= 100 || unitIndex === 0 ? 0 : amount >= 10 ? 1 : 2;
+
+  return `${amount.toLocaleString(undefined, { maximumFractionDigits })} ${units[unitIndex]}`;
+};
+
 function AdminDashboard({ onNavigate, role = 'Admin' }) {
   const isSuperAdmin = role === 'SuperAdmin';
   const homePageKey = isSuperAdmin ? 'sa-dashboard' : 'homepage';
@@ -40,6 +57,7 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
 
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const [storageError, setStorageError] = React.useState('');
   const [createError, setCreateError] = React.useState('');
   const [createBusy, setCreateBusy] = React.useState(false);
 
@@ -59,9 +77,29 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
     },
     recentSubmissions: [],
   });
+  const [storage, setStorage] = React.useState({
+    usedBytes: 0,
+    remainingBytes: 0,
+    capacityBytes: 0,
+    usedPercent: 0,
+    fileCount: 0,
+    bucketCount: 0,
+    uploadBytes: 0,
+    uploadFileCount: 0,
+    models: {
+      usedBytes: 0,
+      fileCount: 0,
+      bundledCount: 0,
+      r2CustomCount: 0,
+      totalLibraryCount: 0,
+    },
+  });
 
   const [classOptions, setClassOptions] = React.useState([]);
-  const [modelOptions, setModelOptions] = React.useState(() => getArModelLibrary());
+  const [modelOptions, setModelOptions] = React.useState(() => getArRenderableModelLibrary());
+  const [rubricOptions, setRubricOptions] = React.useState([]);
+  const [rubricOptionsLoading, setRubricOptionsLoading] = React.useState(false);
+  const [rubricOptionsError, setRubricOptionsError] = React.useState('');
 
   const [createDraft, setCreateDraft] = React.useState({
     title: '',
@@ -71,6 +109,7 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
     instructions: '',
     modelId: DEFAULT_MODEL_ID,
     puzzlePieces: DEFAULT_PUZZLE_PIECES,
+    rubricId: '',
   });
 
   const closeAllModals = React.useCallback(() => {
@@ -89,7 +128,7 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
   }, [closeAllModals]);
 
   React.useEffect(() => {
-    const refreshModels = () => setModelOptions(getArModelLibrary());
+    const refreshModels = () => setModelOptions(getArRenderableModelLibrary());
     window.addEventListener(AR_MODEL_LIBRARY_UPDATED_EVENT, refreshModels);
     return () => window.removeEventListener(AR_MODEL_LIBRARY_UPDATED_EVENT, refreshModels);
   }, []);
@@ -97,10 +136,12 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
   const loadData = React.useCallback(async () => {
     setLoading(true);
     setError('');
+    setStorageError('');
 
-    const [dashboardResult, classesResult] = await Promise.all([
+    const [dashboardResult, classesResult, storageResult] = await Promise.all([
       fetchAdminDashboardData(),
       fetchClassDirectory(),
+      fetchAdminStorageUsage(),
     ]);
 
     if (!dashboardResult.success) {
@@ -122,12 +163,46 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
       }
     }
 
+    if (storageResult.success) {
+      setStorage(storageResult.data);
+    } else {
+      setStorageError(storageResult.error || 'Storage usage is unavailable.');
+    }
+
     setLoading(false);
   }, []);
 
   React.useEffect(() => {
     loadData();
   }, [loadData]);
+
+  React.useEffect(() => {
+    const selectedClass = classOptions.find((row) => row.id === createDraft.classId);
+    if (!isCreateOpen || !selectedClass?.teacher_id) {
+      setRubricOptions([]);
+      setRubricOptionsError('');
+      setRubricOptionsLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setRubricOptionsLoading(true);
+    setRubricOptionsError('');
+    getActivityRubricOptions(selectedClass.teacher_id).then((result) => {
+      if (cancelled) return;
+      setRubricOptionsLoading(false);
+      if (!result.success) {
+        setRubricOptions([]);
+        setRubricOptionsError(result.error || 'Could not load this teacher’s rubrics.');
+        return;
+      }
+      setRubricOptions(result.data);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [classOptions, createDraft.classId, isCreateOpen]);
 
   const resetCreateForm = React.useCallback(() => {
     setCreateDraft({
@@ -138,6 +213,7 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
       instructions: '',
       modelId: DEFAULT_MODEL_ID,
       puzzlePieces: DEFAULT_PUZZLE_PIECES,
+      rubricId: '',
     });
     setCreateError('');
   }, [classOptions]);
@@ -176,6 +252,7 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
       dueDate: createDraft.dueDate || null,
       modelId: createDraft.modelId,
       puzzlePieces: createDraft.puzzlePieces,
+      rubricId: createDraft.rubricId || null,
       allowedObjectIds: ['cube', 'sphere', 'cone', 'cylinder'],
     });
 
@@ -199,7 +276,6 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
       className="page-homepage"
       homePageKey={homePageKey}
       showAudit={isSuperAdmin}
-      showPasswordResets={isSuperAdmin}
       auditPageKey="audit"
     >
       <header className="dash-header">
@@ -226,6 +302,71 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
           <div className="stat-label">Pending Reviews</div>
           <div className="stat-value">{dashboard.metrics.pendingReview}</div>
           <div className="stat-meta">Need grading</div>
+        </div>
+      </section>
+
+      <h2 className="dash-h2">3D Model Storage</h2>
+
+      <section className="dash-storage" aria-label="System storage usage">
+        <div className="storage-overview">
+          <div>
+            <div className="storage-eyebrow">Cloudflare R2 model storage</div>
+            <div className="storage-heading">
+              {storageError ? 'Usage unavailable' : `${storage.usedPercent.toFixed(1)}% used`}
+            </div>
+            <div className="storage-description">
+              {storageError
+                ? storageError
+                : `${storage.models.totalLibraryCount.toLocaleString()} AR model${storage.models.totalLibraryCount === 1 ? '' : 's'} shared across administrators, teachers, and students.`}
+            </div>
+          </div>
+          <div className="storage-capacity">
+            <span>Total capacity</span>
+            <strong>{storageError ? '—' : formatStorage(storage.capacityBytes)}</strong>
+          </div>
+        </div>
+
+        <div
+          className="storage-progress"
+          role="progressbar"
+          aria-label="Storage used"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={storageError ? 0 : Math.round(storage.usedPercent)}
+        >
+          <div
+            className="storage-progress-fill"
+            style={{ width: `${storageError ? 0 : storage.usedPercent}%` }}
+          />
+        </div>
+
+        <div className="storage-metrics">
+          <div className="storage-metric storage-metric-models">
+            <span className="storage-metric-dot" aria-hidden="true" />
+            <div>
+              <span>3D model storage</span>
+              <strong>{storageError ? '—' : formatStorage(storage.models.usedBytes)}</strong>
+              {!storageError && (
+                <small>
+                  {storage.models.bundledCount} built-in • {storage.models.r2CustomCount} uploaded
+                </small>
+              )}
+            </div>
+          </div>
+          <div className="storage-metric storage-metric-used">
+            <span className="storage-metric-dot" aria-hidden="true" />
+            <div>
+              <span>Models stored</span>
+              <strong>{storageError ? '—' : storage.models.fileCount.toLocaleString()}</strong>
+            </div>
+          </div>
+          <div className="storage-metric storage-metric-remaining">
+            <span className="storage-metric-dot" aria-hidden="true" />
+            <div>
+              <span>Remaining storage</span>
+              <strong>{storageError ? '—' : formatStorage(storage.remainingBytes)}</strong>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -423,6 +564,7 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
                       setCreateDraft((prev) => ({
                         ...prev,
                         classId: event.target.value,
+                        rubricId: '',
                       }))
                     }
                   >
@@ -433,6 +575,33 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
                       </option>
                     ))}
                   </select>
+                </label>
+
+                <label className="dash-field">
+                  <span>Rubric (Optional)</span>
+                  <select
+                    className="dash-input"
+                    value={createDraft.rubricId}
+                    onChange={(event) =>
+                      setCreateDraft((prev) => ({
+                        ...prev,
+                        rubricId: event.target.value,
+                      }))
+                    }
+                    disabled={rubricOptionsLoading || Boolean(rubricOptionsError)}
+                  >
+                    <option value="">
+                      {rubricOptionsLoading ? 'Loading rubrics...' : 'No rubric'}
+                    </option>
+                    {rubricOptions.map((rubric) => (
+                      <option key={rubric.id} value={rubric.id}>
+                        {rubric.title}
+                      </option>
+                    ))}
+                  </select>
+                  <small className={rubricOptionsError ? 'dash-field-error' : 'dash-field-help'}>
+                    {rubricOptionsError || 'Only rubrics created by the selected class teacher are available.'}
+                  </small>
                 </label>
 
                 <label className="dash-field">

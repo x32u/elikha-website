@@ -1,16 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Navbar from '../../components/Navbar';
 import './Student.css';
 import { getTeacherStudents, getStudentSubmissions, getStudentArtworks } from '../../services/teacherApi';
-import { hasStarRating, normalizeStarRating, starRatingText } from '../../utils/starRating';
-
-const escapeHtml = (value) =>
-  String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
+import { hasStarRating, starRatingText } from '../../utils/starRating';
+import ExcelJS from 'exceljs';
+import { serializeCsvRow } from '../../utils/reportAnalytics';
 
 const Student = () => {
   const [loading, setLoading] = useState(true);
@@ -23,6 +17,8 @@ const Student = () => {
   const [allStudents, setAllStudents] = useState([]);
   const [studentSubmissions, setStudentSubmissions] = useState([]);
   const [studentArtworks, setStudentArtworks] = useState([]);
+  const [exporting, setExporting] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
 
   const formatDate = (value, fallback = 'No due date') => {
     if (!value) return fallback;
@@ -68,7 +64,7 @@ const Student = () => {
               : 0,
             projectsSubmitted: student.submittedCount || 0,
             pendingCount: student.pendingCount || 0,
-            lateCount: 0 // TODO: Calculate from submissions
+            lateCount: student.lateCount || 0
           };
         });
         console.log('Transformed students:', transformedStudents);
@@ -219,185 +215,208 @@ const Student = () => {
     return item.status || 'N/A';
   };
 
-  const handleExportGradesPdf = () => {
-    if (!selectedStudent) return;
+  const downloadBlob = (blob, fileName) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url; link.download = fileName; link.click();
+    URL.revokeObjectURL(url);
+  };
 
-    const gradeRows = studentSubmissions.map((item) => {
-      const rating = normalizeStarRating(item.score);
-      return {
-        title: item.activity_title || item.activity?.title || 'Untitled',
-        status: getPrintableStatus(item),
-        dueDate: formatDate(item.due_date, 'No due date'),
-        submittedDate: formatDate(item.submitted_at, 'Not submitted'),
-        reviewedDate: formatDate(item.reviewed_at, 'Not reviewed'),
-        rating,
-        ratingText: starRatingText(item.score),
-        feedback: item.feedback || ''
-      };
-    });
+  const exportSectionGrades = async (format) => {
+    if (!filteredAndSortedStudents.length) return;
+    setExporting(true);
+    try {
+      const results = await Promise.all(filteredAndSortedStudents.map(async (student) => {
+        const result = await getStudentSubmissions(student.id);
+        return (result.success ? result.data : []).map((item) => ({
+          'Student Name': student.name, Grade: student.grade, Section: student.section, 'Student ID': student.id,
+          Activity: item.activity_title || item.activity?.title || 'Untitled', Status: getPrintableStatus(item),
+          Due: formatDate(item.due_date, 'No due date'), Submitted: formatDate(item.submitted_at, 'Not submitted'),
+          Reviewed: formatDate(item.reviewed_at, 'Not reviewed'), Rating: starRatingText(item.score), Feedback: item.feedback || '',
+        }));
+      }));
+      const flatRows = results.flat();
+      const activities = [...new Set(flatRows.map((row) => row.Activity))].sort((a, b) => a.localeCompare(b));
+      const rows = filteredAndSortedStudents.map((student) => {
+        const row = { Subject: 'E-Likha Arts and Crafts', 'Student Name': student.name, Grade: student.grade, Section: student.section, 'Student ID': student.id };
+        activities.forEach((activity) => {
+          const submission = flatRows.find((item) => item['Student ID'] === student.id && item.Activity === activity);
+          row[`${activity} — Rating`] = submission?.Rating || 'Not rated';
+          row[`${activity} — Status`] = submission?.Status || 'Not assigned';
+          row[`${activity} — Feedback`] = submission?.Feedback || '';
+        });
+        return row;
+      });
+      const headers = Object.keys(rows[0] || { Subject: '', 'Student Name': '', Grade: '', Section: '', 'Student ID': '' });
+      const filePart = (value) => String(value || '').trim().replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') || 'All';
+      const gradeName = selectedGrade === 'all' ? 'All-Grades' : selectedGrade;
+      const sectionName = selectedSection === 'all' ? 'All-Sections' : selectedSection;
+      const exportDate = new Date().toISOString().slice(0, 10);
+      const fileName = `E-Likha_Arts-and-Crafts_Grades_${filePart(gradeName)}_${filePart(sectionName)}_${exportDate}`;
+      if (format === 'csv') {
+        const csv = [
+          serializeCsvRow(headers),
+          ...rows.map((row) => serializeCsvRow(headers.map((header) => row[header]))),
+        ].join('\r\n');
+        downloadBlob(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }), `${fileName}.csv`);
+      } else {
+        const detailRows = flatRows.map((item) => ({
+          Subject: 'E-Likha Arts and Crafts',
+          'Student Name': item['Student Name'],
+          Grade: item.Grade,
+          Section: item.Section,
+          'Student ID': item['Student ID'],
+          Activity: item.Activity,
+          Rating: item.Rating,
+          Status: item.Status,
+          Due: item.Due,
+          Submitted: item.Submitted,
+          Reviewed: item.Reviewed,
+          Feedback: item.Feedback,
+        }));
+        const detailHeaders = Object.keys(detailRows[0] || { Subject: '', 'Student Name': '', Grade: '', Section: '', 'Student ID': '', Activity: '', Rating: '', Status: '', Due: '', Submitted: '', Reviewed: '', Feedback: '' });
+        const book = new ExcelJS.Workbook();
+        book.creator = 'E-Likha';
+        book.created = new Date();
+        const tableStyle = {
+          theme: 'TableStyleMedium2',
+          showRowStripes: true,
+          showFirstColumn: false,
+          showLastColumn: false,
+        };
+        const addGradeTable = (sheet, name, tableHeaders, tableRows, widths, frozenColumns = 0) => {
+          sheet.views = [{ state: 'frozen', xSplit: frozenColumns, ySplit: 1 }];
+          sheet.addTable({
+            name,
+            ref: 'A1',
+            headerRow: true,
+            totalsRow: false,
+            style: tableStyle,
+            columns: tableHeaders.map((header) => ({ name: header, filterButton: true })),
+            rows: tableRows,
+          });
+          widths.forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
+          sheet.getRow(1).height = 28;
+          sheet.eachRow((row) => {
+            row.alignment = { vertical: 'top', wrapText: true };
+          });
+        };
 
-    const ratedRows = gradeRows.filter((row) => row.rating > 0);
-    const averageRating = ratedRows.length
-      ? (ratedRows.reduce((total, row) => total + row.rating, 0) / ratedRows.length).toFixed(1)
-      : 'N/A';
-    const generatedAt = new Date().toLocaleString();
-    const printWindow = window.open('', '_blank', 'width=980,height=720');
+        const summarySheet = book.addWorksheet('Export Summary');
+        summarySheet.mergeCells('A1:D1');
+        const titleCell = summarySheet.getCell('A1');
+        titleCell.value = 'E-Likha — Section Grade Export';
+        titleCell.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
+        titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1800AD' } };
+        titleCell.alignment = { vertical: 'middle' };
+        summarySheet.getRow(1).height = 30;
+        const reviewedCount = flatRows.filter((item) => item.Status === 'Reviewed').length;
+        const ratedCount = flatRows.filter((item) => item.Rating !== 'Not rated').length;
+        const summaryRows = [
+          ['Subject', 'E-Likha Arts and Crafts'],
+          ['Grade', gradeName],
+          ['Section', sectionName],
+          ['Learners', filteredAndSortedStudents.length],
+          ['Activities', activities.length],
+          ['Submission records', flatRows.length],
+          ['Reviewed records', reviewedCount],
+          ['Rated records', ratedCount],
+          ['Generated', new Date().toLocaleString()],
+        ];
+        summaryRows.forEach((summaryRow, index) => {
+          const row = summarySheet.getRow(index + 3);
+          row.values = summaryRow;
+          row.getCell(1).font = { bold: true, color: { argb: 'FF1800AD' } };
+          row.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E6FF' } };
+        });
+        summarySheet.getCell('A14').value = 'Tip';
+        summarySheet.getCell('A14').font = { bold: true, color: { argb: 'FF1800AD' } };
+        summarySheet.getCell('B14').value = 'Use the filter buttons in the other tabs to quickly view a learner, activity, rating, or submission status.';
+        summarySheet.getCell('B14').alignment = { wrapText: true, vertical: 'top' };
+        summarySheet.getColumn(1).width = 24;
+        summarySheet.getColumn(2).width = 72;
+        summarySheet.getColumn(3).width = 18;
+        summarySheet.getColumn(4).width = 18;
 
-    if (!printWindow) {
-      alert('Please allow popups so the grade PDF can open.');
-      return;
-    }
+        const gradebookSheet = book.addWorksheet('Section Grades');
+        addGradeTable(
+          gradebookSheet,
+          'SectionGradesTable',
+          headers,
+          rows.map((row) => headers.map((header) => row[header] ?? '')),
+          headers.map((header) => (header.includes('Feedback') ? 42 : header.includes('Student') ? 24 : header === 'Subject' ? 28 : 18)),
+          4,
+        );
 
-    const rowsHtml = gradeRows.length
-      ? gradeRows.map((row) => `
-          <tr>
-            <td>${escapeHtml(row.title)}</td>
-            <td>${escapeHtml(row.status)}</td>
-            <td>${escapeHtml(row.dueDate)}</td>
-            <td>${escapeHtml(row.submittedDate)}</td>
-            <td>${escapeHtml(row.reviewedDate)}</td>
-            <td class="rating">${escapeHtml(row.ratingText)}</td>
-            <td>${escapeHtml(row.feedback || '-')}</td>
-          </tr>
-        `).join('')
-      : '<tr><td colspan="7" class="empty">No activities found for this student.</td></tr>';
+        const detailSheet = book.addWorksheet('Submission Details');
+        addGradeTable(
+          detailSheet,
+          'SubmissionDetailsTable',
+          detailHeaders,
+          detailRows.map((row) => detailHeaders.map((header) => row[header] ?? '')),
+          detailHeaders.map((header) => (header === 'Feedback' ? 42 : header.includes('Student') || header === 'Activity' ? 28 : header === 'Subject' ? 28 : 18)),
+          5,
+        );
 
-    printWindow.document.open();
-    printWindow.document.write(`
-      <!doctype html>
-      <html>
-        <head>
-          <title>${escapeHtml(selectedStudent.name)} Grade Report</title>
-          <style>
-            * { box-sizing: border-box; }
-            body {
-              font-family: Arial, sans-serif;
-              color: #111827;
-              margin: 32px;
-              line-height: 1.35;
-            }
-            .header {
-              display: flex;
-              justify-content: space-between;
-              gap: 24px;
-              border-bottom: 3px solid #1800AD;
-              padding-bottom: 18px;
-              margin-bottom: 22px;
-            }
-            h1 { margin: 0 0 8px; font-size: 28px; }
-            p { margin: 4px 0; }
-            .muted { color: #536174; }
-            .summary {
-              display: grid;
-              grid-template-columns: repeat(3, 1fr);
-              gap: 12px;
-              margin: 18px 0 24px;
-            }
-            .summary-card {
-              border: 1px solid #D8DEE9;
-              border-radius: 12px;
-              padding: 14px;
-              background: #F8FAFC;
-            }
-            .summary-value {
-              font-size: 24px;
-              font-weight: 800;
-              margin-top: 4px;
-            }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              font-size: 12px;
-            }
-            th, td {
-              border: 1px solid #D8DEE9;
-              padding: 9px;
-              vertical-align: top;
-              text-align: left;
-            }
-            th {
-              background: #EEF2FF;
-              color: #1800AD;
-              font-size: 11px;
-              text-transform: uppercase;
-              letter-spacing: 0.04em;
-            }
-            .rating {
-              color: #8A6100;
-              font-weight: 800;
-              white-space: nowrap;
-            }
-            .empty {
-              text-align: center;
-              color: #6B7280;
-              padding: 24px;
-            }
-            .footer {
-              margin-top: 24px;
-              color: #6B7280;
-              font-size: 11px;
-            }
-            @media print {
-              body { margin: 18mm; }
-              button { display: none; }
-            }
-          </style>
-        </head>
-        <body>
-          <section class="header">
-            <div>
-              <h1>Student Grade Report</h1>
-              <p><strong>${escapeHtml(selectedStudent.name)}</strong></p>
-              <p class="muted">${escapeHtml(selectedStudent.grade)} - Section ${escapeHtml(selectedStudent.section)}</p>
-              <p class="muted">Student ID: ${escapeHtml(selectedStudent.id)}</p>
-            </div>
-            <div>
-              <p><strong>Generated:</strong></p>
-              <p>${escapeHtml(generatedAt)}</p>
-            </div>
-          </section>
+        const quickView = book.addWorksheet('Quick Grade View');
+        quickView.views = [{ state: 'frozen', ySplit: 6 }];
+        quickView.mergeCells('A1:L1');
+        quickView.getCell('A1').value = 'E-Likha — Section Gradebook';
+        quickView.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
+        quickView.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1800AD' } };
+        quickView.getCell('A1').alignment = { vertical: 'middle' };
+        quickView.getRow(1).height = 30;
+        quickView.getCell('D3').value = 'Subject'; quickView.getCell('E3').value = 'E-Likha Arts and Crafts';
+        quickView.getCell('D4').value = 'Grade'; quickView.getCell('E4').value = gradeName;
+        quickView.getCell('G3').value = 'Section'; quickView.getCell('H3').value = sectionName;
+        quickView.getCell('G4').value = 'Learners'; quickView.getCell('H4').value = filteredAndSortedStudents.length;
+        quickView.getCell('J3').value = 'Activities'; quickView.getCell('K3').value = activities.length;
+        quickView.getCell('J4').value = 'Generated'; quickView.getCell('K4').value = new Date().toLocaleString();
+        ['D3', 'D4', 'G3', 'G4', 'J3', 'J4'].forEach((cell) => {
+          quickView.getCell(cell).font = { bold: true, color: { argb: 'FF1800AD' } };
+        });
 
-          <section class="summary">
-            <div class="summary-card">
-              <p class="muted">Total Activities</p>
-              <div class="summary-value">${gradeRows.length}</div>
-            </div>
-            <div class="summary-card">
-              <p class="muted">Rated Activities</p>
-              <div class="summary-value">${ratedRows.length}</div>
-            </div>
-            <div class="summary-card">
-              <p class="muted">Average Rating</p>
-              <div class="summary-value">${escapeHtml(averageRating)}${averageRating === 'N/A' ? '' : '/5'}</div>
-            </div>
-          </section>
+        quickView.mergeCells('A3:B3');
+        quickView.getCell('A3').value = 'Filter & Sort';
+        quickView.getCell('A3').font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        quickView.getCell('A3').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1800AD' } };
+        quickView.mergeCells('A4:B4');
+        quickView.getCell('A4').value = 'Use the drop-down arrows in the blue column headers below to filter or sort. All records are shown by default.';
+        quickView.getCell('A4').alignment = { wrapText: true, vertical: 'top' };
+        quickView.getCell('A4').font = { italic: true, color: { argb: 'FF4B5563' } };
 
-          <table>
-            <thead>
-              <tr>
-                <th>Activity</th>
-                <th>Status</th>
-                <th>Due</th>
-                <th>Submitted</th>
-                <th>Reviewed</th>
-                <th>Rating</th>
-                <th>Feedback</th>
-              </tr>
-            </thead>
-            <tbody>${rowsHtml}</tbody>
-          </table>
+        detailHeaders.forEach((header, index) => {
+          const cell = quickView.getCell(6, index + 1);
+          cell.value = header;
+          cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1800AD' } };
+          cell.alignment = { wrapText: true, vertical: 'middle' };
+        });
+        quickView.getRow(6).height = 32;
+        detailHeaders.forEach((header, index) => {
+          quickView.getColumn(index + 1).width = header === 'Feedback' ? 42 : header.includes('Student') || header === 'Activity' ? 28 : header === 'Subject' ? 28 : 18;
+        });
+        quickView.addTable({
+          name: 'QuickGradeViewTable',
+          ref: 'A6',
+          headerRow: true,
+          totalsRow: false,
+          style: tableStyle,
+          columns: detailHeaders.map((header) => ({ name: header, filterButton: true })),
+          rows: detailRows.map((row) => detailHeaders.map((header) => row[header] ?? '')),
+        });
+        quickView.eachRow((row) => { row.alignment = { vertical: 'top', wrapText: true }; });
 
-          <p class="footer">Use the browser print dialog and choose "Save as PDF" to export this report.</p>
-          <script>
-            window.onload = function () {
-              window.focus();
-              window.print();
-            };
-          </script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+        summarySheet.state = 'hidden';
+        gradebookSheet.state = 'hidden';
+        detailSheet.state = 'hidden';
+        book.views = [{ activeTab: 3 }];
+
+        const excelBuffer = await book.xlsx.writeBuffer();
+        downloadBlob(new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `${fileName}.xlsx`);
+      }
+    } catch (error) { alert(`Could not export grades: ${error.message || 'Unknown error'}`); }
+    finally { setExporting(false); }
   };
 
   if (selectedStudent) {
@@ -418,11 +437,6 @@ const Student = () => {
                 <h1 className="student-name">{selectedStudent.name}</h1>
                 <p className="student-grade">{selectedStudent.grade} - Section {selectedStudent.section}</p>
                 <p className="student-id">Student ID: {selectedStudent.id}</p>
-              </div>
-              <div className="student-header-actions">
-                <button className="export-grades-btn" type="button" onClick={handleExportGradesPdf}>
-                  Export Grades PDF
-                </button>
               </div>
             </div>
           </section>
@@ -549,8 +563,8 @@ const Student = () => {
       <Navbar />
       <main className="student-page">
         <section className="students-header">
-          <h1 className="students-title">My Students</h1>
-          <p className="students-subtitle">Manage and track {filteredAndSortedStudents.length} of {allStudents.length} students</p>
+          <div><h1 className="students-title">My Students</h1><p className="students-subtitle">Manage and track {filteredAndSortedStudents.length} of {allStudents.length} students</p></div>
+          <div className="section-export"><button type="button" className="export-grades-btn" onClick={() => setExportMenuOpen((open) => !open)} disabled={exporting || !filteredAndSortedStudents.length} aria-haspopup="menu" aria-expanded={exportMenuOpen}>{exporting ? 'Preparing export…' : 'Export Grades'} <span aria-hidden="true">▾</span></button>{exportMenuOpen && <div className="section-export-menu" role="menu"><button type="button" role="menuitem" onClick={() => { setExportMenuOpen(false); exportSectionGrades('csv'); }} disabled={exporting}>Export as CSV</button><button type="button" role="menuitem" onClick={() => { setExportMenuOpen(false); exportSectionGrades('xlsx'); }} disabled={exporting}>Export as Excel</button></div>}</div>
         </section>
 
         {loading ? (
@@ -560,23 +574,29 @@ const Student = () => {
         ) : (
           <>
             {/* Search and Filter Section */}
-            <section className="search-filter-section">
           {/* Search Bar */}
-          <div className="search-container">
-            <div className="search-input-wrapper">
+          <div className="student-search-container">
+            <div className="student-search-input-wrapper">
               <span className="search-icon">🔍</span>
+              <svg className="student-search-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="6.5" />
+                <path d="m16 16 4.2 4.2" />
+              </svg>
               <input
                 type="text"
                 placeholder="Search by name or student ID..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="search-input"
+                className="student-search-input"
               />
               {searchTerm && (
                 <button
-                  className="clear-search-btn"
+                  type="button"
+                  className="student-clear-search-btn"
                   onClick={() => setSearchTerm('')}
+                  aria-label="Clear search"
                 >
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" /></svg>
                   ✕
                 </button>
               )}
@@ -584,7 +604,7 @@ const Student = () => {
           </div>
 
           {/* Filters and Sort */}
-          <div className="filters-container">
+          <div className="student-filters-container">
             {/* Grade Filter */}
             <div className="filter-group">
               <label className="filter-label">Grade:</label>
@@ -647,7 +667,6 @@ const Student = () => {
               </button>
             )}
           </div>
-        </section>
 
         {/* Students Grid */}
         <section className="students-grid">

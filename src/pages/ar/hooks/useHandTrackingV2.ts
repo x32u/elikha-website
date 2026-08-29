@@ -52,7 +52,11 @@ export const CONFIG = {
   
   // Tracking
   handLostTimeoutMs: 250,   // Freeze rotation if hand lost briefly
-  minFingersCurled: 4,      // Fingers needed for fist (4/5)
+  // A thumb can be partly hidden behind the other fingers in a natural fist.
+  // Requiring three curled fingers (including the index) keeps the gesture
+  // reliable for smaller hands and mobile cameras without confusing an open
+  // palm, which has no curled fingers.
+  minFingersCurled: 3,
 };
 
 // ==================== TYPES ====================
@@ -124,6 +128,8 @@ export interface DebugInfo {
 }
 
 export interface HandTrackingStateV2 {
+  status: 'loading' | 'ready' | 'error';
+  error: string;
   isTracking: boolean;
   landmarks: HandLandmarks | null;
   landmarksB: HandLandmarks | null;
@@ -184,15 +190,20 @@ function isFingerCurled(
   mcp: NormalizedLandmark,
   pip: NormalizedLandmark,
   tip: NormalizedLandmark,
-  palmCenter: PalmPosition
+  palmCenter: PalmPosition,
+  mirrorX = true
 ): boolean {
   const tipToMcp = distance3D(tip, mcp);
   const pipToMcp = distance3D(pip, mcp);
   
   // Finger is curled if tip is closer to mcp than pip is
   // Or if tip is very close to palm center
+  // palmCenter is exposed in display space. Convert it back to raw landmark
+  // space before comparing it with MediaPipe's raw tip coordinates; otherwise
+  // a back-camera session can classify a normal hand as a fist (or miss one).
+  const palmX = mirrorX ? 1 - palmCenter.x : palmCenter.x;
   const tipToPalm = Math.sqrt(
-    Math.pow((1 - tip.x) - palmCenter.x, 2) +
+    Math.pow(tip.x - palmX, 2) +
     Math.pow(tip.y - palmCenter.y, 2)
   );
   
@@ -212,15 +223,15 @@ function isThumbCurled(
 }
 
 // Detect fist gesture using finger curl analysis
-function detectFist(landmarks: HandLandmarks): { isFist: boolean; fingersCurled: number } {
-  const palmCenter = calculatePalmCenter(landmarks, null, true);
+function detectFist(landmarks: HandLandmarks, mirrorX = true): { isFist: boolean; fingersCurled: number } {
+  const palmCenter = calculatePalmCenter(landmarks, null, mirrorX);
   
-  const indexCurled = isFingerCurled(landmarks.indexMcp, landmarks.indexPip, landmarks.indexTip, palmCenter);
+  const indexCurled = isFingerCurled(landmarks.indexMcp, landmarks.indexPip, landmarks.indexTip, palmCenter, mirrorX);
   const curled = [
     indexCurled,
-    isFingerCurled(landmarks.middleMcp, landmarks.middlePip, landmarks.middleTip, palmCenter),
-    isFingerCurled(landmarks.ringMcp, landmarks.ringPip, landmarks.ringTip, palmCenter),
-    isFingerCurled(landmarks.pinkyMcp, landmarks.pinkyPip, landmarks.pinkyTip, palmCenter),
+    isFingerCurled(landmarks.middleMcp, landmarks.middlePip, landmarks.middleTip, palmCenter, mirrorX),
+    isFingerCurled(landmarks.ringMcp, landmarks.ringPip, landmarks.ringTip, palmCenter, mirrorX),
+    isFingerCurled(landmarks.pinkyMcp, landmarks.pinkyPip, landmarks.pinkyTip, palmCenter, mirrorX),
     isThumbCurled(landmarks.thumbTip, landmarks.thumbIp, landmarks.indexMcp),
   ];
   
@@ -245,6 +256,8 @@ export function useHandTrackingV2(
   mirrorX = true
 ): HandTrackingStateV2 {
   const [state, setState] = useState<HandTrackingStateV2>({
+    status: 'loading',
+    error: '',
     isTracking: false,
     landmarks: null,
     landmarksB: null,
@@ -456,11 +469,11 @@ export function useHandTrackingV2(
     }
 
     // Detect fist
-    const fistInfo = detectFist(landmarks);
+    const fistInfo = detectFist(landmarks, mirrorX);
     const isPointing = isPointingGesture(landmarks);
     const isFist = fistInfo.isFist && !isPointing;
     const fingersCurled = fistInfo.fingersCurled;
-    const isFistB = landmarksB ? detectFist(landmarksB).isFist : false;
+    const isFistB = landmarksB ? detectFist(landmarksB, mirrorX).isFist : false;
 
     // Zoom detection (two fists)
     const zoomRaw = isFist && isFistB && !!palmCenterB;
@@ -628,6 +641,8 @@ export function useHandTrackingV2(
     lastTargetQuatRef.current.copy(targetQuat);
 
     setState({
+      status: 'ready',
+      error: '',
       isTracking: true,
       landmarks,
       landmarksB,
@@ -666,7 +681,7 @@ export function useHandTrackingV2(
       },
       targetQuaternion: targetQuat,
     });
-  }, []);
+  }, [mirrorX]);
 
   // Initialize HandLandmarker
   useEffect(() => {
@@ -706,6 +721,11 @@ export function useHandTrackingV2(
 
         if (!cancelled) {
           handLandmarkerRef.current = handLandmarker;
+          setState((previous) => ({
+            ...previous,
+            status: 'ready',
+            error: '',
+          }));
         } else {
           handLandmarker.close();
         }
@@ -713,6 +733,8 @@ export function useHandTrackingV2(
         console.error('Failed to initialize HandLandmarker:', error);
         setState(prev => ({
           ...prev,
+          status: 'error',
+          error: 'Hand tracking could not start on this device.',
           isTracking: false,
           landmarks: null,
           landmarksB: null,
@@ -740,8 +762,11 @@ export function useHandTrackingV2(
 
     const video = videoRef.current;
     let lastVideoTime = -1;
+    let active = true;
+    let detectionFailed = false;
 
     function detectFrame() {
+      if (!active || detectionFailed) return;
       if (!handLandmarkerRef.current || !video || video.readyState < 2) {
         animationFrameRef.current = requestAnimationFrame(detectFrame);
         return;
@@ -758,6 +783,16 @@ export function useHandTrackingV2(
           processResults(result, timestamp);
         } catch (error) {
           console.error('Hand detection error:', error);
+          detectionFailed = true;
+          setState((previous) => ({
+            ...previous,
+            status: 'error',
+            error: 'Hand tracking stopped unexpectedly. Reopen the activity to try again.',
+            isTracking: false,
+            landmarks: null,
+            landmarksB: null,
+          }));
+          return;
         }
       }
 
@@ -776,6 +811,8 @@ export function useHandTrackingV2(
     startDetection();
 
     return () => {
+      active = false;
+      video.removeEventListener('loadeddata', detectFrame);
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }

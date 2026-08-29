@@ -9,9 +9,10 @@ experiences for elementary learners.
 - Student activities with step-by-step and voice-assisted guidance
 - Web-based augmented-reality activities and manipulable 3D models
 - Class, activity, submission, and review workflows for teachers
+- Groq-assisted AR submission checking based on each activity's teacher-created rubric
 - Role-specific administration for students, teachers, admins, and super admins
-- Progress, notification, settings, audit, and password-reset workflows
-- Supabase authentication, storage, and application data
+- Progress, database-backed parent notifications, settings, audit, and direct email-OTP password recovery
+- Supabase authentication and application data, with Cloudflare R2 model storage
 
 ## Technology
 
@@ -55,17 +56,106 @@ The application will be available at `http://localhost:3000`.
 | `REACT_APP_SUPABASE_ANON_KEY` | Yes | Public anonymous client key; access must still be protected by RLS |
 | `REACT_APP_SITE_URL` | No | Base URL used when constructing password-reset redirects |
 | `REACT_APP_PASSWORD_RESET_REDIRECT_URL` | No | Explicit password-reset destination |
+| `REACT_APP_R2_MODEL_API_URL` | Yes for shared models | Deployed Cloudflare R2 model Worker URL; enables the shared library and real storage metrics |
 
 Never commit `.env` files or Supabase service-role keys. The browser application
 must only use the anonymous client key with appropriate Row Level Security
 policies.
 
+### Cloudflare R2 model storage
+
+The shared model library and administrator storage dashboard read real object
+usage from `cloudflare/r2-models-worker`. The Worker enforces the configured 1
+GiB application capacity for model binaries and a 50 MiB limit per model. It
+stores `.obj`, `.3ds`, `.glb`, and `.blend`; Blender files are source files and
+must be converted to `.glb` before use in browser AR.
+
+Set `REACT_APP_R2_MODEL_API_URL` to the deployed Worker URL before building the
+web app. See `cloudflare/r2-models-worker/README.md` for its R2 binding, secret,
+CORS, local-development, and release checklist.
+
 ## Database setup
 
 The `database/` directory contains SQL migrations and policy helpers for user
-profiles, class administration, gesture alerts, settings, password resets,
+profiles, class administration, gesture alerts, settings,
 parent/student links, and activity thumbnails. Review each script against the
 target Supabase project before applying it.
+
+### Password reset email OTP
+
+Forgotten passwords no longer require administrator approval. The browser calls
+Supabase Auth directly to send a recovery email, verifies the code with recovery
+OTP type, lets the verified account choose a new password, then revokes its
+sessions. Responses do not reveal whether an email address is registered.
+
+The hosted Supabase project must be configured before this works end to end:
+
+1. Open **Authentication → Email Templates → Reset Password**.
+2. Set the subject to `Your e-Likha password reset code`.
+3. Copy the contents of `supabase/templates/recovery.html` into the template.
+   The important placeholder is `{{ .Token }}`. A template containing only
+   `{{ .ConfirmationURL }}` sends a link and will not supply the 6-digit code
+   expected by this screen.
+4. Under **Authentication → Sign In / Providers → Email**, keep email OTP length
+   at `6`, choose an appropriate expiry (the local configuration uses one hour),
+   and retain Supabase's per-address resend delay. The UI also enforces a
+   60-second resend countdown and stops after five failed attempts until a new
+   code is requested.
+5. The shared E-Likha project has applied
+   `supabase/migrations/20260813125601_retire_password_reset_approvals.sql`.
+   Apply it to any other Supabase environment only after review. It preserves
+   historical request rows while revoking the old browser approval RPC/table
+   access and dropping its obsolete notification trigger.
+
+The local Supabase template and OTP settings are recorded in
+`supabase/config.toml`. Hosted projects must be configured in the Dashboard;
+local template files are not pushed to hosted Auth automatically. Supabase's
+built-in mailer is only for testing: it sends only to addresses belonging to
+the project's organization team and is heavily rate-limited. Configure custom
+SMTP before testing with real student, teacher, or parent addresses. New Free
+plan projects may also require custom SMTP before Auth email templates can be
+customized.
+
+### Parent notifications and email
+
+The parent notification center stores assignment, grade, due, missing-work,
+linked-student, and registration events in Supabase with recipient-scoped Row
+Level Security. Historical password-approval notices remain preserved, but the
+approval workflow is retired. Apply
+`supabase/migrations/20260813063502_parent_notifications.sql` before opening the
+notification screen.
+
+Transactional delivery lives in the separate
+`cloudflare/notifications-worker` project. Its README contains the sender-domain,
+secret, Cron, and Supabase Auth Send Email Hook setup. Do not deploy it until a
+Cloudflare DNS domain has completed Email Sending onboarding. Required OTP,
+recovery, and security emails are never controlled by optional parent alert
+preferences.
+
+### Groq AR checking
+
+Groq runs in the `grade-ar-submission` Supabase Edge Function; its API key is
+never placed in the React bundle.
+
+1. Apply `database/rubrics.sql`, then
+   `database/ai_submission_grading.sql` in the Supabase SQL editor.
+2. Add `GROQ_API_KEY` as a Supabase Edge Function secret. Optionally set
+   `GROQ_MODEL`; it defaults to the multimodal `qwen/qwen3.6-27b` model.
+   During migration, the function uses `GEMINI_API_KEY` as a fallback only when
+   no Groq key is configured.
+3. Deploy the function:
+
+   ```bash
+   supabase functions deploy grade-ar-submission
+   ```
+
+When a student submits an AR activity, the app starts the check automatically.
+The result is saved privately and shown in the teacher review modal with
+criterion-level evidence. Teachers can accept, edit, or ignore the suggestion;
+only **Submit Review** publishes the final rating.
+
+Do not add `GROQ_API_KEY` to `.env`, `.env.local`, or any variable beginning
+with `REACT_APP_`, because those values are shipped to the browser.
 
 ## Commands
 

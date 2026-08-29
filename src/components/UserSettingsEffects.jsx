@@ -49,7 +49,9 @@ export default function UserSettingsEffects() {
   const location = useLocation();
   const audioContextRef = useRef(null);
   const latestSettingsRef = useRef(settings);
-  const isActivitySession = /^\/(?:mobile\/)?activity\/[^/]+\/start\/?$/.test(location.pathname);
+  const isArSession =
+    /^\/(?:mobile\/)?activity\/[^/]+\/start\/?$/.test(location.pathname) ||
+    /^\/sandbox\/?$/.test(location.pathname);
 
   useEffect(() => {
     latestSettingsRef.current = settings;
@@ -58,7 +60,7 @@ export default function UserSettingsEffects() {
   }, [settings]);
 
   useEffect(() => {
-    const canPlayAudio = settings.backgroundMusic && !isActivitySession && MUSIC_TRACKS.length;
+    const canPlayAudio = settings.backgroundMusic && !isArSession && MUSIC_TRACKS.length;
     if (!canPlayAudio) return undefined;
 
     const player = new Audio();
@@ -124,7 +126,7 @@ export default function UserSettingsEffects() {
       player.pause();
       player.src = '';
     };
-  }, [settings.backgroundMusic, isActivitySession]);
+  }, [settings.backgroundMusic, isArSession]);
 
   useEffect(() => {
     const handleFirstInteraction = () => {

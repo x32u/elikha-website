@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Header from '../../components/Header';
 import Navbar from '../../components/Navbar';
 import { getStudentActivities } from '../../services/studentApi';
 import { useStoredUserSettings } from '../../hooks/useStoredUserSettings';
@@ -100,7 +99,6 @@ const Activities = () => {
   if (loading) {
     return (
       <div className="activities-page-container student-shell">
-        <Header />
         <main className="activities-page">
           <div className="activities-header">
             <h1 className="page-title">Activities</h1>
@@ -117,15 +115,13 @@ const Activities = () => {
 
   return (
     <div className="activities-page-container student-shell">
-      <Header />
       <main className="activities-page">
         <div className="activities-header">
           <h1 className="page-title">Activities</h1>
         </div>
 
         {/* Filter Tabs */}
-        <div className="filter-section">
-          <div className="filter-tabs">
+        <div className="filter-tabs">
             <button
               className={`filter-tab ${activeFilter === 'upcoming' ? 'active' : ''}`}
               onClick={() => setActiveFilter('upcoming')}
@@ -144,7 +140,6 @@ const Activities = () => {
             >
               Completed
             </button>
-          </div>
         </div>
 
         {error && (

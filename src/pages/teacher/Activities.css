@@ -5,6 +5,19 @@
   margin-left: 120px;
 }
 
+/* Hide the browser-side scrollbar without disabling page scrolling. */
+html:has(.teacher-page .assignments-list) {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  scrollbar-width: none;
+}
+
+html:has(.teacher-page .assignments-list)::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 .teacher-content {
   max-width: 1200px;
   margin: 0 auto;
@@ -139,6 +152,60 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.assignment-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.pagination-pages {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pagination-button,
+.pagination-page {
+  border: 1px solid #d7dfff;
+  background: #ffffff;
+  color: #244dcc;
+  font-family: 'Nunito', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.pagination-button {
+  padding: 8px 13px;
+  border-radius: 8px;
+}
+
+.pagination-page {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+}
+
+.pagination-button:hover:not(:disabled),
+.pagination-page:hover:not(.active) {
+  background: #eef2ff;
+  border-color: #91a8ff;
+}
+
+.pagination-page.active {
+  background: #2100b7;
+  border-color: #2100b7;
+  color: #ffffff;
+}
+
+.pagination-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .assignment-card {

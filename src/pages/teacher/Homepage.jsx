@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import {
@@ -7,6 +7,7 @@ import {
   getRecentSubmissions
 } from '../../services/teacherApi';
 import { formatClassLabel } from '../../utils/classLabels';
+import { formatTimeAgo } from '../../utils/dateDisplay';
 import './Homepage.css';
 
 const Homepage = () => {
@@ -17,32 +18,7 @@ const Homepage = () => {
   const [summary, setSummary] = useState([]);
   const [recentSubmissions, setRecentSubmissions] = useState([]);
 
-  useEffect(() => {
-    loadDashboardData();
-  }, []);
-
-  const loadDashboardData = async () => {
-    try {
-      setLoading(true);
-      const userInfo = JSON.parse(sessionStorage.getItem('userInfo') || '{}');
-      
-      // Use user info directly
-      setTeacher({ name: userInfo.name || 'Teacher' });
-      
-      // Load data with user ID
-      await Promise.all([
-        loadClasses(userInfo.id),
-        loadStats(userInfo.id),
-        loadSubmissions(userInfo.id)
-      ]);
-    } catch (error) {
-      console.error('Error loading dashboard:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadClasses = async (tid) => {
+  const loadClasses = useCallback(async (tid) => {
     const result = await getTeacherClasses(tid);
     if (result.success) {
       // Add pending count (would need to calculate from submissions)
@@ -54,10 +30,10 @@ const Homepage = () => {
       }));
       setClasses(classesWithPending);
     }
-  };
+  }, []);
 
-  const loadStats = async (tid) => {
-      const result = await getDashboardStats(tid);
+  const loadStats = useCallback(async (tid) => {
+    const result = await getDashboardStats(tid);
     if (result.success) {
       setSummary([
         { id: 'students', label: 'Total Students', value: result.data.totalStudents, route: '/students' },
@@ -66,9 +42,9 @@ const Homepage = () => {
         { id: 'alerts', label: 'Parent Alerts', value: result.data.parentAlerts, route: '/notifications' }
       ]);
     }
-  };
+  }, []);
 
-  const loadSubmissions = async (tid) => {
+  const loadSubmissions = useCallback(async (tid) => {
     const result = await getRecentSubmissions(tid, 3);
     if (result.success) {
       const formatted = result.data.map((sub) => {
@@ -88,19 +64,29 @@ const Homepage = () => {
       });
       setRecentSubmissions(formatted);
     }
-  };
+  }, []);
 
-  const formatTimeAgo = (dateString) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-    
-    if (diffMins < 60) return `${diffMins}m ago`;
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return 'Today';
-  };
+  const loadDashboardData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const userInfo = JSON.parse(sessionStorage.getItem('userInfo') || '{}');
+
+      setTeacher({ name: userInfo.name || 'Teacher' });
+      await Promise.all([
+        loadClasses(userInfo.id),
+        loadStats(userInfo.id),
+        loadSubmissions(userInfo.id)
+      ]);
+    } catch (error) {
+      console.error('Error loading dashboard:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [loadClasses, loadStats, loadSubmissions]);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
 
   if (loading) {
     return (
@@ -126,8 +112,7 @@ const Homepage = () => {
         </header>
 
         <div className="f-layout">
-          <aside className="f-sidebar">
-            <section className="panel">
+          <section className="panel dashboard-panel--classes">
               <div className="panel__header">
                 <h2>Classes</h2>
                 <button className="link-btn" type="button" onClick={() => navigate('/classes')}>Manage classes</button>
@@ -159,9 +144,9 @@ const Homepage = () => {
                   ))
                 )}
               </div>
-            </section>
+          </section>
 
-            <section className="panel">
+          <section className="panel dashboard-panel--summary">
               <div className="panel__header">
                 <h2>Summary</h2>
               </div>
@@ -178,11 +163,9 @@ const Homepage = () => {
                   </button>
                 ))}
               </div>
-            </section>
-          </aside>
+          </section>
 
-          <main className="f-main">
-            <section className="panel">
+          <section className="panel dashboard-panel--submissions">
               <div className="panel__header">
                 <h2>Recent Submissions</h2>
                 <button className="link-btn" type="button" onClick={() => navigate('/reviews')}>View all</button>
@@ -207,8 +190,7 @@ const Homepage = () => {
                   ))
                 )}
               </div>
-            </section>
-          </main>
+          </section>
         </div>
       </div>
     </div>

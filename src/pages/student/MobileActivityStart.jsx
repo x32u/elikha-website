@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import ARApp from '../ar/ARApp';
+import ArPreparationGuide from '../../components/ArPreparationGuide';
+import { supabase } from '../../lib/supabase';
 import { getActivityDetails } from '../../services/studentApi';
-import { DEFAULT_ALLOWED_OBJECT_IDS } from '../../utils/activityArConfig';
+import { buildActivityStartConfig } from '../../utils/activityStartConfig';
 import './ActivityStartWarning.css';
 
 const postToMobileShell = (payload) => {
@@ -21,22 +23,6 @@ const postToMobileShell = (payload) => {
   return false;
 };
 
-const normalizeModelConfigs = (models) => {
-  if (!Array.isArray(models)) return [];
-
-  return models
-    .filter((model) => typeof model?.modelUrl === 'string' && model.modelUrl.trim())
-    .map((model, index) => ({
-      id: model.id || `model-${index}`,
-      label: model.label || `Model ${index + 1}`,
-      modelUrl: model.modelUrl,
-      modelFileType:
-        typeof model.modelFileType === 'string'
-          ? model.modelFileType.trim().toLowerCase()
-          : undefined,
-    }));
-};
-
 const MobileActivityStart = () => {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -44,7 +30,8 @@ const MobileActivityStart = () => {
   const studentId = searchParams.get('studentId') || '';
   const returnUrl = searchParams.get('returnUrl') || '';
   const vrMode = searchParams.get('vr') === '1';
-  const viewMode = searchParams.get('mode') === 'view' || searchParams.get('view') === '1';
+  const requestedViewMode =
+    searchParams.get('mode') === 'view' || searchParams.get('view') === '1';
   const [activity, setActivity] = useState(null);
   const [status, setStatus] = useState({ state: 'loading', message: '' });
   const [safetyAccepted, setSafetyAccepted] = useState(false);
@@ -62,7 +49,29 @@ const MobileActivityStart = () => {
       }
 
       setStatus({ state: 'loading', message: '' });
-      const result = await getActivityDetails(id, studentId);
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (!alive) return;
+
+      const authenticatedUser = authData?.user;
+      if (authError || !authenticatedUser?.id) {
+        setStatus({
+          state: 'error',
+          message:
+            'This AR window does not have a secure signed-in session. Return to the mobile app and sign in again.',
+        });
+        return;
+      }
+
+      if (String(authenticatedUser.id) !== String(studentId)) {
+        setStatus({
+          state: 'error',
+          message:
+            'The signed-in student does not match this AR activity link. Return to the mobile app and reopen the activity.',
+        });
+        return;
+      }
+
+      const result = await getActivityDetails(id, authenticatedUser.id);
       if (!alive) return;
 
       if (!result.success) {
@@ -73,11 +82,27 @@ const MobileActivityStart = () => {
         return;
       }
 
+      if (!result.data?.assignment?.id && !result.data?.is_submitted) {
+        setStatus({
+          state: 'error',
+          message: 'This activity is not assigned to the signed-in student.',
+        });
+        return;
+      }
+
       setActivity(result.data);
       setStatus({ state: 'ready', message: '' });
     };
 
-    loadActivity();
+    loadActivity().catch((error) => {
+      if (!alive) return;
+      console.error('Error loading secure mobile AR activity:', error);
+      setStatus({
+        state: 'error',
+        message:
+          'Unable to verify this mobile AR session. Return to the mobile app and try again.',
+      });
+    });
 
     return () => {
       alive = false;
@@ -109,38 +134,11 @@ const MobileActivityStart = () => {
   const arConfig = useMemo(() => {
     if (!activity) return null;
 
-    const requestedPuzzlePieces = Number(activity.puzzle_pieces || 0);
-    const puzzlePieces =
-      requestedPuzzlePieces === 3 || requestedPuzzlePieces === 4 ? requestedPuzzlePieces : 0;
-    const allowedObjectIds =
-      Array.isArray(activity.allowed_object_ids) && activity.allowed_object_ids.length > 0
-        ? activity.allowed_object_ids
-        : [...DEFAULT_ALLOWED_OBJECT_IDS];
-
-    return {
-      allowedObjectIds,
-      arInstructions: typeof activity.ar_instructions === 'string' ? activity.ar_instructions : '',
-      artworkUrl: typeof activity.image_url === 'string' ? activity.image_url : '',
-      initialPaintState: Array.isArray(activity.paint_state) ? activity.paint_state : [],
-      initialSceneState: Array.isArray(activity.scene_state) ? activity.scene_state : [],
-      initialPuzzleState: Array.isArray(activity.puzzle_state) ? activity.puzzle_state : [],
-      initialModelState: Array.isArray(activity.model_state) ? activity.model_state : [],
-      initialGroupState:
-        activity.group_state && typeof activity.group_state === 'object'
-          ? activity.group_state
-          : null,
-      modelUrl:
-        typeof activity.model_url === 'string' && activity.model_url.trim()
-          ? activity.model_url
-          : undefined,
-      modelFileType:
-        typeof activity.model_file_type === 'string' && activity.model_file_type.trim()
-          ? activity.model_file_type.trim().toLowerCase()
-          : undefined,
-      modelConfigs: normalizeModelConfigs(activity.model_configs),
-      puzzlePieces,
-    };
-  }, [activity]);
+    return buildActivityStartConfig({
+      activity,
+      routeState: requestedViewMode ? { mode: 'view' } : null,
+    });
+  }, [activity, requestedViewMode]);
 
   if (status.state === 'loading') {
     return (
@@ -198,6 +196,7 @@ const MobileActivityStart = () => {
             <li>Take breaks if the screen feels too bright or fast.</li>
             <li>If you have seizures or photosensitivity, ask an adult before continuing.</li>
           </ul>
+          <ArPreparationGuide compact />
           <div className="ar-safety-actions">
             <button
               type="button"
@@ -221,10 +220,10 @@ const MobileActivityStart = () => {
 
   return (
     <ARApp
-      key={`${id}:${studentId}:${viewMode ? 'view' : 'edit'}:${vrMode ? 'vr' : 'mobile'}`}
+      key={`${id}:${studentId}:${arConfig?.viewMode ? 'view' : 'edit'}:${vrMode ? 'vr' : 'mobile'}`}
       activityId={id}
       studentId={studentId}
-      viewMode={viewMode ? 'view' : 'edit'}
+      viewMode={arConfig?.viewMode ? 'view' : 'edit'}
       mobileMode
       vrMode={vrMode}
       artworkUrl={arConfig?.artworkUrl || ''}
@@ -234,12 +233,12 @@ const MobileActivityStart = () => {
       initialPuzzleState={arConfig?.initialPuzzleState || []}
       initialModelState={arConfig?.initialModelState || []}
       initialGroupState={arConfig?.initialGroupState || null}
-      allowedObjectIds={arConfig?.allowedObjectIds || [...DEFAULT_ALLOWED_OBJECT_IDS]}
+      allowedObjectIds={arConfig?.allowedObjectIds || []}
       modelUrl={arConfig?.modelUrl}
       modelFileType={arConfig?.modelFileType}
       modelConfigs={arConfig?.modelConfigs || []}
       puzzlePieces={arConfig?.puzzlePieces || 0}
-      onExit={() => finishMobileSession(viewMode ? 'exit' : 'submitted')}
+      onExit={(reason) => finishMobileSession(reason === 'submitted' ? 'submitted' : 'exit')}
     />
   );
 };

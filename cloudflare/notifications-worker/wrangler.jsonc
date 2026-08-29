@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "elikha-notifications",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-13",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.1
+    }
+  },
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+  "send_email": [
+    {
+      "name": "EMAIL"
+    }
+  ],
+  "vars": {
+    "ENVIRONMENT": "production",
+    "APP_BASE_URL": "https://replace-with-elikha-domain.example",
+    "EMAIL_FROM_ADDRESS": "notifications@replace-with-verified-domain.example",
+    "EMAIL_FROM_NAME": "E-Likha",
+    "MAX_EMAILS_PER_RUN": "20"
+  }
+}

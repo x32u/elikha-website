@@ -2,3 +2,66 @@
   min-height: 100vh;
   background: #FFFFFF;
 }
+
+/* Shared workspace backdrop for teacher and student management pages. */
+.teacher-homepage,
+.teacher-classes,
+.teacher-page,
+.teacher-class-details,
+.page-container,
+.rubrics-page,
+.student-page-container,
+.teacher-notifications {
+  background:
+    radial-gradient(circle at 8% 10%, rgba(255, 184, 108, 0.2) 0, rgba(255, 184, 108, 0) 230px),
+    radial-gradient(circle at 90% 8%, rgba(96, 138, 255, 0.2) 0, rgba(96, 138, 255, 0) 240px),
+    radial-gradient(circle at 70% 92%, rgba(121, 215, 194, 0.14) 0, rgba(121, 215, 194, 0) 260px),
+    #f2f6ff !important;
+}
+.configuration-error {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(226, 91, 100, 0.16), transparent 36%),
+    #fff8f2;
+  color: #2d2421;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+.configuration-error__card {
+  width: min(100%, 560px);
+  padding: 40px;
+  border: 1px solid rgba(87, 62, 52, 0.14);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 24px 70px rgba(77, 48, 38, 0.12);
+}
+
+.configuration-error__eyebrow {
+  color: #c74652;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.configuration-error__card h1 {
+  margin: 12px 0;
+  font-size: clamp(1.8rem, 5vw, 2.6rem);
+  line-height: 1.12;
+}
+
+.configuration-error__card p {
+  margin: 0;
+  color: #6f5e57;
+  line-height: 1.7;
+}
+
+.configuration-error__card code {
+  padding: 0.12em 0.38em;
+  border-radius: 6px;
+  background: #f5eae5;
+  color: #7b3138;
+}

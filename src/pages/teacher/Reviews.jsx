@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import './Reviews.css';
@@ -6,6 +6,19 @@ import { getAllSubmissions, gradeSubmission } from '../../services/teacherApi';
 import { parseArSubmissionDescription } from '../../utils/arSubmission';
 import { parseActivityDescription } from '../../utils/activityArConfig';
 import { hasStarRating, normalizeStarRating, starRatingLabel } from '../../utils/starRating';
+import { getActivityRubric } from '../../services/rubricApi';
+import { getAiSubmissionGrade, requestAiSubmissionGrade } from '../../services/aiGradingApi';
+import { buildTeacherRubricEvidence } from '../../utils/teacherReviewEvidence';
+
+const rubricLevelLabel = (level) => level.code ? `${level.code} — ${level.label || ''}` : `${level.score} pts`;
+const developmentalLevel = (criterion) => {
+  const code = String(criterion?.levelCode || '').toUpperCase();
+  if (code === 'B') return 'Beginning';
+  if (code === 'D') return 'Developing';
+  if (code === 'C') return 'Consistent';
+  return ({ 0: 'Beginning', 1: 'Beginning', 2: 'Developing', 3: 'Consistent', 4: 'Consistent' }[Number(criterion?.score)] || 'Needs teacher review');
+};
+const starRatingDescription = (value) => ({ 5: 'Consistent', 4: 'Developing, approaching Consistent', 3: 'Developing', 2: 'Beginning, with emerging progress', 1: 'Beginning' }[normalizeStarRating(value)] || 'Not rated');
 
 const Reviews = () => {
   const navigate = useNavigate();
@@ -18,6 +31,18 @@ const Reviews = () => {
   const [feedback, setFeedback] = useState('');
   const [submissions, setSubmissions] = useState([]);
   const [grading, setGrading] = useState(false);
+  const [activityRubric, setActivityRubric] = useState(null);
+  const [rubricLoading, setRubricLoading] = useState(false);
+  const [aiEvaluation, setAiEvaluation] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [criterionRatings, setCriterionRatings] = useState([]);
+  const [criterionNotes, setCriterionNotes] = useState([]);
+  const [observationDate, setObservationDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [evidenceUrl, setEvidenceUrl] = useState('');
+  const [nextSteps, setNextSteps] = useState('');
+  const [teacherConfirmed, setTeacherConfirmed] = useState(false);
+  const reviewRequestIdRef = useRef(0);
 
   useEffect(() => {
     loadSubmissions();
@@ -130,38 +155,133 @@ const Reviews = () => {
 
   const filteredSubmissions = submissions.filter(sub => {
     const matchesStatus = filterStatus === 'all' || sub.status === filterStatus;
-    const matchesSearch = 
-      sub.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sub.studentId.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = sub.studentName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesActivity = filterActivity === 'all' || sub.activityTitle === filterActivity;
     
     return matchesStatus && matchesSearch && matchesActivity;
   });
 
-  const handleReview = (submission) => {
+  const handleReview = async (submission) => {
+    const requestId = reviewRequestIdRef.current + 1;
+    reviewRequestIdRef.current = requestId;
     setSelectedSubmission(submission);
     setScore(normalizeStarRating(submission.score) || '');
     setFeedback(submission.feedback || '');
+    setActivityRubric(null);
+    setAiEvaluation(null);
+    setAiLoading(false);
+    setAiError('');
+    setRubricLoading(true);
+
+    const [rubricResult, evaluationResult] = await Promise.all([
+      getActivityRubric(submission.activityId),
+      getAiSubmissionGrade(submission.id),
+    ]);
+
+    if (reviewRequestIdRef.current !== requestId) return;
+
+    const rubric = rubricResult.success ? rubricResult.data : null;
+    setActivityRubric(rubric);
+    setCriterionRatings((rubric?.criteria || []).map(() => ''));
+    setCriterionNotes((rubric?.criteria || []).map(() => ''));
+    setObservationDate(new Date().toISOString().slice(0, 10));
+    setEvidenceUrl(submission.artwork && submission.artwork.startsWith('http') ? submission.artwork : '');
+    setNextSteps('');
+    setTeacherConfirmed(false);
+    setRubricLoading(false);
+
+    if (evaluationResult.success && evaluationResult.data) {
+      setAiEvaluation(evaluationResult.data);
+      if (evaluationResult.data.status === 'failed') {
+        setAiError(evaluationResult.data.error || 'The previous AI check failed.');
+      }
+      return;
+    }
+
+    if (!evaluationResult.success && !evaluationResult.error?.includes('submission_ai_evaluations')) {
+      setAiError(evaluationResult.error);
+    }
+
+    // Automatically check older submissions that predate the submit-time trigger.
+    if (rubric && isImageArtwork(submission.artwork)) {
+      setAiLoading(true);
+      const checkResult = await requestAiSubmissionGrade(submission.id);
+      if (reviewRequestIdRef.current !== requestId) return;
+      setAiLoading(false);
+      if (checkResult.success) {
+        setAiEvaluation(checkResult.data || { status: checkResult.status });
+        setAiError('');
+      } else {
+        setAiError(checkResult.error);
+      }
+    }
+  };
+
+  const handleAiCheck = async (force = false) => {
+    if (!selectedSubmission || !activityRubric) return;
+    const requestId = reviewRequestIdRef.current;
+    const submissionId = selectedSubmission.id;
+
+    setAiLoading(true);
+    setAiError('');
+    const result = await requestAiSubmissionGrade(submissionId, { force });
+    if (reviewRequestIdRef.current !== requestId) return;
+    setAiLoading(false);
+
+    if (result.success) {
+      setAiEvaluation(result.data || { status: result.status });
+      return;
+    }
+
+    setAiError(result.error);
+    setAiEvaluation((current) => current ? { ...current, status: 'failed' } : { status: 'failed' });
+  };
+
+  const useAiSuggestion = () => {
+    if (!aiEvaluation || aiEvaluation.status !== 'completed') return;
+    const suggestedRating = normalizeStarRating(aiEvaluation.suggested_score);
+    if (suggestedRating) setScore(suggestedRating);
+    if (aiEvaluation.feedback) setFeedback(aiEvaluation.feedback);
+    const suggested = (aiEvaluation.criterion_scores || []).map((item) => String(item.levelCode || '').toUpperCase());
+    if (suggested.length === (activityRubric?.criteria || []).length && suggested.every((item) => ['B', 'D', 'C'].includes(item))) setCriterionRatings(suggested);
   };
 
   const handleSubmitReview = async () => {
     const rating = normalizeStarRating(score);
 
     if (!selectedSubmission || !rating) {
-      alert('Please choose a star rating');
+      alert('Please choose an overall rating');
+      return;
+    }
+    if (activityRubric && (!criterionRatings.every((value) => ['B', 'D', 'C', 'NO', 'NA'].includes(value)) || !teacherConfirmed)) {
+      alert('Select a rating for every criterion and confirm that you reviewed the AI draft before submitting.');
       return;
     }
 
     setGrading(true);
     try {
       const userInfo = JSON.parse(sessionStorage.getItem('userInfo') || '{}');
+      const rubricEvidence = buildTeacherRubricEvidence({
+        rubric: activityRubric,
+        submission: selectedSubmission,
+        observerId: userInfo.id,
+        criterionRatings,
+        criterionNotes,
+        observationDate,
+        feedback,
+        evidenceUrl,
+        nextSteps,
+        teacherConfirmed,
+        aiEvaluation,
+      });
       const result = await gradeSubmission(selectedSubmission.id, userInfo.id, {
         score: rating,
         feedback: feedback || '',
         status: 'reviewed'
-      });
+      }, rubricEvidence);
 
       if (result.success) {
+        reviewRequestIdRef.current += 1;
         setSubmissions(prev => prev.map(sub => 
           sub.id === selectedSubmission.id 
             ? { ...sub, score: rating, feedback, status: 'reviewed' }
@@ -176,14 +296,21 @@ const Reviews = () => {
       }
     } catch (error) {
       console.error('Error grading submission:', error);
-      alert('Failed to submit grade');
+      alert(error?.message || 'Failed to submit grade');
     } finally {
       setGrading(false);
     }
   };
 
   const handleCloseReview = () => {
+    reviewRequestIdRef.current += 1;
     setSelectedSubmission(null);
+    setActivityRubric(null);
+    setRubricLoading(false);
+    setAiEvaluation(null);
+    setAiLoading(false);
+    setAiError('');
+    setCriterionRatings([]); setCriterionNotes([]); setEvidenceUrl(''); setNextSteps(''); setTeacherConfirmed(false);
     setScore('');
     setFeedback('');
   };
@@ -204,32 +331,40 @@ const Reviews = () => {
         ) : (
           <>
             {/* Search and Filter Section */}
-            <div className="search-filter-section">
-          <div className="search-container">
-            <span className="search-icon">🔍</span>
+            <div className="reviews-filter-panel">
+          <label className="reviews-search-field">
+            <span>Search submissions</span>
+            <svg className="reviews-search-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="6.5" />
+              <path d="m16 16 4.2 4.2" />
+            </svg>
             <input
               type="text"
-              placeholder="Search by student name or ID..."
+              placeholder="Student name..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="search-input"
+              className="reviews-search-input"
             />
             {searchTerm && (
               <button
-                className="clear-search-btn"
+                type="button"
+                className="reviews-clear-search"
                 onClick={() => setSearchTerm('')}
+                aria-label="Clear search"
               >
-                ✕
+                <svg className="reviews-clear-svg" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m7 7 10 10M17 7 7 17" />
+                </svg>
               </button>
             )}
-          </div>
+          </label>
 
-          <div className="filter-activity">
-            <label>Activity:</label>
+          <label className="reviews-activity-filter">
+            <span>Activity</span>
             <select
               value={filterActivity}
               onChange={(e) => setFilterActivity(e.target.value)}
-              className="activity-select"
+              className="reviews-activity-select"
             >
               {uniqueActivities.map(activity => (
                 <option key={activity} value={activity}>
@@ -237,7 +372,7 @@ const Reviews = () => {
                 </option>
               ))}
             </select>
-          </div>
+          </label>
         </div>
 
         {/* Filter Tabs */}
@@ -297,7 +432,6 @@ const Reviews = () => {
                   <div className="submission-header">
                     <div>
                       <h3 className="submission-student">{submission.studentName}</h3>
-                      <p className="submission-id">{submission.studentId}</p>
                     </div>
                     <span className={`status-badge ${getStatusBadge(submission.status).class}`}>
                       {getStatusBadge(submission.status).label}
@@ -400,10 +534,164 @@ const Reviews = () => {
                     <p className="modal-description">{selectedSubmission.description}</p>
                   )}
                 </div>
-                
+
+                {rubricLoading && (
+                  <section className="rubric-guidance">
+                    <span>Loading rubric</span>
+                    <p>Checking which teacher-created rubric belongs to this activity...</p>
+                  </section>
+                )}
+
+                {!rubricLoading && !activityRubric && (
+                  <section className="rubric-guidance rubric-guidance--missing">
+                    <span>Rubric required</span>
+                    <h3>No rubric is attached</h3>
+                    <p>Attach a rubric to this activity before asking AI to suggest a score.</p>
+                  </section>
+                )}
+
+                {activityRubric && (
+                  <section className="rubric-guidance" aria-label="AI grading rubric">
+                    <span>Teacher observation guide</span>
+                    <h3>{activityRubric.title}</h3>
+                    <p>The AR snapshot and saved activity state are compared with these levels. The teacher confirms any final feedback.</p>
+                    <ul>{(activityRubric.criteria || []).map((criterion, index) => (
+                      <li key={index}>
+                        <strong>{criterion.name}</strong>
+                        <ul>{(criterion.levels || [{ score: criterion.points, description: criterion.guideline }]).map((level, levelIndex) => <li key={levelIndex}>{rubricLevelLabel(level)}: {level.description}</li>)}</ul>
+                      </li>
+                    ))}</ul>
+                  </section>
+                )}
+
+                {activityRubric && (
+                  <section className="ai-evaluation" aria-label="AI rubric evaluation">
+                    <div className="ai-evaluation__header">
+                      <div>
+                        <span className="ai-evaluation__eyebrow">AI rubric check</span>
+                        <h3>Draft observation</h3>
+                      </div>
+                      {aiEvaluation?.status === 'completed' && !aiLoading && (
+                        <span className="ai-status ai-status--completed">Ready</span>
+                      )}
+                      {aiLoading && <span className="ai-status ai-status--processing">Checking...</span>}
+                    </div>
+
+                    {aiLoading && (
+                      <div className="ai-loading" role="status">
+                        <span className="ai-loading__spinner" aria-hidden="true" />
+                        AI is comparing the submitted snapshot with every rubric level. This may take a moment.
+                      </div>
+                    )}
+
+                    {aiError && !aiLoading && (
+                      <div className="ai-error" role="alert">
+                        <strong>AI check unavailable</strong>
+                        <p>{aiError}</p>
+                      </div>
+                    )}
+
+                    {!aiLoading && aiEvaluation?.status === 'processing' && (
+                      <div className="ai-loading" role="status">
+                        The submission is already being checked. Reopen this review shortly to see the result.
+                      </div>
+                    )}
+
+                    {!aiLoading && aiEvaluation?.status === 'completed' && (
+                      <div className="ai-result">
+                        <div className="ai-result__score">
+                          <div><span>Rubric-equivalent star rating</span>{renderStars(aiEvaluation.suggested_score)}<small>{starRatingDescription(aiEvaluation.suggested_score)}</small></div>
+                          <strong>Teacher confirmation required</strong>
+                        </div>
+
+                        {aiEvaluation.summary && <p className="ai-result__summary">{aiEvaluation.summary}</p>}
+
+                        {aiEvaluation.color_suggestion?.message && (
+                          <div className="ai-color-suggestion">
+                            <strong>Student color suggestion</strong>
+                            <p>{aiEvaluation.color_suggestion.message}</p>
+                            {Array.isArray(aiEvaluation.color_suggestion.colors) && aiEvaluation.color_suggestion.colors.length > 0 && (
+                              <div>{aiEvaluation.color_suggestion.colors.map((color, index) => (
+                                <span key={`${color?.name || 'color'}-${color?.hex || index}`}>
+                                  <i style={{ backgroundColor: color?.hex }} aria-hidden="true" />
+                                  {color?.name || color?.hex}
+                                </span>
+                              ))}</div>
+                            )}
+                            {aiEvaluation.color_suggestion.rationale && <small>{aiEvaluation.color_suggestion.rationale}</small>}
+                          </div>
+                        )}
+
+                        <div className="ai-criteria">
+                          {(aiEvaluation.criterion_scores || []).map((criterion, index) => (
+                            <article className="ai-criterion" key={`${criterion.criterionName || 'criterion'}-${index}`}>
+                              <div className="ai-criterion__heading">
+                                <strong>{criterion.criterionName}</strong>
+                                <span>{developmentalLevel(criterion)}</span>
+                              </div>
+                              <p>{criterion.evidence || criterion.levelDescription}</p>
+                              <small>Confidence: {criterion.confidence || 'low'}</small>
+                            </article>
+                          ))}
+                        </div>
+
+                        {aiEvaluation.teacher_note && (
+                          <p className="ai-teacher-note">
+                            <strong>Teacher note:</strong> {aiEvaluation.teacher_note}
+                          </p>
+                        )}
+
+                        <div className="ai-result__actions">
+                          <button type="button" className="ai-use-btn" onClick={useAiSuggestion}>
+                            Use rubric equivalent
+                          </button>
+                          <button type="button" className="ai-recheck-btn" onClick={() => handleAiCheck(true)}>
+                            Recheck with AI
+                          </button>
+                        </div>
+                        <p className="ai-disclaimer">This snapshot is one observation only. Do not use it alone to decide whether a learner is Consistent.</p>
+                      </div>
+                    )}
+
+                    {!aiLoading && aiEvaluation?.status !== 'completed' && aiEvaluation?.status !== 'processing' && (
+                      <button
+                        type="button"
+                        className="ai-run-btn"
+                        onClick={() => handleAiCheck(Boolean(aiEvaluation))}
+                        disabled={!isImageArtwork(selectedSubmission.artwork)}
+                      >
+                        {aiEvaluation ? 'Try AI check again' : 'Check with AI'}
+                      </button>
+                    )}
+                  </section>
+                )}
+
+                {activityRubric && (
+                  <section className="teacher-observation" aria-label="Teacher rubric observation">
+                    <span>Teacher assessment</span>
+                    <h3>Confirm each observed criterion</h3>
+                    <p>AI suggestions are optional drafts. Select, correct, or mark NO/NA for every criterion before saving.</p>
+                    {(activityRubric.criteria || []).map((criterion, index) => (
+                      <article className="teacher-observation__criterion" key={`${criterion.name}-${index}`}>
+                        <strong>{criterion.name}</strong>
+                        <div className="criterion-rating-options" role="radiogroup" aria-label={`${criterion.name} rating`}>
+                          {['B', 'D', 'C', 'NO', 'NA'].map((value) => <button type="button" key={value} className={criterionRatings[index] === value ? 'active' : ''} onClick={() => setCriterionRatings((items) => items.map((item, itemIndex) => itemIndex === index ? value : item))}>{value}</button>)}
+                        </div>
+                        <textarea value={criterionNotes[index] || ''} onChange={(event) => setCriterionNotes((items) => items.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder="Optional teacher note or visible evidence for this criterion" rows="2" />
+                      </article>
+                    ))}
+                    <div className="observation-details">
+                      <label>Observation date<input type="date" value={observationDate} onChange={(event) => setObservationDate(event.target.value)} /></label>
+                      <label>Evidence link / snapshot reference<input type="url" value={evidenceUrl} onChange={(event) => setEvidenceUrl(event.target.value)} placeholder="https://..." /></label>
+                    </div>
+                    <label>Next-step support<textarea value={nextSteps} onChange={(event) => setNextSteps(event.target.value)} placeholder="What support or follow-up will help this learner next?" rows="3" /></label>
+                    <label className="teacher-confirmation"><input type="checkbox" checked={teacherConfirmed} onChange={(event) => setTeacherConfirmed(event.target.checked)} /> I reviewed every criterion and made the final teacher decision.</label>
+                  </section>
+                )}
+
                 <div className="modal-form">
                   <div className="form-group">
-                    <label>Rating</label>
+                    <label>Overall teacher rating</label>
                     <div className="star-rating" role="radiogroup" aria-label="Student rating">
                       {[1, 2, 3, 4, 5].map((star) => (
                         <button
@@ -419,7 +707,7 @@ const Reviews = () => {
                         </button>
                       ))}
                       <span className="rating-hint">
-                        {score ? starRatingLabel(score) : 'Choose 1-5 stars'}
+                        {score ? starRatingLabel(score) : 'Choose an overall rating'}
                       </span>
                     </div>
                   </div>

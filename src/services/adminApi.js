@@ -1,6 +1,13 @@
 import { supabase } from '../lib/supabase';
-import { createClient } from '@supabase/supabase-js';
-import { encodeActivityDescription, parseActivityDescription } from '../utils/activityArConfig';
+import {
+  encodeActivityDescription,
+  parseActivityDescription,
+} from '../utils/activityArConfig';
+import { fetchR2StorageUsage } from './r2ModelApi';
+import {
+  aggregateAnalyticsReport,
+  createReportDateRange,
+} from '../utils/reportAnalytics';
 
 const toIso = (value) => {
   const date = value ? new Date(value) : new Date();
@@ -32,11 +39,6 @@ const normalizeSubmissionStatus = (submission) => {
   return raw ? toRoleLabel(raw) : 'Pending Review';
 };
 
-const safeDivide = (numerator, denominator) => {
-  if (!denominator) return 0;
-  return numerator / denominator;
-};
-
 const parseDateSafe = (value) => {
   if (!value) return null;
   const date = new Date(value);
@@ -47,28 +49,16 @@ const parseDateSafe = (value) => {
 const ALLOWED_PLATFORM_ROLES = new Set(['student', 'teacher', 'admin', 'superadmin', 'parent']);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const normalizeAuthCreateError = (error) => {
-  const code = String(error?.code || '').toLowerCase();
-  const message = String(error?.message || '').trim();
-  const lowerMessage = message.toLowerCase();
-
-  if (code === 'over_email_send_rate_limit') {
-    return 'Signup email rate limit reached. Try again later or increase Supabase Auth email rate limit.';
+const readFunctionErrorMessage = async (error, fallback) => {
+  try {
+    const body = await error?.context?.json?.();
+    const message = String(body?.message || body?.error || '').trim();
+    if (message) return message;
+  } catch (_error) {
+    // The Functions client may already have consumed the response body.
   }
 
-  if (code === 'validation_failed' && lowerMessage.includes('email')) {
-    return 'Email format is invalid. Use a valid email like name@example.com.';
-  }
-
-  if (code === 'user_already_exists' || lowerMessage.includes('already registered')) {
-    return 'Email is already registered.';
-  }
-
-  if (lowerMessage.includes('email address') && lowerMessage.includes('invalid')) {
-    return 'Email format is invalid. Use a valid email like name@example.com.';
-  }
-
-  return message || 'Failed to create user account.';
+  return String(error?.message || '').trim() || fallback;
 };
 
 const getWeekKey = (value) => {
@@ -98,24 +88,6 @@ const buildRecentWeekLabels = (count = 6) => {
   }
 
   return labels;
-};
-
-const createIsolatedAuthClient = () => {
-  const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-  const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Supabase environment variables are missing.');
-  }
-
-  return createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-      storageKey: `elikha-admin-create-user-${Date.now()}`,
-    },
-  });
 };
 
 const updateClassStudentCountForAdmin = async (classId) => {
@@ -339,47 +311,39 @@ export const createPlatformUser = async ({ name, email, password, role, classId 
       return { success: false, error: 'Password must be at least 8 characters.' };
     }
 
-    const authClient = createIsolatedAuthClient();
-    const { data: signUpData, error: signUpError } = await authClient.auth.signUp({
-      email: safeEmail,
-      password: safePassword,
-      options: {
-        data: {
+    const { data: functionData, error: functionError } = await supabase.functions.invoke(
+      'manage-platform-user',
+      {
+        body: {
           name: safeName,
+          email: safeEmail,
+          password: safePassword,
           role: safeRole,
         },
-      },
-    });
+      }
+    );
 
-    if (signUpError) {
-      return { success: false, error: normalizeAuthCreateError(signUpError) };
+    if (functionError) {
+      return {
+        success: false,
+        error: await readFunctionErrorMessage(
+          functionError,
+          'Failed to create or restore the user account.'
+        ),
+      };
     }
-    const authUserId = signUpData?.user?.id;
 
-    if (!authUserId) {
-      return { success: false, error: 'User account was not created.' };
+    if (!functionData?.success || !functionData?.user?.id) {
+      return {
+        success: false,
+        error: String(functionData?.message || '').trim()
+          || 'Failed to create or restore the user account.',
+      };
     }
 
-    const { data, error } = await supabase
-      .from('users')
-      .upsert(
-        [
-          {
-            id: authUserId,
-            name: safeName,
-            email: safeEmail,
-            role: safeRole,
-          },
-        ],
-        { onConflict: 'id' }
-      )
-      .select('id, name, email, role, created_at, updated_at')
-      .single();
-
-    if (error) throw error;
-
+    const data = functionData.user;
     let warning = '';
-    if (safeRole === 'student' && safeClassId) {
+    if (String(data.role || '').toLowerCase() === 'student' && safeClassId) {
       const enrollmentResult = await enrollCreatedStudentInClass({
         classId: safeClassId,
         studentId: data.id,
@@ -388,7 +352,7 @@ export const createPlatformUser = async ({ name, email, password, role, classId 
       });
 
       if (!enrollmentResult.success) {
-        warning = `User was created, but class enrollment failed: ${enrollmentResult.error}`;
+        warning = `User account is ready, but class enrollment failed: ${enrollmentResult.error}`;
       }
     }
 
@@ -401,6 +365,8 @@ export const createPlatformUser = async ({ name, email, password, role, classId 
         status_label: 'Active',
         class_id: safeClassId || null,
       },
+      creationStatus: functionData.status || 'created',
+      message: String(functionData.message || '').trim(),
       warning,
     };
   } catch (error) {
@@ -540,6 +506,7 @@ export const fetchClassDirectory = async () => {
     const { data: classes, error: classError } = await supabase
       .from('classes')
       .select('id, name, grade, section, subject, teacher_id, created_at')
+      .eq('is_active', true)
       .order('name', { ascending: true });
 
     if (classError) throw classError;
@@ -918,37 +885,38 @@ export const deleteAdminClassSection = async (classId) => {
       return { success: false, error: 'Class is required.' };
     }
 
-    const { count: studentCount, error: studentError } = await supabase
-      .from('class_students')
-      .select('*', { count: 'exact', head: true })
-      .eq('class_id', safeClassId);
-
-    if (studentError) throw studentError;
-
-    const { count: activityCount, error: activityError } = await supabase
-      .from('activities')
-      .select('*', { count: 'exact', head: true })
-      .eq('class_id', safeClassId);
-
-    if (activityError) throw activityError;
-
-    if ((studentCount || 0) > 0 || (activityCount || 0) > 0) {
-      return {
-        success: false,
-        error: 'Cannot delete a class that already has enrolled students or activities.',
-      };
-    }
-
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('classes')
-      .delete()
-      .eq('id', safeClassId);
+      .update({ is_active: false })
+      .eq('id', safeClassId)
+      .select('id, is_active, disabled_at')
+      .single();
 
     if (error) throw error;
 
-    return { success: true };
+    return { success: true, data };
   } catch (error) {
-    console.error('Error deleting admin class section:', error);
+    console.error('Error disabling admin class section:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const restoreAdminClassSection = async (classId) => {
+  try {
+    const safeClassId = String(classId || '').trim();
+    if (!safeClassId) return { success: false, error: 'Class is required.' };
+
+    const { data, error } = await supabase
+      .from('classes')
+      .update({ is_active: true })
+      .eq('id', safeClassId)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error restoring admin class section:', error);
     return { success: false, error: error.message };
   }
 };
@@ -962,6 +930,7 @@ export const createAdminActivity = async ({
   modelId,
   allowedObjectIds,
   puzzlePieces,
+  rubricId = null,
 }) => {
   try {
     if (!title || !classId) {
@@ -970,7 +939,7 @@ export const createAdminActivity = async ({
 
     const { data: classRow, error: classError } = await supabase
       .from('classes')
-      .select('id, teacher_id, grade, subject')
+      .select('id, teacher_id, grade, subject, is_active')
       .eq('id', classId)
       .single();
 
@@ -979,6 +948,9 @@ export const createAdminActivity = async ({
     if (!classRow?.teacher_id) {
       return { success: false, error: 'Selected class has no assigned teacher' };
     }
+    if (classRow.is_active === false) {
+      return { success: false, error: 'This class is inactive. Restore it before creating activities.' };
+    }
 
     const encodedDescription = encodeActivityDescription(description || '', {
       allowedObjectIds,
@@ -986,48 +958,23 @@ export const createAdminActivity = async ({
       puzzlePieces,
     });
 
-    const { data: activity, error: createError } = await supabase
-      .from('activities')
-      .insert([
-        {
-          teacher_id: classRow.teacher_id,
-          title: title.trim(),
-          description: encodedDescription,
-          class_id: classRow.id,
-          grade: classRow.grade || null,
-          subject: classRow.subject || null,
-          due_date: dueDate ? toIso(dueDate) : null,
-          status: 'active',
-          image_url: imageUrl || null,
-        },
-      ])
-      .select('*')
-      .single();
+    const { data: activity, error: createError } = await supabase.rpc(
+      'create_activity_with_assignments',
+      {
+        p_teacher_id: classRow.teacher_id,
+        p_title: title.trim(),
+        p_description: encodedDescription,
+        p_class_id: classRow.id,
+        p_grade: classRow.grade || null,
+        p_subject: classRow.subject || null,
+        p_due_date: dueDate ? toIso(dueDate) : null,
+        p_status: 'active',
+        p_image_url: imageUrl || null,
+        p_rubric_id: rubricId || null,
+      }
+    );
 
     if (createError) throw createError;
-
-    const { data: students, error: studentError } = await supabase
-      .from('class_students')
-      .select('student_id')
-      .eq('class_id', classRow.id);
-
-    if (studentError) throw studentError;
-
-    const studentIds = [...new Set((students || []).map((row) => row.student_id).filter(Boolean))];
-
-    if (studentIds.length > 0) {
-      const assignments = studentIds.map((studentId) => ({
-        activity_id: activity.id,
-        student_id: studentId,
-        status: 'pending',
-      }));
-
-      const { error: assignError } = await supabase
-        .from('activity_assignments')
-        .insert(assignments);
-
-      if (assignError) throw assignError;
-    }
 
     return { success: true, data: activity };
   } catch (error) {
@@ -1122,7 +1069,7 @@ export const fetchAdminDashboardData = async () => {
       supabase.from('activities').select('id', { count: 'exact', head: true }).eq('status', 'active'),
       supabase.from('submissions').select('id', { count: 'exact', head: true }),
       supabase.from('submissions').select('id', { count: 'exact', head: true }).is('reviewed_at', null),
-      supabase.from('classes').select('id', { count: 'exact', head: true }),
+      supabase.from('classes').select('id', { count: 'exact', head: true }).eq('is_active', true),
       fetchRecentSubmissions({ limit: 12 }),
     ]);
 
@@ -1189,177 +1136,227 @@ export const fetchAdminDashboardData = async () => {
   }
 };
 
+export const fetchAdminStorageUsage = async () => {
+  try {
+    const usage = await fetchR2StorageUsage();
+    const models = {
+      usedBytes: usage.usedBytes,
+      fileCount: usage.fileCount,
+      bundledCount: usage.builtInCount,
+      r2CustomCount: usage.customCount,
+      totalLibraryCount: usage.modelCount,
+    };
+
+    return {
+      success: true,
+      data: {
+        usedBytes: usage.usedBytes,
+        remainingBytes: usage.remainingBytes,
+        capacityBytes: usage.capacityBytes,
+        usedPercent: usage.usedPercent,
+        fileCount: usage.fileCount,
+        bucketCount: 1,
+        uploadBytes: 0,
+        uploadFileCount: 0,
+        buckets: [{ bucketName: 'elikha-3d-models', usedBytes: usage.usedBytes, fileCount: usage.fileCount }],
+        models,
+      },
+    };
+  } catch (error) {
+    console.error('Error fetching admin storage usage:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 export const fetchAdminAnalytics = async ({ days = 30 } = {}) => {
   try {
-    const sinceIso = startOfDayIsoDaysAgo(days);
-
-    const [activitiesRes, assignmentsRes, submissionsRes, usersRes, classesRes] = await Promise.all([
-      supabase
-        .from('activities')
-        .select('id, title, class_id, teacher_id, created_at, due_date, description')
-        .gte('created_at', sinceIso),
-      supabase
-        .from('activity_assignments')
-        .select('activity_id, student_id, status, assigned_at')
-        .gte('assigned_at', sinceIso),
-      supabase
-        .from('submissions')
-        .select('id, activity_id, student_id, status, submitted_at, reviewed_at, score, reviewed_by')
-        .gte('submitted_at', sinceIso),
-      supabase
-        .from('users')
-        .select('id, role, name, created_at')
-        .gte('created_at', sinceIso),
-      supabase
-        .from('classes')
-        .select('id, teacher_id, name')
-        .gte('created_at', sinceIso),
-    ]);
-
-    if (activitiesRes.error) throw activitiesRes.error;
-    if (assignmentsRes.error) throw assignmentsRes.error;
-    if (submissionsRes.error) throw submissionsRes.error;
-    if (usersRes.error) throw usersRes.error;
-    if (classesRes.error) throw classesRes.error;
-
-    const activities = activitiesRes.data || [];
-    const assignments = assignmentsRes.data || [];
-    const submissions = submissionsRes.data || [];
-    const users = usersRes.data || [];
-    const classes = classesRes.data || [];
-
-    const teacherIds = [...new Set(activities.map((activity) => activity.teacher_id).filter(Boolean))];
-
-    let teacherMap = new Map();
-    if (teacherIds.length > 0) {
-      const { data: teachers, error: teacherError } = await supabase
-        .from('teachers')
-        .select('id, user_id, name')
-        .in('id', teacherIds);
-
-      if (teacherError) throw teacherError;
-
-      const userIds = [...new Set((teachers || []).map((teacher) => teacher.user_id).filter(Boolean))];
-      let linkedUsers = new Map();
-
-      if (userIds.length > 0) {
-        const { data: teacherUsers, error: teacherUsersError } = await supabase
-          .from('users')
-          .select('id, name')
-          .in('id', userIds);
-
-        if (teacherUsersError) throw teacherUsersError;
-        linkedUsers = new Map((teacherUsers || []).map((row) => [row.id, row]));
-      }
-
-      teacherMap = new Map(
-        (teachers || []).map((teacher) => {
-          const linkedUser = teacher.user_id ? linkedUsers.get(teacher.user_id) : null;
-          return [
-            teacher.id,
-            {
-              id: teacher.id,
-              name: teacher.name || linkedUser?.name || 'Teacher',
-            },
-          ];
-        })
-      );
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError) throw authError;
+    if (!authData?.user?.id) {
+      return { success: false, error: 'Your session has expired. Please sign in again.' };
     }
 
-    const assignmentsByActivity = new Map();
-    assignments.forEach((assignment) => {
-      const current = assignmentsByActivity.get(assignment.activity_id) || 0;
-      assignmentsByActivity.set(assignment.activity_id, current + 1);
-    });
+    const { data: caller, error: callerError } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', authData.user.id)
+      .single();
+    if (callerError) throw callerError;
+    if (!['admin', 'superadmin'].includes(String(caller?.role || '').trim().toLowerCase())) {
+      return { success: false, error: 'Administrator access is required to view platform analytics.' };
+    }
 
-    const submissionsByActivity = new Map();
-    submissions.forEach((submission) => {
-      const current = submissionsByActivity.get(submission.activity_id) || 0;
-      submissionsByActivity.set(submission.activity_id, current + 1);
-    });
+    const safeDays = [7, 30, 90].includes(Number(days)) ? Number(days) : 30;
+    const asOf = new Date();
+    const range = createReportDateRange(safeDays, asOf);
+    const pageSize = 750;
 
-    const scoreByActivity = new Map();
-    submissions.forEach((submission) => {
-      if (typeof submission.score !== 'number') return;
-      const current = scoreByActivity.get(submission.activity_id) || { total: 0, count: 0 };
-      current.total += submission.score;
-      current.count += 1;
-      scoreByActivity.set(submission.activity_id, current);
-    });
+    const fetchPages = async (createQuery) => {
+      const rows = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await createQuery().range(from, from + pageSize - 1);
+        if (error) throw error;
+        const page = data || [];
+        rows.push(...page);
+        if (page.length < pageSize) break;
+        from += pageSize;
+      }
+      return rows;
+    };
+
+    const [activities, assignments, submissions, users, classes] = await Promise.all([
+      fetchPages(() => supabase
+        .from('activities')
+        .select('id, title, class_id, teacher_id, created_at, due_date, description, status')
+        .order('id', { ascending: true })),
+      fetchPages(() => supabase
+        .from('activity_assignments')
+        .select('id, activity_id, student_id, status, assigned_at')
+        .order('id', { ascending: true })),
+      fetchPages(() => supabase
+        .from('submissions')
+        .select('id, activity_id, student_id, status, submitted_at, reviewed_at, score, reviewed_by')
+        .order('id', { ascending: true })),
+      fetchPages(() => supabase
+        .from('users')
+        .select('id, role, name, created_at')
+        .order('id', { ascending: true })),
+      fetchPages(() => supabase
+        .from('classes')
+        .select('id, teacher_id, name, grade, section, created_at')
+        .order('id', { ascending: true })),
+    ]);
+
+    const report = aggregateAnalyticsReport(
+      { activities, assignments, submissions, users, classes },
+      { asOf, range }
+    );
+    const activityMap = new Map(activities.map((activity) => [activity.id, activity]));
+    const userMap = new Map(users.map((user) => [user.id, user]));
+    const metricsByActivity = new Map(report.byActivity.map((row) => [row.activityId, row]));
+    const emptyMetrics = {
+      assigned: 0,
+      submitted: 0,
+      pendingReview: 0,
+      missing: 0,
+      lateSubmissions: 0,
+      completionRate: null,
+      averageScore: null,
+    };
 
     const activityPerformance = activities.map((activity) => {
-      const assigned = assignmentsByActivity.get(activity.id) || 0;
-      const submitted = submissionsByActivity.get(activity.id) || 0;
-      const completionRate = Math.round(safeDivide(submitted, assigned || submitted || 1) * 100);
-      const score = scoreByActivity.get(activity.id);
-      const averageScore = score ? Number((score.total / Math.max(1, score.count)).toFixed(1)) : null;
+      const metrics = metricsByActivity.get(activity.id) || emptyMetrics;
       const model = parseActivityDescription(activity.description);
-
       return {
         activity_id: activity.id,
         activity_title: activity.title || 'Untitled Activity',
-        completion_rate: completionRate,
-        submissions: submitted,
-        assigned,
-        average_score: averageScore,
+        class_id: activity.class_id || null,
+        completion_rate: metrics.completionRate,
+        submissions: metrics.submitted,
+        assigned: metrics.assigned,
+        pending_review: metrics.pendingReview,
+        missing: metrics.missing,
+        late_submissions: metrics.lateSubmissions,
+        average_score: metrics.averageScore,
         model_id: model.modelId,
         model_url: model.modelUrl,
       };
-    });
+    }).sort((left, right) => (
+      right.missing - left.missing ||
+      (right.completion_rate ?? -1) - (left.completion_rate ?? -1)
+    ));
 
-    const submissionsByStudent = new Map();
-    submissions.forEach((submission) => {
-      const current = submissionsByStudent.get(submission.student_id) || 0;
-      submissionsByStudent.set(submission.student_id, current + 1);
-    });
+    const inRange = (timestamp) => {
+      const text = String(timestamp || '').trim();
+      const normalized = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(text)
+        ? `${text.replace(' ', 'T')}Z`
+        : text;
+      const value = text ? new Date(normalized).getTime() : Number.NaN;
+      return Number.isFinite(value) && value >= range.startMs && value < range.endExclusiveMs;
+    };
 
-    const studentUsers = users.filter((user) => String(user.role || '').toLowerCase() === 'student');
-    const studentEngagement = studentUsers
-      .map((student) => ({
-        student_id: student.id,
-        student_name: student.name || 'Student',
-        submissions: submissionsByStudent.get(student.id) || 0,
+    const studentStats = new Map();
+    report.outcomes.forEach((outcome) => {
+      if (!outcome.submission || !inRange(outcome.submission.submitted_at)) return;
+      const current = studentStats.get(outcome.studentId) || { submissions: 0, scores: [] };
+      current.submissions += 1;
+      if (typeof outcome.normalizedScore === 'number') current.scores.push(outcome.normalizedScore);
+      studentStats.set(outcome.studentId, current);
+    });
+    const studentEngagement = Array.from(studentStats.entries())
+      .map(([studentId, stats]) => ({
+        student_id: studentId,
+        student_name: userMap.get(studentId)?.name || 'Student',
+        submissions: stats.submissions,
+        average_score: stats.scores.length
+          ? Number((stats.scores.reduce((sum, score) => sum + score, 0) / stats.scores.length).toFixed(2))
+          : null,
       }))
-      .sort((a, b) => b.submissions - a.submissions)
-      .slice(0, 8);
+      .sort((left, right) => right.submissions - left.submissions);
+    const engagedStudentCount = studentEngagement.length;
 
-    const activitiesByTeacher = new Map();
-    activities.forEach((activity) => {
-      if (!activity.teacher_id) return;
-      const current = activitiesByTeacher.get(activity.teacher_id) || [];
-      current.push(activity.id);
-      activitiesByTeacher.set(activity.teacher_id, current);
-    });
-
-    const teacherPerformance = Array.from(activitiesByTeacher.entries()).map(([teacherId, activityIds]) => {
-      const totals = activityIds.reduce(
-        (acc, activityId) => {
-          acc.assigned += assignmentsByActivity.get(activityId) || 0;
-          acc.submitted += submissionsByActivity.get(activityId) || 0;
-          return acc;
-        },
-        { assigned: 0, submitted: 0 }
+    const teacherIds = [...new Set(activities.map((activity) => activity.teacher_id).filter(Boolean))];
+    const teacherPerformance = teacherIds.map((teacherId) => {
+      const teacherReport = aggregateAnalyticsReport(
+        { activities, assignments, submissions, users, classes },
+        { asOf, range, teacherId }
       );
-
       return {
         teacher_id: teacherId,
-        teacher_name: teacherMap.get(teacherId)?.name || 'Teacher',
-        activities: activityIds.length,
-        completion_rate: Math.round(safeDivide(totals.submitted, totals.assigned || totals.submitted || 1) * 100),
+        teacher_name: userMap.get(teacherId)?.name || 'Teacher',
+        activities: activities.filter((activity) => activity.teacher_id === teacherId).length,
+        assigned: teacherReport.summary.assigned,
+        submissions: teacherReport.summary.submitted,
+        pending_review: teacherReport.summary.pendingReview,
+        completion_rate: teacherReport.summary.completionRate,
+        average_score: teacherReport.summary.averageScore,
       };
-    });
+    })
+      .filter((teacher) => teacher.assigned > 0)
+      .sort((left, right) => (right.completion_rate ?? -1) - (left.completion_rate ?? -1));
 
-    const modelUsage = activityPerformance.reduce((acc, item) => {
-      const key = item.model_id || 'mask';
-      if (!acc[key]) {
-        acc[key] = {
-          model_id: key,
+    const modelUsageMap = new Map();
+    report.outcomes.forEach((outcome) => {
+      if (!outcome.submission || !inRange(outcome.submission.submitted_at)) return;
+      const activity = activityMap.get(outcome.activityId);
+      const parsed = parseActivityDescription(activity?.description);
+      const modelId = parsed.modelId || 'mask';
+      modelUsageMap.set(modelId, (modelUsageMap.get(modelId) || 0) + 1);
+    });
+    const modelUsage = Array.from(modelUsageMap.entries())
+      .map(([modelId, count]) => ({ model_id: modelId, count }))
+      .sort((left, right) => right.count - left.count);
+
+    const bucketDays = safeDays <= 7 ? 1 : safeDays <= 30 ? 5 : 15;
+    const bucketMs = bucketDays * 24 * 60 * 60 * 1000;
+    const submissionTrend = Array.from(
+      { length: Math.ceil((range.endExclusiveMs - range.startMs) / bucketMs) },
+      (_, index) => {
+        const startMs = range.startMs + index * bucketMs;
+        const endMs = Math.min(range.endExclusiveMs, startMs + bucketMs);
+        const formatter = new Intl.DateTimeFormat('en-PH', {
+          timeZone: 'Asia/Manila',
+          month: 'short',
+          day: 'numeric',
+        });
+        return {
+          key: new Date(startMs).toISOString(),
+          label: bucketDays === 1
+            ? formatter.format(new Date(startMs))
+            : `${formatter.format(new Date(startMs))}–${formatter.format(new Date(endMs - 1))}`,
+          startMs,
+          endMs,
           count: 0,
         };
       }
-      acc[key].count += 1;
-      return acc;
-    }, {});
+    );
+    report.outcomes.forEach((outcome) => {
+      const value = outcome.submittedAtMs;
+      if (value === null || value < range.startMs || value >= range.endExclusiveMs) return;
+      const index = Math.min(submissionTrend.length - 1, Math.floor((value - range.startMs) / bucketMs));
+      if (submissionTrend[index]) submissionTrend[index].count += 1;
+    });
 
     return {
       success: true,
@@ -1367,21 +1364,25 @@ export const fetchAdminAnalytics = async ({ days = 30 } = {}) => {
         summary: {
           totalUsers: users.length,
           totalActivities: activities.length,
-          totalAssignments: assignments.length,
-          totalSubmissions: submissions.length,
-          reviewedSubmissions: submissions.filter((row) => !!row.reviewed_at).length,
-          averageScore: (() => {
-            const scored = submissions.filter((row) => typeof row.score === 'number');
-            if (scored.length === 0) return null;
-            const total = scored.reduce((acc, row) => acc + row.score, 0);
-            return Number((total / scored.length).toFixed(1));
-          })(),
+          totalAssignments: report.summary.assigned,
+          totalSubmissions: report.events.submissionsInRange,
+          reviewedSubmissions: report.events.reviewsInRange,
+          averageScore: report.summary.averageScore,
           classesCount: classes.length,
+          pendingReviews: report.summary.pendingReview,
+          missing: report.summary.missing,
+          completionRate: report.summary.completionRate,
+          reviewRate: report.summary.reviewRate,
+          onTimeRate: report.summary.onTimeRate,
         },
-        activityPerformance: activityPerformance.sort((a, b) => b.completion_rate - a.completion_rate),
+        activityPerformance,
         studentEngagement,
-        teacherPerformance: teacherPerformance.sort((a, b) => b.completion_rate - a.completion_rate),
-        modelUsage: Object.values(modelUsage).sort((a, b) => b.count - a.count),
+        engagedStudentCount,
+        teacherPerformance,
+        modelUsage,
+        submissionTrend: submissionTrend.map(({ startMs, endMs, ...bucket }) => bucket),
+        dataQuality: report.dataQuality,
+        range,
       },
     };
   } catch (error) {

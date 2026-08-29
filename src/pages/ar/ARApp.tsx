@@ -1,20 +1,39 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { CameraFeed } from './components/CameraFeed';
-import { ARSceneV2, type SerializedArGroupTransform, type SerializedBaseModelTransform, type SerializedPaintDecal, type SerializedPuzzlePiece, type SerializedSceneObject } from './components/ARSceneV2';
+import {
+  ARSceneV2,
+  type ModelActionRequest,
+  type ModelSelection,
+  type SceneObjectActionRequest,
+  type SceneObjectSelection,
+  type SerializedArGroupTransform,
+  type SerializedBaseModelTransform,
+  type SerializedPaintDecal,
+  type SerializedPuzzlePiece,
+  type SerializedSceneObject,
+} from './components/ARSceneV2';
 import { ControlPanel, type PaintTool } from './components/ControlPanel';
 import { DebugOverlay } from './components/DebugOverlay';
 import { useHandTrackingV2 } from './hooks/useHandTrackingV2';
 import { isMiddleFingerGesture, isOpenPalmGesture } from './utils/gestures';
 import { useGestureSelect } from './hooks/useGestureSelect';
 import { useArTutorial } from './hooks/useArTutorial';
-import { submitActivity, saveArtwork, reportGestureAlert } from '../../services/studentApi';
+import { useSingleFaceDetection } from './hooks/useSingleFaceDetection';
+import { submitActivity, reportGestureAlert } from '../../services/studentApi';
+import { requestStudentColorSuggestion } from '../../services/aiGradingApi';
+import { saveUserSettings } from '../../services/userSettingsApi';
 import { encodeArSubmissionDescription } from '../../utils/arSubmission';
 import { resolveArObjectDefinitions } from '../../utils/activityArConfig';
+import { useUserSettings } from '../../hooks/useUserSettings';
+import { buildColorSelectionAnnouncement } from './utils/voiceGuidance';
+import { canUseArInteractions } from './utils/runtimeReadiness';
 import './App.css';
 
+export type ARExitReason = 'exit' | 'submitted';
+
 type ARAppProps = {
-  onExit?: () => void;
+  onExit?: (reason?: ARExitReason) => void;
   activityId?: string;
   studentId?: string;
   modelUrl?: string;
@@ -32,6 +51,8 @@ type ARAppProps = {
   puzzlePieces?: number;
   mobileMode?: boolean;
   vrMode?: boolean;
+  sandboxMode?: boolean;
+  sandboxDifficulty?: 'easy' | 'medium' | 'advanced';
 };
 
 type ArHistorySnapshot = {
@@ -44,6 +65,18 @@ type ArHistorySnapshot = {
 
 type HydratedArState = ArHistorySnapshot & {
   version: number;
+};
+
+type ColorSuggestion = {
+  message: string;
+  rationale?: string;
+  colors: Array<{ name: string; hex: string }>;
+};
+
+type SubmitState = {
+  status: 'idle' | 'submitting' | 'checking-color' | 'suggestion' | 'success' | 'error';
+  message?: string;
+  colorSuggestion?: ColorSuggestion | null;
 };
 
 const EMPTY_PAINT_STATE: SerializedPaintDecal[] = [];
@@ -89,6 +122,25 @@ function arraysEqualByValue<T>(left: T[], right: T[]): boolean {
   return JSON.stringify(left || []) === JSON.stringify(right || []);
 }
 
+function normalizeColorSuggestion(value: unknown): ColorSuggestion | null {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = value as Record<string, unknown>;
+  const message = typeof candidate.message === 'string' ? candidate.message.trim() : '';
+  const rationale = typeof candidate.rationale === 'string' ? candidate.rationale.trim() : '';
+  const colors = (Array.isArray(candidate.colors) ? candidate.colors : [])
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const color = item as Record<string, unknown>;
+      const name = typeof color.name === 'string' ? color.name.trim() : '';
+      const rawHex = typeof color.hex === 'string' ? color.hex.trim().toUpperCase() : '';
+      return name && /^#[0-9A-F]{6}$/.test(rawHex) ? { name, hex: rawHex } : null;
+    })
+    .filter((item): item is { name: string; hex: string } => Boolean(item))
+    .slice(0, 3);
+
+  return message ? { message, rationale, colors } : null;
+}
+
 function ARApp({
   onExit,
   activityId,
@@ -108,19 +160,29 @@ function ARApp({
   puzzlePieces = 0,
   mobileMode = false,
   vrMode = false,
+  sandboxMode = false,
+  sandboxDifficulty,
 }: ARAppProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const sceneCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const vrCompositeCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const isViewMode = viewMode === 'view';
+  const { settings: userSettings, userId } = useUserSettings();
   const normalizedInstructions = typeof arInstructions === 'string' ? arInstructions.trim() : '';
   const [instructionsConfirmed, setInstructionsConfirmed] = useState(!normalizedInstructions || isViewMode);
-  const canRunAr = isViewMode || instructionsConfirmed;
+  const [cameraPermissionGranted, setCameraPermissionGranted] = useState(false);
+  const [cameraError, setCameraError] = useState('');
+  const [cameraStoppedNotice, setCameraStoppedNotice] = useState(false);
+  const [modelLoadError, setModelLoadError] = useState('');
+  const canRunAr = (isViewMode || instructionsConfirmed) && cameraPermissionGranted;
   const cameraFacingMode = mobileMode ? 'environment' : 'user';
   const mirrorCameraX = cameraFacingMode === 'user';
+  const faceDetection = useSingleFaceDetection(videoRef, canRunAr);
 
   // V2 hand tracking with quaternion-based rotation
   const {
+    status: handTrackingStatus,
+    error: handTrackingError,
     isTracking,
     landmarks,
     landmarksB,
@@ -128,9 +190,34 @@ function ARApp({
     debugInfo,
     targetQuaternion,
   } = useHandTrackingV2(videoRef, mirrorCameraX);
+  const arInteractionAllowed = canUseArInteractions({
+    canRunAr,
+    faceStatus: faceDetection.status,
+    multipleFacesDetected: faceDetection.multipleFacesDetected,
+    handStatus: handTrackingStatus,
+    viewMode: isViewMode,
+    modelLoadError,
+  });
 
   const [paintColor, setPaintColor] = useState(new THREE.Color('#ff4444'));
-  const [activeTool, setActiveTool] = useState<PaintTool>('move');
+  const structuredPractice = sandboxMode && Boolean(sandboxDifficulty);
+  const practiceDifficultyLabel = sandboxDifficulty
+    ? `${sandboxDifficulty.charAt(0).toUpperCase()}${sandboxDifficulty.slice(1)}`
+    : '';
+  const practiceAllowedTools = useMemo<PaintTool[]>(() => {
+    if (!structuredPractice) return ['move', 'grabAll', 'paint', 'bucket', 'eraser', 'remove'];
+    if (sandboxDifficulty === 'medium') return ['move'];
+    if (sandboxDifficulty === 'advanced') return ['move', 'paint', 'bucket', 'eraser'];
+    return ['paint', 'bucket', 'eraser'];
+  }, [sandboxDifficulty, structuredPractice]);
+  const practiceAllowedToolSet = useMemo(() => new Set(practiceAllowedTools), [practiceAllowedTools]);
+  const practiceAllowsPainting = !structuredPractice || practiceAllowedTools.some((tool) =>
+    tool === 'paint' || tool === 'bucket' || tool === 'eraser'
+  );
+  const practiceAllowsPuzzle = !structuredPractice || sandboxDifficulty !== 'easy';
+  const [activeTool, setActiveTool] = useState<PaintTool>(
+    structuredPractice && sandboxDifficulty !== 'medium' ? 'paint' : 'move'
+  );
   const [brushLevel, setBrushLevel] = useState(10);
   const initialArStateKey = useMemo(() => createSnapshotKey({
     paint: initialPaintState,
@@ -150,12 +237,23 @@ function ARApp({
   const modelStateRef = useRef<SerializedBaseModelTransform[]>(cloneSerializedArray(incomingInitialState.model));
   const groupStateRef = useRef<SerializedArGroupTransform | null>(incomingInitialState.group || null);
   const undoStackRef = useRef<ArHistorySnapshot[]>([]);
+  const redoStackRef = useRef<ArHistorySnapshot[]>([]);
   const lastUndoCaptureRef = useRef<{ source: string; at: number } | null>(null);
   const applyingUndoRef = useRef(false);
+  const historyRestoreTimeoutRef = useRef<number | null>(null);
+  const [historyRestoring, setHistoryRestoring] = useState(false);
   const [undoCount, setUndoCount] = useState(0);
+  const [redoCount, setRedoCount] = useState(0);
   const [spawnRequest, setSpawnRequest] = useState<{ requestId: number; objectId: string } | null>(null);
+  const [sceneObjectActionRequest, setSceneObjectActionRequest] = useState<SceneObjectActionRequest | null>(null);
+  const [selectedSceneObject, setSelectedSceneObject] = useState<(SceneObjectSelection & { label: string }) | null>(null);
+  const [sceneFeedback, setSceneFeedback] = useState('');
+  const [capturingSubmission, setCapturingSubmission] = useState(false);
+  const sceneFeedbackTimeoutRef = useRef<number | null>(null);
   const [puzzleSpawnRequest, setPuzzleSpawnRequest] = useState<{ requestId: number; pieceId: string } | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<(ModelSelection & { label: string }) | null>(null);
+  const [modelActionRequest, setModelActionRequest] = useState<ModelActionRequest | null>(null);
   const [puzzleToolbarState, setPuzzleToolbarState] = useState<SerializedPuzzlePiece[]>(cloneSerializedArray(incomingInitialState.puzzle));
   const [debugMode] = useState(false);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
@@ -196,10 +294,14 @@ function ARApp({
   }, [normalizedPuzzlePieces, sceneModelConfigs]);
   useEffect(() => {
     if (!selectedModelId) return;
-    if (!modelToolbarControls.some((model) => model.id === selectedModelId)) {
+    const selectableModelIds = sceneModelConfigs.map(
+      (model, index) => model.instanceId || model.id || `model-${index}`
+    );
+    if (normalizedPuzzlePieces || !selectableModelIds.includes(selectedModelId)) {
       setSelectedModelId(null);
+      setSelectedModel(null);
     }
-  }, [modelToolbarControls, selectedModelId]);
+  }, [normalizedPuzzlePieces, sceneModelConfigs, selectedModelId]);
   const puzzlePieceControls = useMemo(() => {
     if (!normalizedPuzzlePieces) return [];
 
@@ -223,6 +325,40 @@ function ARApp({
   const paintMode = !isViewMode && ['paint', 'bucket', 'eraser', 'remove'].includes(activeTool);
   const isGrabAllMode = isViewMode || activeTool === 'grabAll';
   const compactUi = mobileMode || vrMode;
+  const voiceGuideEnabled = userSettings.voiceInstructions !== false;
+  const tutorialEnabled = arInteractionAllowed && !isViewMode && !vrMode;
+  const {
+    needsGesture,
+    triggerSpeak,
+    repeatCurrent,
+    ttsAvailable,
+    currentTexts,
+    announce,
+  } = useArTutorial({
+    grabState,
+    enabled: tutorialEnabled,
+    voiceEnabled: voiceGuideEnabled,
+  });
+  const handleToggleVoiceGuide = useCallback(() => {
+    const nextEnabled = !voiceGuideEnabled;
+    void saveUserSettings(userId, {
+      ...userSettings,
+      voiceInstructions: nextEnabled,
+    });
+  }, [userId, userSettings, voiceGuideEnabled]);
+  const faceWarningAnnouncedRef = useRef(false);
+  useEffect(() => {
+    if (faceDetection.multipleFacesDetected && !faceWarningAnnouncedRef.current) {
+      faceWarningAnnouncedRef.current = true;
+      announce('More than one face detected. AR tools are paused until only one person remains in view.');
+      return;
+    }
+
+    if (!faceDetection.multipleFacesDetected && faceWarningAnnouncedRef.current) {
+      faceWarningAnnouncedRef.current = false;
+      announce('One face remains. AR tools are ready again.');
+    }
+  }, [announce, faceDetection.multipleFacesDetected]);
   const brushScale = brushLevel / 10;
   const toolConfig = useMemo(() => {
     if (activeTool === 'paint') {
@@ -285,9 +421,16 @@ function ARApp({
     };
   }, [activeTool, paintColor, brushScale]);
 
+  const handlePaintColorChange = useCallback((color: THREE.Color, colorName = 'custom color') => {
+    setPaintColor(color);
+    announce(buildColorSelectionAnnouncement(colorName), { dedupeMs: 800 });
+  }, [announce]);
+
   const handleBrushLevelChange = useCallback((level: number) => {
-    setBrushLevel(Math.max(1, Math.min(10, Math.round(level))));
-  }, []);
+    const nextLevel = Math.max(1, Math.min(10, Math.round(level)));
+    setBrushLevel(nextLevel);
+    announce(`Brush size set to ${nextLevel}.`, { debounceMs: 250, dedupeMs: 250 });
+  }, [announce]);
 
   const getCurrentSnapshot = useCallback((): ArHistorySnapshot => ({
     paint: cloneSerializedArray(paintStateRef.current),
@@ -320,42 +463,81 @@ function ARApp({
     }
 
     undoStackRef.current = [...undoStackRef.current, snapshot].slice(-MAX_UNDO_STEPS);
+    if (redoStackRef.current.length > 0) {
+      redoStackRef.current = [];
+      setRedoCount(0);
+    }
     lastUndoCaptureRef.current = { source, at: now };
     setUndoCount(undoStackRef.current.length);
   }, [getCurrentSnapshot, isViewMode]);
 
-  const handleUndo = useCallback(() => {
-    if (isViewMode || undoStackRef.current.length === 0) return;
-
-    const previousState = undoStackRef.current[undoStackRef.current.length - 1];
-    undoStackRef.current = undoStackRef.current.slice(0, -1);
-    setUndoCount(undoStackRef.current.length);
-    lastUndoCaptureRef.current = null;
+  const beginHistoryRestore = useCallback(() => {
     applyingUndoRef.current = true;
+    setHistoryRestoring(true);
+    if (historyRestoreTimeoutRef.current) {
+      window.clearTimeout(historyRestoreTimeoutRef.current);
+    }
+    historyRestoreTimeoutRef.current = window.setTimeout(() => {
+      applyingUndoRef.current = false;
+      setHistoryRestoring(false);
+      historyRestoreTimeoutRef.current = null;
+    }, 300);
+  }, []);
 
-    const restoredState = cloneSnapshot(previousState);
+  const restoreHistorySnapshot = useCallback((snapshot: ArHistorySnapshot) => {
+    beginHistoryRestore();
+    const restoredState = cloneSnapshot(snapshot);
     paintStateRef.current = cloneSerializedArray(restoredState.paint);
     sceneStateRef.current = cloneSerializedArray(restoredState.scene);
     puzzleStateRef.current = cloneSerializedArray(restoredState.puzzle);
     modelStateRef.current = cloneSerializedArray(restoredState.model);
     groupStateRef.current = restoredState.group ? JSON.parse(JSON.stringify(restoredState.group)) : null;
     setPuzzleToolbarState(cloneSerializedArray(restoredState.puzzle));
+    setSelectedSceneObject(null);
+    setSelectedModelId(null);
+    setSelectedModel(null);
+    setSpawnRequest(null);
+    setSceneObjectActionRequest(null);
+    setModelActionRequest(null);
+    setPuzzleSpawnRequest(null);
     setHydratedArState((current) => ({
       ...restoredState,
       version: current.version + 1,
     }));
+  }, [beginHistoryRestore]);
 
-    window.setTimeout(() => {
-      applyingUndoRef.current = false;
-    }, 300);
-  }, [isViewMode]);
+  const handleUndo = useCallback(() => {
+    if (isViewMode || applyingUndoRef.current || undoStackRef.current.length === 0) return;
+
+    const previousState = undoStackRef.current[undoStackRef.current.length - 1];
+    redoStackRef.current = [...redoStackRef.current, getCurrentSnapshot()].slice(-MAX_UNDO_STEPS);
+    undoStackRef.current = undoStackRef.current.slice(0, -1);
+    setUndoCount(undoStackRef.current.length);
+    setRedoCount(redoStackRef.current.length);
+    lastUndoCaptureRef.current = null;
+    restoreHistorySnapshot(previousState);
+    announce('Last action undone.');
+  }, [announce, getCurrentSnapshot, isViewMode, restoreHistorySnapshot]);
+
+  const handleRedo = useCallback(() => {
+    if (isViewMode || applyingUndoRef.current || redoStackRef.current.length === 0) return;
+
+    const nextState = redoStackRef.current[redoStackRef.current.length - 1];
+    undoStackRef.current = [...undoStackRef.current, getCurrentSnapshot()].slice(-MAX_UNDO_STEPS);
+    redoStackRef.current = redoStackRef.current.slice(0, -1);
+    setUndoCount(undoStackRef.current.length);
+    setRedoCount(redoStackRef.current.length);
+    lastUndoCaptureRef.current = null;
+    restoreHistorySnapshot(nextState);
+    announce('Last action restored.');
+  }, [announce, getCurrentSnapshot, isViewMode, restoreHistorySnapshot]);
 
   useEffect(() => {
     setInstructionsConfirmed(!normalizedInstructions || isViewMode);
   }, [isViewMode, normalizedInstructions]);
 
   useEffect(() => {
-    applyingUndoRef.current = true;
+    beginHistoryRestore();
     const nextInitialState = cloneSnapshot(incomingInitialState);
     paintStateRef.current = cloneSerializedArray(nextInitialState.paint);
     sceneStateRef.current = cloneSerializedArray(nextInitialState.scene);
@@ -368,15 +550,16 @@ function ARApp({
       version: current.version + 1,
     }));
     undoStackRef.current = [];
+    redoStackRef.current = [];
     lastUndoCaptureRef.current = null;
     setUndoCount(0);
+    setRedoCount(0);
+    setSelectedSceneObject(null);
+    setSelectedModelId(null);
+    setSelectedModel(null);
+    setModelActionRequest(null);
 
-    const timeoutId = window.setTimeout(() => {
-      applyingUndoRef.current = false;
-    }, 300);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [incomingInitialState]);
+  }, [beginHistoryRestore, incomingInitialState]);
 
   const handlePaintStateChange = useCallback((nextPaintState: SerializedPaintDecal[]) => {
     if (!arraysEqualByValue(paintStateRef.current, nextPaintState)) {
@@ -406,6 +589,13 @@ function ARApp({
       pushUndoSnapshot('model:change', 800);
     }
     modelStateRef.current = nextModelState;
+    setSelectedModel((current) => {
+      if (!current) return null;
+      const nextSelectedState = nextModelState.find((model) => model.id === current.id);
+      if (!nextSelectedState) return current;
+      const locked = nextSelectedState.editingLocked === true;
+      return current.locked === locked ? current : { ...current, locked };
+    });
   }, [pushUndoSnapshot]);
 
   const handleGroupStateChange = useCallback((nextGroupState: SerializedArGroupTransform) => {
@@ -415,39 +605,201 @@ function ARApp({
     groupStateRef.current = nextGroupState;
   }, [pushUndoSnapshot]);
 
+  useEffect(() => {
+    if (isViewMode) return undefined;
+
+    const onHistoryShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isTyping = target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      );
+      if (isTyping || (!event.ctrlKey && !event.metaKey)) return;
+
+      const key = event.key.toLowerCase();
+      if (key === 'z' && event.shiftKey) {
+        event.preventDefault();
+        handleRedo();
+      } else if (key === 'z') {
+        event.preventDefault();
+        handleUndo();
+      } else if (key === 'y') {
+        event.preventDefault();
+        handleRedo();
+      }
+    };
+
+    window.addEventListener('keydown', onHistoryShortcut);
+    return () => window.removeEventListener('keydown', onHistoryShortcut);
+  }, [handleRedo, handleUndo, isViewMode]);
+
+  const handleSceneObjectSelectionChange = useCallback((selection: SceneObjectSelection | null) => {
+    if (!selection) {
+      setSelectedSceneObject(null);
+      return;
+    }
+    const label = availableObjects.find((item) => item.id === selection.objectId)?.label || 'Shape';
+    setSelectedModelId(null);
+    setSelectedModel(null);
+    setSelectedSceneObject({ ...selection, label });
+  }, [availableObjects]);
+
+  const handleSceneObjectFeedback = useCallback((message: string) => {
+    const nextMessage = String(message || '').trim();
+    if (!nextMessage) return;
+    setSceneFeedback(nextMessage);
+    announce(nextMessage, { debounceMs: 150, dedupeMs: 800 });
+    if (sceneFeedbackTimeoutRef.current) {
+      window.clearTimeout(sceneFeedbackTimeoutRef.current);
+    }
+    sceneFeedbackTimeoutRef.current = window.setTimeout(() => {
+      setSceneFeedback('');
+      sceneFeedbackTimeoutRef.current = null;
+    }, 2400);
+  }, [announce]);
+
+  const handleDuplicateSceneObject = useCallback(() => {
+    if (structuredPractice || !selectedSceneObject || applyingUndoRef.current) return;
+    pushUndoSnapshot('scene:duplicate');
+    setSceneObjectActionRequest({
+      requestId: Date.now() + Math.random(),
+      objectId: selectedSceneObject.id,
+      action: 'duplicate',
+    });
+  }, [pushUndoSnapshot, selectedSceneObject, structuredPractice]);
+
+  const handleToggleSceneObjectLock = useCallback(() => {
+    if (structuredPractice || !selectedSceneObject || applyingUndoRef.current) return;
+    pushUndoSnapshot('scene:lock');
+    setSceneObjectActionRequest({
+      requestId: Date.now() + Math.random(),
+      objectId: selectedSceneObject.id,
+      action: 'toggleLock',
+    });
+  }, [pushUndoSnapshot, selectedSceneObject, structuredPractice]);
+
+  const handleToggleModelLock = useCallback(() => {
+    if (isViewMode || !selectedModel || applyingUndoRef.current) return;
+    pushUndoSnapshot('model:lock');
+    setModelActionRequest({
+      requestId: Date.now() + Math.random(),
+      modelId: selectedModel.id,
+      action: 'toggleLock',
+    });
+  }, [isViewMode, pushUndoSnapshot, selectedModel]);
+
   const handleToolChange = useCallback((tool: PaintTool) => {
+    if (!practiceAllowedToolSet.has(tool)) return;
     setActiveTool(tool);
     if (tool !== 'move') {
       setSelectedModelId(null);
+      setSelectedModel(null);
     }
-  }, []);
+    const toolNames: Record<PaintTool, string> = {
+      move: 'Move',
+      grabAll: 'Grab all',
+      paint: 'Paint',
+      bucket: 'Paint bucket',
+      eraser: 'Eraser',
+      remove: 'Remove',
+    };
+    announce(`${toolNames[tool]} tool selected.`);
+  }, [announce, practiceAllowedToolSet]);
 
   const handleAddObject = useCallback((objectId: string) => {
+    if (structuredPractice || applyingUndoRef.current) return;
     pushUndoSnapshot('scene:spawn');
     setActiveTool('move');
     setSpawnRequest({
       objectId,
       requestId: Date.now() + Math.random(),
     });
-  }, [pushUndoSnapshot]);
+    const objectLabel = availableObjects.find((item) => item.id === objectId)?.label || 'object';
+    announce(`${objectLabel} added. Move tool selected.`);
+  }, [announce, availableObjects, pushUndoSnapshot, structuredPractice]);
 
   const handleSpawnPuzzlePiece = useCallback((pieceId: string) => {
+    if (!practiceAllowsPuzzle || applyingUndoRef.current) return;
     pushUndoSnapshot('puzzle:spawn');
     setActiveTool('move');
     setPuzzleSpawnRequest({
       pieceId,
       requestId: Date.now() + Math.random(),
     });
-  }, [pushUndoSnapshot]);
+    const pieceLabel = puzzlePieceControls.find((item) => item.id === pieceId)?.label || 'puzzle piece';
+    announce(`Puzzle part ${pieceLabel} added. Move it into place.`);
+  }, [announce, practiceAllowsPuzzle, pushUndoSnapshot, puzzlePieceControls]);
 
   const handleGrabModel = useCallback((modelId: string) => {
     setActiveTool('move');
+    setSelectedSceneObject(null);
     setSelectedModelId(modelId);
-  }, []);
+    const modelLabel = modelToolbarControls.find((item) => item.id === modelId)?.label || 'model';
+    const locked = modelStateRef.current.find((model) => model.id === modelId)?.editingLocked === true;
+    setSelectedModel({ id: modelId, locked, label: modelLabel });
+    announce(locked
+      ? `${modelLabel} selected. It is locked. Use Unlock before moving it.`
+      : `${modelLabel} selected. Move tool ready.`);
+  }, [announce, modelToolbarControls]);
 
+  const handleModelSelectionChange = useCallback((selection: ModelSelection | null) => {
+    if (!selection) {
+      setSelectedModelId(null);
+      setSelectedModel(null);
+      return;
+    }
+    setSelectedSceneObject(null);
+    setSelectedModelId(selection.id);
+    const modelLabel = sceneModelConfigs.find((model, index) => (
+      (model.instanceId || model.id || `model-${index}`) === selection.id
+    ))?.label || 'model';
+    if (selectedModel?.id !== selection.id) {
+      announce(selection.locked
+        ? `${modelLabel} selected. It is locked. Use Unlock before moving it.`
+        : `${modelLabel} selected. Keep pinching to move it.`);
+    }
+    setSelectedModel({ ...selection, label: modelLabel });
+  }, [announce, sceneModelConfigs, selectedModel?.id]);
+
+  const cameraReadyAnnouncedRef = useRef(false);
   const handleCameraReady = useCallback(() => {
     console.log('Camera ready');
+    if (!cameraReadyAnnouncedRef.current) {
+      cameraReadyAnnouncedRef.current = true;
+      announce('Camera ready.');
+    }
+  }, [announce]);
+
+  const requestCameraAccess = useCallback(() => {
+    setCameraError('');
+    setCameraPermissionGranted(true);
+    announce('Camera permission requested.');
+  }, [announce]);
+
+  const handleCameraError = useCallback((message: string) => {
+    setCameraPermissionGranted(false);
+    setCameraError(message);
+    announce(message);
+  }, [announce]);
+
+  const stopCameraTracks = useCallback(() => {
+    const stream = videoRef.current?.srcObject as MediaStream | null;
+    stream?.getTracks().forEach((track) => track.stop());
   }, []);
+
+  const stopCameraAndExit = useCallback(() => {
+    stopCameraTracks();
+    setCameraStoppedNotice(true);
+    announce('Camera access stopped. You have exited the AR activity.');
+    window.setTimeout(() => onExit?.('exit'), 3000);
+  }, [announce, onExit, stopCameraTracks]);
+
+  const finishSubmittedActivity = useCallback(() => {
+    announce('Activity complete. Returning to your activities.');
+    onExit?.('submitted');
+  }, [announce, onExit]);
 
   const isOpenPalm = landmarks ? isOpenPalmGesture(landmarks) : false;
   const isOpenPalmB = landmarksB ? isOpenPalmGesture(landmarksB) : false;
@@ -466,7 +818,7 @@ function ARApp({
   const countdownIntervalRef = useRef<number | null>(null);
   const palmsOpenRef = useRef(false);
   const submitInFlightRef = useRef(false);
-  const [submitState, setSubmitState] = useState<{ status: 'idle' | 'submitting' | 'success' | 'error'; message?: string }>({ status: 'idle' });
+  const [submitState, setSubmitState] = useState<SubmitState>({ status: 'idle' });
 
   useEffect(() => {
     if (!vrMode) return;
@@ -567,7 +919,14 @@ function ARApp({
   }, [isDoublePalm]);
 
   useEffect(() => {
-    if (!canRunAr) return;
+    if (!arInteractionAllowed) {
+      middleFingerHeldRef.current = false;
+      if (middleFingerDebounceTimeoutRef.current) {
+        window.clearTimeout(middleFingerDebounceTimeoutRef.current);
+        middleFingerDebounceTimeoutRef.current = null;
+      }
+      return;
+    }
 
     if (isViewMode) return;
 
@@ -588,6 +947,7 @@ function ARApp({
       middleFingerDebounceTimeoutRef.current = null;
 
       setGestureAlertText('Please avoid offensive gestures.');
+      announce('Please avoid offensive gestures.');
       if (gestureToastTimeoutRef.current) {
         window.clearTimeout(gestureToastTimeoutRef.current);
       }
@@ -597,6 +957,7 @@ function ARApp({
       }, 3200);
 
       if (!studentId || !activityId) {
+        if (sandboxMode) return;
         setGestureAlertText('Please avoid offensive gestures. Could not record this alert.');
         return;
       }
@@ -620,7 +981,7 @@ function ARApp({
         }
       })();
     }, 1000); // Require 1 second hold
-  }, [canRunAr, isViewMode, middleFingerDetected, studentId, activityId, activeTool]);
+  }, [activeTool, activityId, announce, arInteractionAllowed, isViewMode, middleFingerDetected, sandboxMode, studentId]);
 
   const captureSubmissionImage = useCallback(() => {
     const sceneCanvas = sceneCanvasRef.current;
@@ -643,40 +1004,10 @@ function ARApp({
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, width, height);
 
-      const keyedCanvas = document.createElement('canvas');
-      keyedCanvas.width = width;
-      keyedCanvas.height = height;
-      const keyedCtx = keyedCanvas.getContext('2d');
-
-      if (keyedCtx) {
-        keyedCtx.drawImage(sceneCanvas, 0, 0, width, height);
-        const frame = keyedCtx.getImageData(0, 0, width, height);
-        const { data } = frame;
-
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i];
-          const g = data[i + 1];
-          const b = data[i + 2];
-          const max = Math.max(r, g, b);
-          const min = Math.min(r, g, b);
-          const chroma = max - min;
-
-          if (max < 18 && chroma < 14) {
-            data[i + 3] = 0;
-            continue;
-          }
-
-          if (max < 36 && chroma < 20) {
-            const alphaScale = Math.max(0, (max - 18) / 18);
-            data[i + 3] = Math.round(data[i + 3] * alphaScale);
-          }
-        }
-
-        keyedCtx.putImageData(frame, 0, 0);
-        ctx.drawImage(keyedCanvas, 0, 0, width, height);
-      } else {
-        ctx.drawImage(sceneCanvas, 0, 0, width, height);
-      }
+      // The WebGL canvas is already rendered with a transparent clear color.
+      // Preserve its alpha directly so intentionally black paint stays black
+      // in both the saved artwork and the image supplied to AI grading.
+      ctx.drawImage(sceneCanvas, 0, 0, width, height);
 
       return outputCanvas.toDataURL('image/jpeg', 0.9);
     } catch (error) {
@@ -686,22 +1017,55 @@ function ARApp({
   }, []);
 
   const handleSubmitAndExit = useCallback(async () => {
+    if (applyingUndoRef.current) {
+      announce('Please wait while the last change is restored.');
+      return;
+    }
     if (submitInFlightRef.current) return;
     submitInFlightRef.current = true;
     setSubmitState({ status: 'submitting' });
+    announce(
+      sandboxMode
+        ? 'Exiting sandbox. Your practice work will not be submitted.'
+        : isViewMode
+          ? 'Exiting activity view.'
+          : 'Submitting your activity.'
+    );
 
     try {
+      if (sandboxMode) {
+        setSubmitState({ status: 'success' });
+        stopCameraAndExit();
+        return;
+      }
+
       if (isViewMode) {
         setSubmitState({ status: 'success' });
-        onExit?.();
+        stopCameraAndExit();
         return;
+      }
+
+      if (!arInteractionAllowed) {
+        throw new Error('AR safety and tracking checks are not ready. Nothing was submitted; return and reopen the activity.');
       }
 
       if (!activityId || !studentId) {
         throw new Error('Missing activity or student information.');
       }
 
+      if (modelLoadError) {
+        throw new Error('The assigned 3D model did not load, so this activity cannot be submitted. Reopen the activity and try again.');
+      }
+
+      setCapturingSubmission(true);
+      await new Promise<void>((resolve) => {
+        window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve()));
+      });
       const snapshot = captureSubmissionImage();
+      setCapturingSubmission(false);
+      if (!snapshot) {
+        throw new Error('The AR artwork image could not be captured. Nothing was submitted; please try again.');
+      }
       const description = encodeArSubmissionDescription(
         paintStateRef.current,
         'Submitted from AR',
@@ -720,29 +1084,51 @@ function ARApp({
         throw new Error(result.error || 'Failed to submit activity.');
       }
 
-      if (snapshot) {
-        await saveArtwork(studentId, {
-          title: `AR Submission ${new Date().toLocaleDateString()}`,
-          description: 'AR model snapshot',
-          image_url: snapshot,
-          submission_id: result.data?.id || null,
-        });
-      }
+      stopCameraTracks();
+      setSubmitState({
+        status: 'checking-color',
+        message: 'Your activity was submitted. AI is checking your color choices…',
+      });
+      announce('Activity submitted. AI is preparing a color suggestion.');
 
-      setSubmitState({ status: 'success' });
-      onExit?.();
+      const aiResult = await requestStudentColorSuggestion(result.data?.id);
+      const colorSuggestion = normalizeColorSuggestion(aiResult.colorSuggestion);
+      const fallbackMessage = aiResult.error?.toLowerCase().includes('rubric')
+        ? 'Your work was submitted. Your teacher needs to attach a rubric before a color suggestion can be prepared.'
+        : 'Your work was submitted. AI color advice is unavailable right now, but your teacher can still review your artwork.';
+
+      setSubmitState({
+        status: 'suggestion',
+        colorSuggestion,
+        message: colorSuggestion ? undefined : fallbackMessage,
+      });
+      announce(colorSuggestion?.message || fallbackMessage);
     } catch (error) {
+      setCapturingSubmission(false);
       console.error('Failed to submit activity:', error);
       submitInFlightRef.current = false;
       setSubmitState({
         status: 'error',
         message: error instanceof Error ? error.message : 'Failed to submit activity.',
       });
+      announce('Submission failed. Please try again.');
     }
-  }, [activityId, studentId, onExit, captureSubmissionImage, isViewMode]);
+  }, [activityId, announce, arInteractionAllowed, captureSubmissionImage, isViewMode, modelLoadError, sandboxMode, stopCameraAndExit, stopCameraTracks, studentId]);
 
   useEffect(() => {
-    if (!canRunAr) return;
+    if (!arInteractionAllowed) {
+      if (armTimeoutRef.current) {
+        window.clearTimeout(armTimeoutRef.current);
+        armTimeoutRef.current = null;
+      }
+      if (countdownIntervalRef.current) {
+        window.clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+      exitArmingRef.current = false;
+      setExitCountdown(null);
+      return;
+    }
 
     if (!isDoublePalm) {
       if (armTimeoutRef.current) {
@@ -760,6 +1146,11 @@ function ARApp({
 
     if (!exitArmingRef.current && exitCountdown === null) {
       exitArmingRef.current = true;
+      announce(isViewMode
+        ? 'Both palms detected. Hold still to exit.'
+        : sandboxMode
+          ? 'Both palms detected. Hold still to exit the sandbox.'
+          : 'Both palms detected. Hold still to submit in three seconds.');
       armTimeoutRef.current = window.setTimeout(() => {
         if (!palmsOpenRef.current) {
           exitArmingRef.current = false;
@@ -792,24 +1183,29 @@ function ARApp({
         }, 1000);
       }, 1000);
     }
-  }, [canRunAr, isDoublePalm, exitCountdown, handleSubmitAndExit]);
+  }, [announce, arInteractionAllowed, exitCountdown, handleSubmitAndExit, isDoublePalm, isViewMode, sandboxMode]);
 
   useGestureSelect({
     landmarks,
     videoRef,
-    enabled: canRunAr && !isViewMode,
+    enabled: arInteractionAllowed && !isViewMode,
     blocked: grabState.isZooming,
     dwellMs: 500,
     dualScreenMode: vrMode,
     mirrorX: mirrorCameraX,
   });
 
-  const tutorialEnabled = canRunAr && !isViewMode && !mobileMode && !vrMode;
-  const { needsGesture, triggerSpeak, ttsAvailable, currentTexts } = useArTutorial({ grabState, enabled: tutorialEnabled });
-
   useEffect(() => {
     const videoElement = videoRef.current;
     return () => {
+      if (sceneFeedbackTimeoutRef.current) {
+        window.clearTimeout(sceneFeedbackTimeoutRef.current);
+        sceneFeedbackTimeoutRef.current = null;
+      }
+      if (historyRestoreTimeoutRef.current) {
+        window.clearTimeout(historyRestoreTimeoutRef.current);
+        historyRestoreTimeoutRef.current = null;
+      }
       if (gestureToastTimeoutRef.current) {
         window.clearTimeout(gestureToastTimeoutRef.current);
         gestureToastTimeoutRef.current = null;
@@ -839,6 +1235,8 @@ function ARApp({
         videoRef={videoRef}
         facingMode={cameraFacingMode}
         onReady={handleCameraReady}
+        onError={handleCameraError}
+        enabled={cameraPermissionGranted}
       />
 
       {/* Three.js AR scene V2 */}
@@ -846,11 +1244,11 @@ function ARApp({
         modelUrl={modelUrl || '/models/13137_LatinMask1_v1.obj'}
         modelFileType={modelFileType || undefined}
         modelConfigs={sceneModelConfigs}
-        handLandmarks={canRunAr ? landmarks : null}
+        handLandmarks={arInteractionAllowed && !historyRestoring ? landmarks : null}
         grabState={grabState}
         debugInfo={debugInfo}
         targetQuaternion={targetQuaternion}
-        paintMode={canRunAr && paintMode}
+        paintMode={arInteractionAllowed && !historyRestoring && paintMode}
         paintColor={toolConfig.color}
         brushSize={toolConfig.brushSize}
         isEraser={toolConfig.isEraser}
@@ -865,21 +1263,31 @@ function ARApp({
         onSceneStateChange={handleSceneStateChange}
         initialPuzzleState={hydratedArState.puzzle}
         onPuzzleStateChange={handlePuzzleStateChange}
-        puzzlePieces={puzzlePieces}
+        puzzlePieces={practiceAllowsPuzzle ? puzzlePieces : 0}
         initialModelState={hydratedArState.model}
         onModelStateChange={handleModelStateChange}
         initialGroupState={hydratedArState.group}
         onGroupStateChange={handleGroupStateChange}
-        groupBaseModels={isGrabAllMode}
+        groupBaseModels={!historyRestoring && isGrabAllMode}
         spawnObjectRequest={spawnRequest}
+        sceneObjectActionRequest={sceneObjectActionRequest}
+        onSceneObjectSelectionChange={handleSceneObjectSelectionChange}
+        onSceneObjectFeedback={handleSceneObjectFeedback}
+        hideSceneObjectSelection={capturingSubmission}
         puzzlePieceSpawnRequest={puzzleSpawnRequest}
         selectedModelId={selectedModelId}
+        modelActionRequest={modelActionRequest}
+        onModelSelectionChange={handleModelSelectionChange}
+        onModelFeedback={handleSceneObjectFeedback}
+        renderQuality={userSettings.quality}
+        dataSaver={userSettings.dataSaver}
+        onModelLoadError={setModelLoadError}
         onCanvasReady={(canvas) => {
           sceneCanvasRef.current = canvas;
         }}
       />
 
-      {!canRunAr && normalizedInstructions && (
+      {!instructionsConfirmed && normalizedInstructions && (
         <div
           style={{
             position: 'absolute',
@@ -925,9 +1333,49 @@ function ARApp({
             >
               {normalizedInstructions}
             </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+              <button
+                type="button"
+                onClick={() => announce(normalizedInstructions, { force: true, dedupeMs: 1000 })}
+                style={{
+                  flex: '1 1 220px',
+                  border: '2px solid #1800ad',
+                  borderRadius: 999,
+                  padding: '12px 18px',
+                  background: '#fff',
+                  color: '#1800ad',
+                  fontSize: 16,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                }}
+              >
+                <span aria-hidden="true">🔊</span> Read instructions aloud
+              </button>
+              <button
+                type="button"
+                onClick={handleToggleVoiceGuide}
+                aria-pressed={voiceGuideEnabled}
+                style={{
+                  flex: '1 1 180px',
+                  border: '1px solid rgba(24, 0, 173, 0.28)',
+                  borderRadius: 999,
+                  padding: '12px 18px',
+                  background: voiceGuideEnabled ? '#ebe8ff' : '#f4f3f7',
+                  color: '#25202f',
+                  fontSize: 15,
+                  fontWeight: 750,
+                  cursor: 'pointer',
+                }}
+              >
+                {voiceGuideEnabled ? 'Voice guides: On' : 'Voice guides: Off'}
+              </button>
+            </div>
             <button
               type="button"
-              onClick={() => setInstructionsConfirmed(true)}
+              onClick={() => {
+                setInstructionsConfirmed(true);
+                announce('Instructions confirmed. Camera permission is required before starting augmented reality.');
+              }}
               style={{
                 width: '100%',
                 border: 0,
@@ -947,6 +1395,138 @@ function ARApp({
         </div>
       )}
 
+      {instructionsConfirmed && !cameraPermissionGranted && (
+        <div className="camera-permission-overlay" role="presentation">
+          <section className="camera-permission-card" role="dialog" aria-modal="true" aria-labelledby="camera-permission-title">
+            <div className="camera-permission-icon" aria-hidden="true">◉</div>
+            <p className="camera-permission-eyebrow">Privacy and security</p>
+            <h1 id="camera-permission-title">Camera permission required</h1>
+            <p>
+              This activity needs your camera for live AR and hand-gesture controls. Camera access is used only while this activity is open and stops when you exit.
+            </p>
+            {cameraError && <p className="camera-permission-error" role="alert">{cameraError}</p>}
+            <div className="camera-permission-actions">
+              <button type="button" className="camera-permission-back" onClick={stopCameraAndExit}>Go back</button>
+              <button type="button" className="camera-permission-allow" onClick={requestCameraAccess}>Allow camera and start</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {cameraStoppedNotice && (
+        <div className="camera-stopped-notice" role="status">
+          <span aria-hidden="true">✓</span> Camera access stopped. Leaving AR activity…
+        </div>
+      )}
+
+      {canRunAr && faceDetection.status === 'loading' && (
+        <div className="single-face-overlay" role="presentation">
+          <section className="single-face-card" role="status" aria-live="polite">
+            <div className="single-face-icon" aria-hidden="true">1</div>
+            <p className="single-face-eyebrow">Safety check</p>
+            <h1>Starting single-face detection</h1>
+            <p>Please wait while the on-device face safety check gets ready.</p>
+          </section>
+        </div>
+      )}
+
+      {canRunAr && faceDetection.status === 'error' && (
+        <div className="single-face-overlay" role="presentation">
+          <section
+            className="single-face-card"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="face-detection-error-title"
+          >
+            <div className="single-face-icon" aria-hidden="true">!</div>
+            <p className="single-face-eyebrow">AR session paused</p>
+            <h1 id="face-detection-error-title">Face safety check unavailable</h1>
+            <p>{faceDetection.error} AR tools and submission are disabled for this session.</p>
+            <small>Return and reopen the activity to try the on-device safety check again.</small>
+            <div className="camera-permission-actions">
+              <button type="button" className="camera-permission-back" onClick={stopCameraAndExit}>
+                Go back safely
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {canRunAr && faceDetection.status === 'ready' && faceDetection.multipleFacesDetected && (
+        <div className="single-face-overlay" role="presentation">
+          <section
+            className="single-face-card"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="single-face-title"
+          >
+            <div className="single-face-icon" aria-hidden="true">1</div>
+            <p className="single-face-eyebrow">AR session paused</p>
+            <h1 id="single-face-title">Only one face can be in view</h1>
+            <p>
+              We detected {faceDetection.faceCount} faces. Ask the other person to move out of the
+              camera frame. Your AR tools will resume automatically when only one face remains.
+            </p>
+            <small>Face checking runs only on this device. E-Likha does not identify or save faces.</small>
+          </section>
+        </div>
+      )}
+
+      {canRunAr && faceDetection.status === 'ready' && !faceDetection.multipleFacesDetected && !isViewMode && handTrackingStatus === 'loading' && (
+        <div className="single-face-overlay" role="presentation">
+          <section className="single-face-card" role="status" aria-live="polite">
+            <div className="single-face-icon" aria-hidden="true">✋</div>
+            <p className="single-face-eyebrow">Gesture controls</p>
+            <h1>Starting hand tracking</h1>
+            <p>Please wait while the on-device palm and finger controls get ready.</p>
+          </section>
+        </div>
+      )}
+
+      {canRunAr && faceDetection.status === 'ready' && !faceDetection.multipleFacesDetected && !isViewMode && handTrackingStatus === 'error' && (
+        <div className="single-face-overlay" role="presentation">
+          <section
+            className="single-face-card"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="hand-tracking-error-title"
+          >
+            <div className="single-face-icon" aria-hidden="true">!</div>
+            <p className="single-face-eyebrow">AR session paused</p>
+            <h1 id="hand-tracking-error-title">Hand tracking unavailable</h1>
+            <p>{handTrackingError || 'Hand tracking could not start on this device.'}</p>
+            <small>Gesture tools and submission are disabled. Return and reopen the activity to try again.</small>
+            <div className="camera-permission-actions">
+              <button type="button" className="camera-permission-back" onClick={stopCameraAndExit}>
+                Go back safely
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {canRunAr && faceDetection.status === 'ready' && !faceDetection.multipleFacesDetected && (isViewMode || handTrackingStatus === 'ready') && modelLoadError && (
+        <div className="single-face-overlay" role="presentation">
+          <section
+            className="single-face-card"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="model-load-error-title"
+          >
+            <div className="single-face-icon" aria-hidden="true">!</div>
+            <p className="single-face-eyebrow">AR session paused</p>
+            <h1 id="model-load-error-title">3D model unavailable</h1>
+            <p>{modelLoadError}</p>
+            <small>No replacement object was used. Editing and submission are disabled so the correct assigned model is preserved.</small>
+            <div className="camera-permission-actions">
+              <button type="button" className="camera-permission-back" onClick={stopCameraAndExit}>
+                Go back safely
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
       {canRunAr && !isViewMode && !compactUi && (
         <DebugOverlay
           debugInfo={debugInfo}
@@ -955,7 +1535,11 @@ function ARApp({
           videoRef={videoRef}
           landmarks={landmarks}
           isOpen={debugPanelOpen}
-          onToggle={() => setDebugPanelOpen((prev) => !prev)}
+          onToggle={() => setDebugPanelOpen((prev) => {
+            const next = !prev;
+            announce(`Debug panel ${next ? 'opened' : 'closed'}.`);
+            return next;
+          })}
         />
       )}
 
@@ -964,40 +1548,64 @@ function ARApp({
           <>
             <ControlPanel
               paintColor={paintColor}
-              onPaintColorChange={setPaintColor}
+              onPaintColorChange={handlePaintColorChange}
               activeTool={activeTool}
               onToolChange={handleToolChange}
               brushLevel={brushLevel}
               onBrushLevelChange={handleBrushLevelChange}
-              canUndo={undoCount > 0}
+              canUndo={!historyRestoring && undoCount > 0}
               onUndo={handleUndo}
-              availableObjects={availableObjects}
-              onAddObject={handleAddObject}
-              modelItems={modelToolbarControls}
+              canRedo={!historyRestoring && redoCount > 0}
+              onRedo={handleRedo}
+              selectedSceneObject={structuredPractice ? null : selectedSceneObject}
+              onDuplicateSceneObject={structuredPractice ? undefined : handleDuplicateSceneObject}
+              onToggleSceneObjectLock={structuredPractice ? undefined : handleToggleSceneObjectLock}
+              availableObjects={structuredPractice ? [] : availableObjects}
+              onAddObject={structuredPractice ? undefined : handleAddObject}
+              modelItems={structuredPractice ? [] : modelToolbarControls}
               selectedModelId={selectedModelId}
-              onSelectModel={handleGrabModel}
-              puzzlePieces={puzzlePieceControls}
-              onSpawnPuzzlePiece={handleSpawnPuzzlePiece}
+              onSelectModel={structuredPractice ? undefined : handleGrabModel}
+              selectedModel={selectedModel}
+              onToggleModelLock={normalizedPuzzlePieces ? undefined : handleToggleModelLock}
+              puzzlePieces={practiceAllowsPuzzle ? puzzlePieceControls : []}
+              onSpawnPuzzlePiece={practiceAllowsPuzzle ? handleSpawnPuzzlePiece : undefined}
+              voiceGuideEnabled={voiceGuideEnabled}
+              canRepeatVoiceGuide={currentTexts.length > 0}
+              onToggleVoiceGuide={handleToggleVoiceGuide}
+              onRepeatVoiceGuide={repeatCurrent}
+              allowedTools={practiceAllowedTools}
               compact
               vrMode
               vrEye="left"
             />
             <ControlPanel
               paintColor={paintColor}
-              onPaintColorChange={setPaintColor}
+              onPaintColorChange={handlePaintColorChange}
               activeTool={activeTool}
               onToolChange={handleToolChange}
               brushLevel={brushLevel}
               onBrushLevelChange={handleBrushLevelChange}
-              canUndo={undoCount > 0}
+              canUndo={!historyRestoring && undoCount > 0}
               onUndo={handleUndo}
-              availableObjects={availableObjects}
-              onAddObject={handleAddObject}
-              modelItems={modelToolbarControls}
+              canRedo={!historyRestoring && redoCount > 0}
+              onRedo={handleRedo}
+              selectedSceneObject={structuredPractice ? null : selectedSceneObject}
+              onDuplicateSceneObject={structuredPractice ? undefined : handleDuplicateSceneObject}
+              onToggleSceneObjectLock={structuredPractice ? undefined : handleToggleSceneObjectLock}
+              availableObjects={structuredPractice ? [] : availableObjects}
+              onAddObject={structuredPractice ? undefined : handleAddObject}
+              modelItems={structuredPractice ? [] : modelToolbarControls}
               selectedModelId={selectedModelId}
-              onSelectModel={handleGrabModel}
-              puzzlePieces={puzzlePieceControls}
-              onSpawnPuzzlePiece={handleSpawnPuzzlePiece}
+              onSelectModel={structuredPractice ? undefined : handleGrabModel}
+              selectedModel={selectedModel}
+              onToggleModelLock={normalizedPuzzlePieces ? undefined : handleToggleModelLock}
+              puzzlePieces={practiceAllowsPuzzle ? puzzlePieceControls : []}
+              onSpawnPuzzlePiece={practiceAllowsPuzzle ? handleSpawnPuzzlePiece : undefined}
+              voiceGuideEnabled={voiceGuideEnabled}
+              canRepeatVoiceGuide={currentTexts.length > 0}
+              onToggleVoiceGuide={handleToggleVoiceGuide}
+              onRepeatVoiceGuide={repeatCurrent}
+              allowedTools={practiceAllowedTools}
               compact
               vrMode
               vrEye="right"
@@ -1006,20 +1614,32 @@ function ARApp({
         ) : (
           <ControlPanel
             paintColor={paintColor}
-            onPaintColorChange={setPaintColor}
+            onPaintColorChange={handlePaintColorChange}
             activeTool={activeTool}
             onToolChange={handleToolChange}
             brushLevel={brushLevel}
             onBrushLevelChange={handleBrushLevelChange}
-            canUndo={undoCount > 0}
+            canUndo={!historyRestoring && undoCount > 0}
             onUndo={handleUndo}
-            availableObjects={availableObjects}
-            onAddObject={handleAddObject}
-            modelItems={modelToolbarControls}
+            canRedo={!historyRestoring && redoCount > 0}
+            onRedo={handleRedo}
+            selectedSceneObject={structuredPractice ? null : selectedSceneObject}
+            onDuplicateSceneObject={structuredPractice ? undefined : handleDuplicateSceneObject}
+            onToggleSceneObjectLock={structuredPractice ? undefined : handleToggleSceneObjectLock}
+            availableObjects={structuredPractice ? [] : availableObjects}
+            onAddObject={structuredPractice ? undefined : handleAddObject}
+            modelItems={structuredPractice ? [] : modelToolbarControls}
             selectedModelId={selectedModelId}
-            onSelectModel={handleGrabModel}
-            puzzlePieces={puzzlePieceControls}
-            onSpawnPuzzlePiece={handleSpawnPuzzlePiece}
+            onSelectModel={structuredPractice ? undefined : handleGrabModel}
+            selectedModel={selectedModel}
+            onToggleModelLock={normalizedPuzzlePieces ? undefined : handleToggleModelLock}
+            puzzlePieces={practiceAllowsPuzzle ? puzzlePieceControls : []}
+            onSpawnPuzzlePiece={practiceAllowsPuzzle ? handleSpawnPuzzlePiece : undefined}
+            voiceGuideEnabled={voiceGuideEnabled}
+            canRepeatVoiceGuide={currentTexts.length > 0}
+            onToggleVoiceGuide={handleToggleVoiceGuide}
+            onRepeatVoiceGuide={repeatCurrent}
+            allowedTools={practiceAllowedTools}
             compact={compactUi}
             vrMode={vrMode}
           />
@@ -1056,7 +1676,53 @@ function ARApp({
             }}
           />
           <span>{toolConfig.label}</span>
+          {selectedSceneObject && (
+            <span>
+              • {selectedSceneObject.label} {selectedSceneObject.locked ? '🔒' : 'selected'}
+            </span>
+          )}
+          {(userSettings.dataSaver || userSettings.quality === 'low') && (
+            <span>• Lite rendering</span>
+          )}
+          {historyRestoring && <span>• Restoring…</span>}
+          {sandboxMode && (
+            <span aria-label="Sandbox mode">
+              • Sandbox{practiceDifficultyLabel ? ` — ${practiceDifficultyLabel}` : ''}
+            </span>
+          )}
         </div>
+      )}
+
+      {canRunAr && !isViewMode && sceneFeedback && (
+        <div className="ar-scene-feedback" role="status" aria-live="polite">
+          {sceneFeedback}
+        </div>
+      )}
+
+      {canRunAr && sandboxMode && (
+        <button
+          type="button"
+          onClick={handleSubmitAndExit}
+          style={{
+            position: 'absolute',
+            left: compactUi ? 12 : 20,
+            bottom: compactUi ? 12 : 20,
+            zIndex: 1150,
+            minHeight: 42,
+            padding: '0 16px',
+            border: '1px solid rgba(255,255,255,0.5)',
+            borderRadius: 999,
+            background: 'rgba(18, 24, 38, 0.82)',
+            color: '#fff',
+            cursor: 'pointer',
+            fontSize: 13,
+            fontWeight: 800,
+            backdropFilter: 'blur(10px)',
+            boxShadow: '0 10px 24px rgba(0,0,0,0.28)',
+          }}
+        >
+          Exit Sandbox
+        </button>
       )}
 
       {canRunAr && isViewMode && artworkUrl && (
@@ -1113,8 +1779,10 @@ function ARApp({
         </button>
       )}
 
-      {tutorialEnabled && !ttsAvailable && currentTexts.length > 0 && (
+      {!vrMode && voiceGuideEnabled && currentTexts.length > 0 && (!needsGesture || !ttsAvailable) && (
         <div
+          role="status"
+          aria-live="polite"
           style={{
             position: 'absolute',
             top: compactUi ? 44 : 54,
@@ -1133,7 +1801,7 @@ function ARApp({
           }}
         >
           <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>
-            Voice unavailable — showing captions
+            {ttsAvailable ? 'Voice guide' : 'Voice unavailable — showing captions'}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {currentTexts.map((text, index) => (
@@ -1175,7 +1843,7 @@ function ARApp({
         </div>
       )}
 
-      {canRunAr && submitState.status === 'submitting' && (
+      {canRunAr && (submitState.status === 'submitting' || submitState.status === 'checking-color') && (
         <div
           style={{
             position: 'absolute',
@@ -1198,8 +1866,55 @@ function ARApp({
               boxShadow: '0 10px 24px rgba(0,0,0,0.35)',
             }}
           >
-            {isViewMode ? 'Exiting view...' : 'Submitting your artwork...'}
+            {submitState.status === 'checking-color'
+              ? submitState.message
+              : sandboxMode
+              ? 'Exiting sandbox...'
+              : isViewMode
+                ? 'Exiting view...'
+                : 'Submitting your artwork...'}
           </div>
+        </div>
+      )}
+
+      {submitState.status === 'suggestion' && (
+        <div className="color-suggestion-overlay" role="presentation">
+          <section
+            className="color-suggestion-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="color-suggestion-title"
+          >
+            <div className="color-suggestion-icon" aria-hidden="true">🎨</div>
+            <p className="color-suggestion-eyebrow">Activity submitted</p>
+            <h1 id="color-suggestion-title">
+              {submitState.colorSuggestion ? 'A color idea for next time' : 'Your artwork is submitted'}
+            </h1>
+            <p className="color-suggestion-message">
+              {submitState.colorSuggestion?.message || submitState.message}
+            </p>
+
+            {submitState.colorSuggestion && submitState.colorSuggestion.colors.length > 0 && (
+              <div className="color-suggestion-swatches" aria-label="Suggested colors">
+                {submitState.colorSuggestion.colors.map((color) => (
+                  <div className="color-suggestion-swatch" key={`${color.name}-${color.hex}`}>
+                    <span style={{ backgroundColor: color.hex }} aria-hidden="true" />
+                    <strong>{color.name}</strong>
+                    <small>{color.hex}</small>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {submitState.colorSuggestion?.rationale && (
+              <p className="color-suggestion-rationale">{submitState.colorSuggestion.rationale}</p>
+            )}
+
+            <p className="color-suggestion-creativity">
+              Your teacher makes the final assessment, and creative color choices are always welcome.
+            </p>
+            <button type="button" onClick={finishSubmittedActivity}>Done</button>
+          </section>
         </div>
       )}
 
@@ -1249,7 +1964,7 @@ function ARApp({
         <div
           style={{
             position: 'absolute',
-            bottom: 20,
+            bottom: sandboxMode ? 78 : 20,
             left: 20,
             background: 'rgba(0, 0, 0, 0.8)',
             borderRadius: 8,
@@ -1261,21 +1976,46 @@ function ARApp({
             zIndex: 1000,
           }}
         >
-          <strong>🎮 Grab-to-Rotate Controls:</strong>
+          <strong>
+            {structuredPractice ? `${practiceDifficultyLabel} Practice Controls:` : '🎮 Grab-to-Rotate Controls:'}
+          </strong>
           <ul style={{ margin: '8px 0 0 0', paddingLeft: 16, lineHeight: 1.6 }}>
-            <li>✊ <strong>Make a fist</strong> to rotate</li>
-            <li>👉 <strong>Move left/right</strong> → Yaw rotation</li>
-            <li>👆 <strong>Move hand up/down</strong> → Pitch rotation</li>
-            <li>🤏 <strong>Pinch</strong> to move the model</li>
-            <li>✊✊ <strong>Two fists</strong> → Apart = zoom in, closer = zoom out</li>
-            <li>✋ <strong>Open hand</strong> to release</li>
-            {!isViewMode && <li>☝️ <strong>Point</strong> to paint on surface</li>}
-            {!isViewMode && <li>🖱️ <strong>Point at tool/color buttons</strong> to switch</li>}
-            {!isViewMode && <li>🪣 <strong>Bucket</strong> fills the model, or only the pointed puzzle piece in puzzle mode</li>}
+            {practiceAllowsPuzzle && !isGrabAllMode && (!structuredPractice || practiceAllowedToolSet.has('move')) && (
+              <>
+                <li>🤏 <strong>Pinch</strong> and move to reposition a puzzle piece</li>
+                <li>✊ <strong>Make a fist</strong> and move your hand to rotate the whole puzzle, trace, and finished model</li>
+                <li>✋ <strong>Open hand</strong> to release the gesture</li>
+              </>
+            )}
+            {practiceAllowsPuzzle && isGrabAllMode && (
+              <>
+                <li>✊ <strong>Make a fist and move your hand</strong> to rotate the whole puzzle, trace, and finished model together</li>
+                <li>🤏 <strong>Pinch and move</strong> to reposition the whole puzzle</li>
+                <li>✋ <strong>Open hand</strong> to release it</li>
+              </>
+            )}
+            {!structuredPractice && !normalizedPuzzlePieces && (
+              <>
+                <li>✊ <strong>Make a fist</strong> to rotate</li>
+                <li>👉 <strong>Move left/right</strong> → Yaw rotation</li>
+                <li>👆 <strong>Move hand up/down</strong> → Pitch rotation</li>
+                <li>✊✊ <strong>Two fists</strong> → Apart = zoom in, closer = zoom out</li>
+              </>
+            )}
+            {!isViewMode && practiceAllowsPainting && <li>☝️ <strong>Point</strong> to paint on the surface</li>}
+            {!isViewMode && practiceAllowsPainting && <li>🖱️ <strong>Point at tool/color buttons</strong> to switch</li>}
+            {!isViewMode && practiceAllowedToolSet.has('bucket') && (
+              <li>🪣 <strong>Bucket</strong> fills the model or a pointed puzzle piece</li>
+            )}
             <li>
-              🖐️🖐️ <strong>Two open palms</strong> → {isViewMode ? 'Exit' : 'Submit &amp; Exit'} (hold)
+              🖐️🖐️ <strong>Two open palms</strong> → {sandboxMode || isViewMode ? 'Exit' : 'Submit &amp; Exit'} (hold)
             </li>
           </ul>
+          {sandboxMode && (
+            <div style={{ marginTop: 10, color: '#c8f5d4', fontWeight: 700 }}>
+              {practiceDifficultyLabel ? `${practiceDifficultyLabel} practice` : 'Sandbox practice'} is not submitted or saved.
+            </div>
+          )}
           <div style={{ marginTop: 10, fontSize: 11, color: '#aaa', borderTop: '1px solid #444', paddingTop: 8 }}>
             <strong>Tips:</strong> Keep fist closed while moving. 
             Diagonal movement rotates both axes smoothly.

@@ -403,9 +403,6 @@ function ModelManipulator({
   const initialTwoHandPosition = useRef(new THREE.Vector3());
   const initialTwoHandScale = useRef(new THREE.Vector3(1, 1, 1));
   const twoHandSmoothedScale = useRef(new THREE.Vector3(1, 1, 1));
-  const initialPinchDistance = useRef(0);
-  const initialScale = useRef(new THREE.Vector3(1, 1, 1));
-  const smoothedScale = useRef(new THREE.Vector3(1, 1, 1));
   const raycaster = useRef(new THREE.Raycaster());
   const ndc = useRef(new THREE.Vector2());
   const palmNdc = useRef(new THREE.Vector2());
@@ -742,7 +739,7 @@ function SceneContent({
 }: ARSceneProps) {
   const anchorRef = useRef<THREE.Group | null>(null);
   const modelRef = useRef<THREE.Group | null>(null);
-  const [_paintStamps, setPaintStamps] = useState<PaintStamp[]>([]);
+  const [, setPaintStamps] = useState<PaintStamp[]>([]);
 
   const handleModelLoad = useCallback((model: THREE.Group) => {
     modelRef.current = model;

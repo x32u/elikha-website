@@ -1,0 +1,25 @@
+.activity-lock-shell { min-height: 100vh; }
+
+.activity-lock-toggle {
+  position: fixed;
+  z-index: 10000;
+  left: 22px;
+  top: 22px;
+  display: grid;
+  gap: 5px;
+  min-width: 74px;
+  padding: 11px 9px;
+  border: none;
+  border-radius: 14px;
+  color: #26313d;
+  font: 700 12px/1.1 inherit;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0,0,0,.35);
+}
+.activity-lock-toggle.is-locked { background: rgba(239, 242, 245, .72); }
+.activity-lock-toggle.is-unlocked { background: rgba(239, 242, 245, .72); }
+.activity-lock-icon { width: 23px; height: 23px; margin: 0 auto; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.activity-lock-toggle:hover, .activity-lock-toggle:focus-visible { filter: brightness(1.12); outline: 3px solid #fff; outline-offset: 2px; }
+.activity-lock-status { position: fixed; z-index: 10000; left: 22px; top: 104px; max-width: 180px; padding: 7px 9px; border-radius: 8px; color: #fff; background: rgba(0,0,0,.56); font-size: 12px; text-align: center; }
+.activity-lock-status.is-unlocked { background: #8f1d16; }
+@media (max-width: 640px) { .activity-lock-toggle { left: 12px; top: 12px; } .activity-lock-status { left: 12px; top: 94px; } }

@@ -46,6 +46,7 @@
 }
 
 .nav-item {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -62,8 +63,36 @@
 }
 
 .nav-icon {
+  position: relative;
   width: 26px;
   height: 26px;
+}
+
+.nav-badge {
+  position: absolute;
+  top: -9px;
+  right: -14px;
+  display: grid;
+  min-width: 19px;
+  height: 19px;
+  place-items: center;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  padding: 0 4px;
+  background: #e43d5d;
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 3px 8px rgba(173, 35, 67, 0.28);
+}
+
+.nav-item.active .nav-badge {
+  border-color: #3158df;
+}
+
+.parent-nav .navbar-content {
+  justify-content: flex-start;
 }
 
 .nav-icon svg {
@@ -237,6 +266,11 @@
     padding: 0 4px;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+  }
+
+  .parent-nav .navbar-content {
+    justify-content: center;
+    gap: 20px;
   }
 
   .teacher-nav .navbar-content::-webkit-scrollbar {

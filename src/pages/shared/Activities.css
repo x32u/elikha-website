@@ -30,15 +30,6 @@
   margin: 0;
 }
 
-.filter-section {
-  background: #ffffff;
-  border-radius: 18px;
-  border: 1px solid #d8e4ff;
-  padding: 10px;
-  box-shadow: 0 12px 26px rgba(47, 73, 153, 0.12);
-  width: 100%;
-}
-
 .filter-tabs {
   display: flex;
   gap: 10px;

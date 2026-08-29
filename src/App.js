@@ -13,6 +13,7 @@ import ActivityDetails from './pages/shared/ActivityDetails';
 import TeacherActivityDetails from './pages/teacher/ActivityDetails';
 import ActivityStart from './pages/student/ActivityStart';
 import MobileActivityStart from './pages/student/MobileActivityStart';
+import ArSandbox from './pages/student/ArSandbox';
 import Profile from './pages/student/Profile';
 // Teacher pages
 import TeacherHomepage from './pages/teacher/Homepage';
@@ -22,6 +23,9 @@ import ClassDetails from './pages/teacher/ClassDetails';
 import Reviews from './pages/teacher/Reviews';
 import Student from './pages/teacher/Student';
 import GestureAlerts from './pages/teacher/GestureAlerts';
+import Rubrics from './pages/teacher/Rubrics';
+import TeacherModels from './pages/teacher/Models';
+import TeacherReports from './pages/teacher/Reports';
 import {
   AdminDashboardRoute,
   AdminUsersRoute,
@@ -35,27 +39,29 @@ import {
   SuperAdminReportsRoute,
   SuperAdminSettingsRoute,
   SuperAdminAuditRoute,
-  SuperAdminPasswordResetsRoute,
 } from './pages/admin/AdminRoutePages';
 import Notifications from './pages/shared/Notifications';
 import UserSettingsEffects from './components/UserSettingsEffects';
+import ModelLibraryEffects from './components/ModelLibraryEffects';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { isSupabaseConfigured } from './lib/supabase';
+import { getDefaultRouteForRole, normalizeRole } from './utils/authState';
 import './styles/App.css';
 
-const normalizeRole = (role) => String(role || '').toLowerCase().replace(/[_\s-]/g, '');
-
-const getDefaultRouteForRole = (role) => {
-  const normalizedRole = normalizeRole(role);
-  if (normalizedRole === 'teacher') return '/classes';
-  if (normalizedRole === 'admin') return '/admin';
-  if (normalizedRole === 'superadmin') return '/superadmin';
-  return '/homepage';
-};
+const SessionCheck = () => (
+  <main className="configuration-error" role="status" aria-live="polite">
+    <section className="configuration-error__card">
+      <p>Checking your session...</p>
+    </section>
+  </main>
+);
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
-  const userInfo = sessionStorage.getItem('userInfo');
-  
-  if (!userInfo) {
+  const { status } = useAuth();
+
+  if (status === 'loading') return <SessionCheck />;
+  if (status !== 'authenticated') {
     return <Navigate to="/login" replace />;
   }
   
@@ -64,11 +70,13 @@ const ProtectedRoute = ({ children }) => {
 
 // Role-based Route Component
 const RoleBasedRoute = ({ teacherComponent: TeacherComponent, studentComponent: StudentComponent }) => {
-  const userInfo = JSON.parse(sessionStorage.getItem('userInfo') || '{}');
+  const { status, userInfo } = useAuth();
+  if (status === 'loading') return <SessionCheck />;
+  if (status !== 'authenticated') return <Navigate to="/login" replace />;
   const role = normalizeRole(userInfo.role);
 
   if (role === 'teacher') return <TeacherComponent />;
-  if (role === 'admin' || role === 'superadmin') {
+  if (role === 'parent' || role === 'admin' || role === 'superadmin') {
     return <Navigate to={getDefaultRouteForRole(role)} replace />;
   }
 
@@ -76,7 +84,9 @@ const RoleBasedRoute = ({ teacherComponent: TeacherComponent, studentComponent: 
 };
 
 const RoleProtectedRoute = ({ allowedRoles = [], children }) => {
-  const userInfo = JSON.parse(sessionStorage.getItem('userInfo') || '{}');
+  const { status, userInfo } = useAuth();
+  if (status === 'loading') return <SessionCheck />;
+  if (status !== 'authenticated') return <Navigate to="/login" replace />;
   const role = normalizeRole(userInfo.role);
   const normalizedAllowed = allowedRoles.map(normalizeRole);
 
@@ -88,10 +98,28 @@ const RoleProtectedRoute = ({ allowedRoles = [], children }) => {
 };
 
 function App() {
+  if (!isSupabaseConfigured) {
+    return (
+      <main className="configuration-error">
+        <section className="configuration-error__card">
+          <span className="configuration-error__eyebrow">Setup required</span>
+          <h1>Connect e-Likha to Supabase</h1>
+          <p>
+            Create <code>.env.local</code> from <code>.env.example</code>, add
+            the project URL and publishable key, then restart the development
+            server.
+          </p>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <Router>
-      <UserSettingsEffects />
-      <Routes>
+      <AuthProvider>
+        <UserSettingsEffects />
+        <ModelLibraryEffects />
+        <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -133,7 +161,9 @@ function App() {
           path="/activity/:id/start" 
           element={
             <ProtectedRoute>
-              <ActivityStart />
+              <RoleProtectedRoute allowedRoles={['student']}>
+                <ActivityStart />
+              </RoleProtectedRoute>
             </ProtectedRoute>
           } 
         />
@@ -141,11 +171,23 @@ function App() {
           path="/mobile/activity/:id/start"
           element={<MobileActivityStart />}
         />
-        <Route 
-          path="/profile" 
+        <Route
+          path="/sandbox"
           element={
             <ProtectedRoute>
-              <Profile />
+              <RoleProtectedRoute allowedRoles={['student']}>
+                <ArSandbox />
+              </RoleProtectedRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <RoleProtectedRoute allowedRoles={['student']}>
+                <Profile />
+              </RoleProtectedRoute>
             </ProtectedRoute>
           } 
         />
@@ -153,7 +195,9 @@ function App() {
           path="/settings" 
           element={
             <ProtectedRoute>
-              <Settings />
+              <RoleProtectedRoute allowedRoles={['student', 'teacher', 'parent']}>
+                <Settings />
+              </RoleProtectedRoute>
             </ProtectedRoute>
           } 
         />
@@ -161,7 +205,9 @@ function App() {
           path="/notifications" 
           element={
             <ProtectedRoute>
-              <Notifications />
+              <RoleProtectedRoute allowedRoles={['student', 'teacher', 'parent']}>
+                <Notifications />
+              </RoleProtectedRoute>
             </ProtectedRoute>
           } 
         />
@@ -169,7 +215,9 @@ function App() {
           path="/classes" 
           element={
             <ProtectedRoute>
-              <Classes />
+              <RoleProtectedRoute allowedRoles={['teacher']}>
+                <Classes />
+              </RoleProtectedRoute>
             </ProtectedRoute>
           } 
         />
@@ -177,7 +225,9 @@ function App() {
           path="/students" 
           element={
             <ProtectedRoute>
-              <Student />
+              <RoleProtectedRoute allowedRoles={['teacher']}>
+                <Student />
+              </RoleProtectedRoute>
             </ProtectedRoute>
           } 
         />
@@ -185,7 +235,9 @@ function App() {
           path="/class/:classId" 
           element={
             <ProtectedRoute>
-              <ClassDetails />
+              <RoleProtectedRoute allowedRoles={['teacher']}>
+                <ClassDetails />
+              </RoleProtectedRoute>
             </ProtectedRoute>
           } 
         />
@@ -193,9 +245,29 @@ function App() {
           path="/reviews" 
           element={
             <ProtectedRoute>
-              <Reviews />
+              <RoleProtectedRoute allowedRoles={['teacher']}>
+                <Reviews />
+              </RoleProtectedRoute>
             </ProtectedRoute>
           } 
+        />
+        <Route
+          path="/rubrics"
+          element={<ProtectedRoute><RoleProtectedRoute allowedRoles={['teacher']}><Rubrics /></RoleProtectedRoute></ProtectedRoute>}
+        />
+        <Route
+          path="/teacher/models"
+          element={<ProtectedRoute><RoleProtectedRoute allowedRoles={['teacher']}><TeacherModels /></RoleProtectedRoute></ProtectedRoute>}
+        />
+        <Route
+          path="/teacher/reports"
+          element={
+            <ProtectedRoute>
+              <RoleProtectedRoute allowedRoles={['teacher']}>
+                <TeacherReports />
+              </RoleProtectedRoute>
+            </ProtectedRoute>
+          }
         />
         <Route
           path="/gesture-alerts"
@@ -211,7 +283,9 @@ function App() {
           path="/student/:studentId"
           element={
             <ProtectedRoute>
-              <Student />
+              <RoleProtectedRoute allowedRoles={['teacher']}>
+                <Student />
+              </RoleProtectedRoute>
             </ProtectedRoute>
           }
         />
@@ -335,17 +409,8 @@ function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/superadmin/password-resets"
-          element={
-            <ProtectedRoute>
-              <RoleProtectedRoute allowedRoles={['superadmin']}>
-                <SuperAdminPasswordResetsRoute />
-              </RoleProtectedRoute>
-            </ProtectedRoute>
-          }
-        />
-      </Routes>
+        </Routes>
+      </AuthProvider>
     </Router>
   );
 }

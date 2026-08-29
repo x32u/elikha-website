@@ -1,231 +1,176 @@
 import { supabase } from '../lib/supabase';
 
-const RESET_REQUESTS_TABLE = 'password_reset_requests';
-const RESET_APPROVALS_RPC = 'get_password_reset_approval_requests';
-const CREATE_RESET_REQUEST_RPC = 'create_password_reset_approval_request';
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const RESET_ALLOWED_ROLES = new Set(['student', 'teacher']);
+const OTP_PATTERN = /^\d{6}$/;
+const RECOVERY_SESSION_KEY = 'elikha-password-recovery';
+const RECOVERY_SESSION_MAX_AGE_MS = 30 * 60 * 1000;
 
-const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
-const normalizeRole = (role) => String(role || '').trim().toLowerCase().replace(/[_\s-]/g, '');
+export const PASSWORD_RESET_COOLDOWN_SECONDS = 60;
+export const PASSWORD_RESET_MAX_OTP_ATTEMPTS = 5;
+export const PASSWORD_RESET_GENERIC_MESSAGE =
+  'If an account uses that email, a 6-digit password reset code has been sent.';
 
-const tableSetupMessage = (error) => {
-  const message = String(error?.message || '');
-  if (message.includes(RESET_REQUESTS_TABLE) || error?.code === '42P01') {
-    return 'Password reset approval table is not configured yet. Apply database/password_reset_requests.sql in Supabase.';
-  }
-  return message || 'Password reset request failed.';
-};
+export const normalizePasswordResetEmail = (email) =>
+  String(email || '').trim().toLowerCase();
 
-const isMissingRpcError = (error) => {
+const isRateLimitError = (error) => {
+  const status = Number(error?.status || error?.statusCode || 0);
+  const code = String(error?.code || '').toLowerCase();
   const message = String(error?.message || '').toLowerCase();
+
   return (
-    error?.code === 'PGRST202' ||
-    message.includes(RESET_APPROVALS_RPC.toLowerCase()) ||
-    message.includes(CREATE_RESET_REQUEST_RPC.toLowerCase()) ||
-    message.includes('could not find the function') ||
-    message.includes('schema cache')
+    status === 429 ||
+    code.includes('rate_limit') ||
+    code.includes('over_email_send_rate_limit') ||
+    message.includes('rate limit') ||
+    message.includes('too many requests') ||
+    message.includes('only request this after')
   );
 };
 
-const mapResetRequest = (request, account = null) => {
-  const accountRole = request?.account_role || account?.role || 'unknown';
+const isUnknownAccountError = (error) => {
+  const code = String(error?.code || '').toLowerCase();
+  const message = String(error?.message || '').toLowerCase();
 
-  return {
-    ...request,
-    account,
-    account_name: request?.account_name || account?.name || 'Unknown account',
-    account_role: accountRole,
-    is_reset_allowed:
-      typeof request?.is_reset_allowed === 'boolean'
-        ? request.is_reset_allowed
-        : RESET_ALLOWED_ROLES.has(normalizeRole(accountRole)),
-  };
+  return (
+    code === 'user_not_found' ||
+    message.includes('user not found') ||
+    message.includes('email not found')
+  );
 };
 
 const getResetRedirectUrl = () => {
-  const explicitUrl = process.env.REACT_APP_PASSWORD_RESET_REDIRECT_URL;
+  const explicitUrl = process.env.REACT_APP_PASSWORD_RESET_REDIRECT_URL?.trim();
   if (explicitUrl) return explicitUrl;
 
-  const siteUrl = process.env.REACT_APP_SITE_URL;
+  const siteUrl = process.env.REACT_APP_SITE_URL?.trim();
   if (siteUrl) return `${siteUrl.replace(/\/$/, '')}/reset-password`;
 
-  return `${window.location.origin}/reset-password`;
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}/reset-password`;
+  }
+
+  return undefined;
 };
 
-export const createPasswordResetRequest = async (email) => {
-  const safeEmail = normalizeEmail(email);
+export const requestPasswordResetOtp = async (email) => {
+  const safeEmail = normalizePasswordResetEmail(email);
 
   if (!EMAIL_PATTERN.test(safeEmail)) {
     return { success: false, error: 'Enter a valid email address.' };
   }
 
   try {
-    const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : null;
-    const { data: rpcData, error: rpcError } = await supabase.rpc(CREATE_RESET_REQUEST_RPC, {
-      p_email: safeEmail,
-      p_user_agent: userAgent,
-    });
-
-    if (!rpcError) {
-      const result = Array.isArray(rpcData) ? rpcData[0] : rpcData;
-      return {
-        success: Boolean(result?.success),
-        data: result,
-        error: result?.success ? null : result?.message || 'Failed to submit password reset request.',
-        message: result?.message || '',
-        code: result?.code || '',
-      };
-    }
-
-    if (!isMissingRpcError(rpcError)) throw rpcError;
-
-    const { data, error } = await supabase
-      .from(RESET_REQUESTS_TABLE)
-      .insert([
-        {
-          email: safeEmail,
-          status: 'pending',
-          user_agent: userAgent,
-        },
-      ]);
-
-    if (error) throw error;
-    return { success: true, data };
-  } catch (error) {
-    console.error('Error creating password reset request:', error);
-    return { success: false, error: tableSetupMessage(error) };
-  }
-};
-
-export const fetchPasswordResetRequests = async () => {
-  try {
-    const { data: rpcData, error: rpcError } = await supabase.rpc(RESET_APPROVALS_RPC);
-
-    if (!rpcError) {
-      return { success: true, data: (rpcData || []).map((request) => mapResetRequest(request)) };
-    }
-
-    if (!isMissingRpcError(rpcError)) throw rpcError;
-
-    const [{ data: requests, error: requestError }, { data: users, error: usersError }] = await Promise.all([
-      supabase
-        .from(RESET_REQUESTS_TABLE)
-        .select('*')
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('users')
-        .select('id, name, email, role'),
-    ]);
-
-    if (requestError) throw requestError;
-    if (usersError) {
-      console.warn('Unable to resolve password reset accounts:', usersError);
-    }
-
-    const userByEmail = new Map(
-      (users || []).map((user) => [normalizeEmail(user.email), user])
-    );
-
-    const data = (requests || []).map((request) => {
-      const account = userByEmail.get(normalizeEmail(request.email)) || null;
-      return mapResetRequest(request, account);
-    });
-
-    return { success: true, data };
-  } catch (error) {
-    console.error('Error fetching password reset requests:', error);
-    return { success: false, error: tableSetupMessage(error) };
-  }
-};
-
-const resolveRequestForApproval = async (request) => {
-  const fallback = mapResetRequest(request);
-  const resolved = await fetchPasswordResetRequests();
-  if (!resolved.success) return fallback;
-
-  const freshRequest = resolved.data.find((item) => item.id === request?.id);
-  if (!freshRequest) return fallback;
-
-  return freshRequest.is_reset_allowed || !fallback.is_reset_allowed ? freshRequest : fallback;
-};
-
-export const approvePasswordResetRequest = async (request, reviewerId) => {
-  const safeEmail = normalizeEmail(request?.email);
-
-  if (!request?.id || !safeEmail) {
-    return { success: false, error: 'Missing password reset request.' };
-  }
-
-  try {
-    const resolvedRequest = await resolveRequestForApproval(request);
-    const rawAccountRole = resolvedRequest?.account?.role || resolvedRequest?.account_role;
-    const accountRole = normalizeRole(rawAccountRole);
-
-    if (!resolvedRequest?.is_reset_allowed && (!accountRole || accountRole === 'unknown')) {
-      return {
-        success: false,
-        error: `No matching student or teacher account was found for ${safeEmail}. Check that the reset email exactly matches the account email.`,
-      };
-    }
-
-    if (accountRole && accountRole !== 'unknown' && !RESET_ALLOWED_ROLES.has(accountRole)) {
-      return {
-        success: false,
-        error: `Only student and teacher accounts can receive reset links from this panel. This request matched a ${rawAccountRole} account.`,
-      };
-    }
-
     const redirectTo = getResetRedirectUrl();
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(safeEmail, {
-      redirectTo,
-    });
+    const options = redirectTo ? { redirectTo } : undefined;
+    const { error } = await supabase.auth.resetPasswordForEmail(safeEmail, options);
 
-    if (resetError) throw resetError;
+    // Supabase normally returns the same response for registered and unregistered
+    // addresses. Preserve that anti-enumeration behavior if a project happens to
+    // return an explicit user-not-found error.
+    if (error && !isUnknownAccountError(error)) {
+      if (isRateLimitError(error)) {
+        return {
+          success: false,
+          code: 'rate_limited',
+          error: 'Please wait about a minute before requesting another code.',
+        };
+      }
+      throw error;
+    }
 
-    const { data, error } = await supabase
-      .from(RESET_REQUESTS_TABLE)
-      .update({
-        status: 'approved',
-        reviewed_at: new Date().toISOString(),
-        reviewed_by: reviewerId || null,
-        reset_sent_at: new Date().toISOString(),
-        rejection_reason: null,
-      })
-      .eq('id', request.id)
-      .select('*')
-      .single();
-
-    if (error) throw error;
-    return { success: true, data };
+    return {
+      success: true,
+      email: safeEmail,
+      message: PASSWORD_RESET_GENERIC_MESSAGE,
+    };
   } catch (error) {
-    console.error('Error approving password reset request:', error);
-    return { success: false, error: tableSetupMessage(error) };
+    console.error('Unable to request password reset code:', error);
+    return {
+      success: false,
+      error: 'We could not send a reset code right now. Please try again later.',
+    };
   }
 };
 
-export const rejectPasswordResetRequest = async (requestId, reviewerId, reason = '') => {
-  if (!requestId) {
-    return { success: false, error: 'Missing password reset request.' };
+export const verifyPasswordResetOtp = async (email, otp) => {
+  const safeEmail = normalizePasswordResetEmail(email);
+  const safeOtp = String(otp || '').replace(/\D/g, '').slice(0, 6);
+
+  if (!EMAIL_PATTERN.test(safeEmail)) {
+    return { success: false, error: 'Enter a valid email address.' };
+  }
+
+  if (!OTP_PATTERN.test(safeOtp)) {
+    return { success: false, error: 'Enter the 6-digit code from your email.' };
   }
 
   try {
-    const { data, error } = await supabase
-      .from(RESET_REQUESTS_TABLE)
-      .update({
-        status: 'rejected',
-        reviewed_at: new Date().toISOString(),
-        reviewed_by: reviewerId || null,
-        rejection_reason: String(reason || '').trim() || null,
-      })
-      .eq('id', requestId)
-      .select('*')
-      .single();
+    const { data, error } = await supabase.auth.verifyOtp({
+      email: safeEmail,
+      token: safeOtp,
+      type: 'recovery',
+    });
 
-    if (error) throw error;
-    return { success: true, data };
+    if (error || !data?.session || !data?.user) {
+      return {
+        success: false,
+        code: 'invalid_or_expired',
+        error: 'That code is invalid or expired. Check the latest email or request a new code.',
+      };
+    }
+
+    markPasswordRecoveryVerified(safeEmail);
+    return { success: true, email: safeEmail, session: data.session };
   } catch (error) {
-    console.error('Error rejecting password reset request:', error);
-    return { success: false, error: tableSetupMessage(error) };
+    console.error('Unable to verify password reset code:', error);
+    return {
+      success: false,
+      error: 'We could not verify the code right now. Please try again.',
+    };
   }
+};
+
+export const markPasswordRecoveryVerified = (email) => {
+  if (typeof window === 'undefined') return;
+
+  window.sessionStorage.setItem(
+    RECOVERY_SESSION_KEY,
+    JSON.stringify({
+      email: normalizePasswordResetEmail(email),
+      verifiedAt: Date.now(),
+    })
+  );
+};
+
+export const getVerifiedPasswordRecovery = () => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const recovery = JSON.parse(window.sessionStorage.getItem(RECOVERY_SESSION_KEY) || 'null');
+    const age = Date.now() - Number(recovery?.verifiedAt || 0);
+
+    if (
+      !EMAIL_PATTERN.test(normalizePasswordResetEmail(recovery?.email)) ||
+      !Number.isFinite(age) ||
+      age < 0 ||
+      age > RECOVERY_SESSION_MAX_AGE_MS
+    ) {
+      clearPasswordRecoveryVerification();
+      return null;
+    }
+
+    return {
+      email: normalizePasswordResetEmail(recovery.email),
+      verifiedAt: Number(recovery.verifiedAt),
+    };
+  } catch {
+    clearPasswordRecoveryVerification();
+    return null;
+  }
+};
+
+export const clearPasswordRecoveryVerification = () => {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.removeItem(RECOVERY_SESSION_KEY);
 };

@@ -1,6 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import elikhaLogo from '../assets/images/elikhalogo-cropped.png';
+import {
+  getUnreadNotificationCount,
+  subscribeToNotifications,
+} from '../services/notificationApi';
 import './Navbar.css';
 
 const Navbar = () => {
@@ -16,17 +20,56 @@ const Navbar = () => {
     }
   }, []);
   
-  const isTeacher = userInfo.role === 'teacher';
+  const role = String(userInfo.role || '').toLowerCase().replace(/[_\s-]/g, '');
+  const isTeacher = role === 'teacher';
+  const isParent = role === 'parent';
+  const [unreadCount, setUnreadCount] = useState(0);
+  const unreadRequestRef = useRef(0);
+
+  useEffect(() => {
+    let active = true;
+
+    const refreshUnreadCount = async () => {
+      const requestId = unreadRequestRef.current + 1;
+      unreadRequestRef.current = requestId;
+      const result = await getUnreadNotificationCount(userInfo.id);
+      if (active && requestId === unreadRequestRef.current && result.success) {
+        setUnreadCount(result.count);
+      }
+    };
+
+    refreshUnreadCount();
+    const unsubscribe = subscribeToNotifications(userInfo.id, refreshUnreadCount);
+    window.addEventListener('elikha-notifications-changed', refreshUnreadCount);
+
+    return () => {
+      active = false;
+      unreadRequestRef.current += 1;
+      unsubscribe();
+      window.removeEventListener('elikha-notifications-changed', refreshUnreadCount);
+    };
+  }, [userInfo.id]);
 
   // Teacher navigation items
   const teacherNavItems = [
     {
       key: 'dashboard',
       path: '/homepage',
-      label: 'Dashboard',
+      label: 'Home',
       icon: (
         <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5Z" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )
+    },
+    {
+      key: 'notifications',
+      path: '/notifications',
+      label: 'Notifications',
+      icon: (
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M18 10a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M10 22h4" fill="none" strokeWidth="1.6" strokeLinecap="round" />
         </svg>
       )
     },
@@ -66,12 +109,45 @@ const Navbar = () => {
       )
     },
     {
+      key: 'reports',
+      path: '/teacher/reports',
+      label: 'Reports',
+      icon: (
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M5 19V10M12 19V5M19 19v-7" fill="none" strokeWidth="1.6" strokeLinecap="round" />
+          <path d="M3 21h18" fill="none" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      )
+    },
+    {
       key: 'reviews',
       path: '/reviews',
       label: 'Reviews',
       icon: (
         <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <path d="m12 3.5 2.2 4.4 4.8.7-3.5 3.4.8 4.8L12 14.8l-4.3 2.3.8-4.8-3.5-3.4 4.8-.7L12 3.5Z" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )
+    },
+    {
+      key: 'rubrics',
+      path: '/rubrics',
+      label: 'Rubrics',
+      icon: (
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M6 3.5h9l3 3V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-15a1.5 1.5 0 0 1 1-1.5Z" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M9 10h6M9 14h6M9 18h3" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      )
+    },
+    {
+      key: 'models',
+      path: '/teacher/models',
+      label: '3D Models',
+      icon: (
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="m4 7.5 8 4.5 8-4.5M12 12v9" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       )
     },
@@ -123,6 +199,18 @@ const Navbar = () => {
       )
     },
     {
+      key: 'sandbox',
+      path: '/sandbox',
+      label: 'Sandbox',
+      icon: (
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="m4 7.5 8 4.5 8-4.5M12 12v9" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="m8.5 5.1 8 4.5" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      )
+    },
+    {
       key: 'profile',
       path: '/profile',
       label: 'Profile',
@@ -130,6 +218,17 @@ const Navbar = () => {
         <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <circle cx="12" cy="8" r="4" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
           <path d="M4 20c0-4 4-6 8-6s8 2 8 6" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )
+    },
+    {
+      key: 'notifications',
+      path: '/notifications',
+      label: 'Notifications',
+      icon: (
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M18 10a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M10 22h4" fill="none" strokeWidth="1.6" strokeLinecap="round" />
         </svg>
       )
     },
@@ -146,22 +245,25 @@ const Navbar = () => {
     }
   ];
 
-  const handleLogout = () => {
-    sessionStorage.removeItem('userInfo');
-    window.dispatchEvent(new Event('elikha-auth-changed'));
-    navigate('/login');
-  };
+  const parentNavItems = studentNavItems.filter(
+    (item) => item.key === 'notifications' || item.key === 'settings'
+  );
 
   // Use appropriate nav items based on role
-  const navItems = isTeacher ? teacherNavItems : studentNavItems;
+  const navItems = isTeacher ? teacherNavItems : isParent ? parentNavItems : studentNavItems;
 
   const activeKey = (() => {
     const path = location.pathname;
     if (path.startsWith('/activities') || path.startsWith('/activity')) return 'assignments';
+    if (path.startsWith('/notifications')) return 'notifications';
+    if (path.startsWith('/sandbox')) return 'sandbox';
     if (path.startsWith('/profile')) return 'profile';
     if (path.startsWith('/settings')) return 'settings';
     if (path.startsWith('/students') || path.startsWith('/student/')) return 'students';
+    if (path.startsWith('/teacher/reports')) return 'reports';
     if (path.startsWith('/reviews')) return 'reviews';
+    if (path.startsWith('/rubrics')) return 'rubrics';
+    if (path === '/teacher/models' || path.startsWith('/teacher/models/')) return 'models';
     if (path.startsWith('/gesture-alerts')) return 'gesture-alerts';
     if (path.startsWith('/classes') || path.startsWith('/class/')) return 'classes';
     if (path.startsWith('/homepage')) return 'dashboard';
@@ -169,7 +271,12 @@ const Navbar = () => {
   })();
 
   return (
-    <nav className={`navbar ${isTeacher ? 'teacher-nav' : 'student-nav'}`}>
+    <nav
+      className={`navbar ${
+        isTeacher ? 'teacher-nav' : isParent ? 'student-nav parent-nav' : 'student-nav'
+      }`}
+      aria-label={isParent ? 'Parent navigation' : 'Main navigation'}
+    >
       <div className="navbar-logo">
         <img src={elikhaLogo} alt="Elikha Logo" className="logo-image" />
       </div>
@@ -181,31 +288,24 @@ const Navbar = () => {
               key={item.key}
               className={`nav-item ${isActive ? 'active' : ''}`}
               onClick={() => navigate(item.path)}
-              aria-label={item.label}
+              aria-label={
+                item.key === 'notifications' && unreadCount
+                  ? `${item.label}, ${unreadCount} unread`
+                  : item.label
+              }
             >
               <div className="nav-icon">
                 {item.icon}
+                {item.key === 'notifications' && unreadCount > 0 && (
+                  <span className="nav-badge" aria-hidden="true">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
               </div>
               <span className="nav-label">{item.label}</span>
             </button>
           );
         })}
-        {isTeacher && (
-          <button
-            className="nav-item logout-item"
-            onClick={handleLogout}
-            aria-label="Logout"
-          >
-            <div className="nav-icon">
-              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M10 17l5-5-5-5" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M15 12H3" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M21 4v16" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <span className="nav-label">Logout</span>
-          </button>
-        )}
       </div>
     </nav>
   );

@@ -358,7 +358,7 @@ function ARAppV2({ onExit, activityId, studentId, viewMode = 'edit', artworkUrl 
       {!isViewMode && (
         <ControlPanel
           paintColor={paintColor}
-          onPaintColorChange={setPaintColor}
+          onPaintColorChange={(color) => setPaintColor(color)}
           activeTool={activeTool}
           onToolChange={setActiveTool}
           brushLevel={brushLevel}

@@ -18,7 +18,7 @@ const ProfileSection = ({ userName, grade, classLabel, completedCount = 0, pendi
         </div>
       </div>
       <div className="profile-info">
-        <h1 className="profile-greeting">hi, {userName}!</h1>
+        <h1 className="profile-greeting">Hi, {userName}!</h1>
         <p className="profile-grade">{displayClass}</p>
       </div>
       <div className="profile-stats">

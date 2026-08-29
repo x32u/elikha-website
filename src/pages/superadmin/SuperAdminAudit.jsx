@@ -152,7 +152,6 @@ function SuperAdminAudit({ onNavigate }) {
       className="page-superadmin page-superadmin-audit"
       homePageKey="sa-dashboard"
       showAudit={true}
-      showPasswordResets={true}
       auditPageKey="audit"
     >
       <header className="saud-header">

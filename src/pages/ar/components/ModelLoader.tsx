@@ -13,6 +13,7 @@ interface ModelLoaderProps {
   position?: [number, number, number];
   scale?: number;
   onLoad?: (model: THREE.Group) => void;
+  onError?: (message: string) => void;
 }
 
 const DEFAULT_MODEL_COLOR = new THREE.Color(0xffffff);
@@ -58,6 +59,7 @@ export function ModelLoader({
   position = [0, 0, -2],
   scale = 1,
   onLoad,
+  onError,
 }: ModelLoaderProps) {
   const [model, setModel] = useState<THREE.Group | null>(null);
   const [error, setError] = useState<boolean>(false);
@@ -84,6 +86,13 @@ export function ModelLoader({
     const isGltf = resolvedFileType === 'gltf' || resolvedFileType === 'glb';
     const loader = isGltf ? new GLTFLoader() : (isThreeDS ? new TDSLoader() : new OBJLoader());
     const isDataUrl = lowerUrl.startsWith('data:');
+    const failModelLoad = (message: string, cause?: unknown) => {
+      if (cancelled) return;
+      if (cause) console.error(message, cause);
+      setModel(null);
+      setError(true);
+      onError?.(message);
+    };
 
     console.log(
       `ModelLoader: Starting to load model from: ${normalizedUrl} (${resolvedFileType}, attempt ${retryCount + 1})`
@@ -102,7 +111,7 @@ export function ModelLoader({
       if (normalizedUrl.startsWith('idb://')) {
         const blob = await getCustomArModelBlob(normalizedUrl);
         if (!blob) {
-          if (!cancelled) setError(true);
+          failModelLoad('The saved 3D model file is no longer available on this device.');
           return;
         }
         objectUrl = URL.createObjectURL(blob);
@@ -124,7 +133,7 @@ export function ModelLoader({
           if (cancelled) return;
           const object = isGltf ? loaded?.scene : loaded;
           if (!object) {
-            setError(true);
+            failModelLoad('The 3D model file loaded without a usable scene.');
             return;
           }
           console.log('ModelLoader: model parsed, processing...');
@@ -164,6 +173,11 @@ export function ModelLoader({
               child.receiveShadow = false;
             }
           });
+
+          if (meshCount === 0) {
+            failModelLoad('The 3D model does not contain any renderable mesh.');
+            return;
+          }
           
           console.log('ModelLoader: Applied material to', meshCount, 'meshes');
           console.log('ModelLoader: Final scale:', object.scale.x);
@@ -187,12 +201,14 @@ export function ModelLoader({
             setRetryCount((prev) => prev + 1);
             return;
           }
-          setError(true);
+          failModelLoad('The 3D model could not be downloaded or parsed after several attempts.', err);
         }
       );
     };
 
-    loadModel();
+    void loadModel().catch((loadError) => {
+      failModelLoad('The 3D model could not be prepared for AR.', loadError);
+    });
 
     return () => {
       cancelled = true;
@@ -200,16 +216,12 @@ export function ModelLoader({
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [url, fileType, scale, onLoad, retryCount]);
+  }, [url, fileType, scale, onLoad, onError, retryCount]);
 
-  // Show fallback placeholder if model failed after retries
+  // Do not replace a failed graded model with a plausible fake object. The
+  // parent AR screen displays a blocking, user-visible error instead.
   if (error) {
-    return (
-      <mesh position={position}>
-        <sphereGeometry args={[0.35, 24, 24]} />
-        <meshStandardMaterial color="#ffffff" roughness={0.62} metalness={0.04} />
-      </mesh>
-    );
+    return null;
   }
 
   if (!model) {

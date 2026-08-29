@@ -1,0 +1,587 @@
+.teacher-reports-page {
+  min-height: 100vh;
+  margin-left: 120px;
+  padding: 38px 40px 72px;
+  background:
+    radial-gradient(circle at 8% 4%, rgba(84, 110, 255, .12), transparent 300px),
+    radial-gradient(circle at 92% 8%, rgba(76, 201, 166, .1), transparent 320px),
+    #f5f7fc;
+  color: #17223b;
+}
+
+.teacher-reports-content {
+  width: min(100%, 1420px);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.teacher-reports-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.teacher-reports-eyebrow {
+  margin: 0 0 8px;
+  color: #5267df;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.teacher-reports-header h1 {
+  margin: 0;
+  color: #17223b;
+  font-size: clamp(32px, 4vw, 46px);
+  line-height: 1.08;
+  letter-spacing: -.04em;
+}
+
+.teacher-reports-subtitle {
+  max-width: 720px;
+  margin: 10px 0 0;
+  color: #667085;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.teacher-reports-export {
+  min-height: 42px;
+  padding: 0 17px;
+  border: 1px solid #354ac9;
+  border-radius: 11px;
+  background: #354ac9;
+  color: #fff;
+  box-shadow: 0 9px 22px rgba(53, 74, 201, .22);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform .16s ease, box-shadow .16s ease, opacity .16s ease;
+}
+
+.teacher-reports-export:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px rgba(53, 74, 201, .28);
+}
+
+.teacher-reports-export:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.teacher-reports-export:focus-visible,
+.teacher-reports-range-button:focus-visible,
+.teacher-reports-class-filter select:focus-visible,
+.teacher-reports-message button:focus-visible {
+  outline: 3px solid rgba(82, 103, 223, .24);
+  outline-offset: 2px;
+}
+
+.teacher-reports-filters {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid #e0e5f2;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .9);
+  box-shadow: 0 8px 24px rgba(30, 49, 96, .06);
+}
+
+.teacher-reports-range {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.teacher-reports-range legend,
+.teacher-reports-class-filter > span {
+  display: block;
+  margin-bottom: 7px;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.teacher-reports-range-options {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid #d8deeb;
+  border-radius: 11px;
+  background: #f7f8fc;
+}
+
+.teacher-reports-range-button {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #667085;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.teacher-reports-range-button:hover { color: #3146c9; }
+
+.teacher-reports-range-button.is-active {
+  background: #fff;
+  color: #3146c9;
+  box-shadow: 0 2px 7px rgba(30, 49, 96, .12);
+}
+
+.teacher-reports-class-filter { display: grid; }
+
+.teacher-reports-class-filter select {
+  min-width: 220px;
+  height: 42px;
+  padding: 0 36px 0 12px;
+  border: 1px solid #d8deeb;
+  border-radius: 10px;
+  background: #fff;
+  color: #344054;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.teacher-reports-filter-summary {
+  min-width: 180px;
+  margin-left: auto;
+  display: grid;
+  gap: 3px;
+  text-align: right;
+}
+
+.teacher-reports-filter-summary strong { color: #273bc2; font-size: 14px; }
+.teacher-reports-filter-summary span { color: #667085; font-size: 12px; }
+
+.teacher-reports-message {
+  min-height: 104px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid #dfe5f2;
+  border-radius: 17px;
+  background: #fff;
+  box-shadow: 0 9px 24px rgba(30, 49, 96, .06);
+}
+
+.teacher-reports-message strong { color: #24324d; font-size: 16px; }
+.teacher-reports-message p { margin: 4px 0 0; color: #667085; font-size: 14px; }
+
+.teacher-reports-message--error {
+  border-color: #f3c9cd;
+  background: #fffafa;
+}
+
+.teacher-reports-message--error strong { color: #a62f3c; }
+
+.teacher-reports-message button {
+  min-height: 38px;
+  margin-left: auto;
+  padding: 0 14px;
+  border: 1px solid #d08a92;
+  border-radius: 9px;
+  background: #fff;
+  color: #a62f3c;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.teacher-reports-spinner {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  border: 3px solid #e4e8f5;
+  border-top-color: #5267df;
+  border-radius: 50%;
+  animation: teacher-reports-spin .8s linear infinite;
+}
+
+@keyframes teacher-reports-spin { to { transform: rotate(360deg); } }
+
+.teacher-reports-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.teacher-reports-kpi {
+  position: relative;
+  overflow: hidden;
+  min-height: 142px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border: 1px solid #e0e5f2;
+  border-radius: 17px;
+  background: #fff;
+  box-shadow: 0 9px 24px rgba(30, 49, 96, .06);
+}
+
+.teacher-reports-kpi::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: #8f9aad;
+  content: '';
+}
+
+.teacher-reports-kpi--blue::before { background: #5267df; }
+.teacher-reports-kpi--purple::before { background: #8b5bd6; }
+.teacher-reports-kpi--red::before { background: #d8505b; }
+.teacher-reports-kpi--green::before { background: #2a9b75; }
+
+.teacher-reports-kpi > span {
+  color: #667085;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.teacher-reports-kpi > strong {
+  margin-top: 8px;
+  color: #17223b;
+  font-size: clamp(27px, 3vw, 36px);
+  line-height: 1;
+  letter-spacing: -.03em;
+}
+
+.teacher-reports-kpi > small {
+  margin-top: 9px;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.teacher-reports-overview {
+  display: grid;
+  grid-template-columns: minmax(0, .88fr) minmax(0, 1.12fr);
+  gap: 16px;
+}
+
+.teacher-reports-card,
+.teacher-reports-section {
+  border: 1px solid #e0e5f2;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(30, 49, 96, .06);
+}
+
+.teacher-reports-card { padding: 21px; }
+
+.teacher-reports-card-heading,
+.teacher-reports-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.teacher-reports-card-heading h2,
+.teacher-reports-section-heading h2 {
+  margin: 0;
+  color: #1c2944;
+  font-size: 19px;
+  letter-spacing: -.02em;
+}
+
+.teacher-reports-card-heading p,
+.teacher-reports-section-heading p {
+  margin: 6px 0 0;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.teacher-reports-status-list {
+  margin-top: 21px;
+  display: grid;
+  gap: 16px;
+}
+
+.teacher-reports-status-row { display: grid; gap: 7px; }
+
+.teacher-reports-status-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #475467;
+  font-size: 13px;
+}
+
+.teacher-reports-status-label strong { color: #25324c; }
+
+.teacher-reports-status-track {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf0f5;
+}
+
+.teacher-reports-status-fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width .25s ease;
+}
+
+.teacher-reports-status-fill--blue { background: #5267df; }
+.teacher-reports-status-fill--green { background: #2a9b75; }
+.teacher-reports-status-fill--purple { background: #8b5bd6; }
+.teacher-reports-status-fill--red { background: #d8505b; }
+.teacher-reports-status-fill--gray { background: #9aa4b5; }
+.teacher-reports-status-fill--orange { background: #dd8a30; }
+
+.teacher-reports-trend-total {
+  color: #3146c9;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.teacher-reports-trend { margin: 20px 0 0; }
+
+.teacher-reports-trend-bars {
+  min-height: 236px;
+  padding: 10px 2px 0;
+  display: flex;
+  align-items: stretch;
+  gap: 9px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.teacher-reports-trend-column {
+  min-width: 54px;
+  flex: 1 0 54px;
+  display: grid;
+  grid-template-rows: 23px 172px 31px;
+  gap: 5px;
+  text-align: center;
+}
+
+.teacher-reports-trend-column > strong {
+  align-self: end;
+  color: #344054;
+  font-size: 11px;
+}
+
+.teacher-reports-trend-track {
+  width: min(38px, 78%);
+  height: 172px;
+  margin: 0 auto;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+  border-radius: 8px 8px 4px 4px;
+  background: #f0f2f8;
+}
+
+.teacher-reports-trend-bar {
+  width: 100%;
+  border-radius: 8px 8px 3px 3px;
+  background: linear-gradient(180deg, #6175e6, #354ac9);
+  box-shadow: 0 -3px 12px rgba(53, 74, 201, .16);
+  transition: height .25s ease;
+}
+
+.teacher-reports-trend-column > span {
+  overflow: hidden;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+}
+
+.teacher-reports-empty {
+  min-height: 218px;
+  display: grid;
+  place-items: center;
+  color: #667085;
+  font-size: 13px;
+  text-align: center;
+}
+
+.teacher-reports-section { overflow: hidden; }
+
+.teacher-reports-section-heading {
+  padding: 20px 21px 17px;
+  border-bottom: 1px solid #e8ebf2;
+}
+
+.teacher-reports-section-heading > span {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #eef0ff;
+  color: #3e53cc;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.teacher-reports-table-wrap { overflow-x: auto; }
+
+.teacher-reports-table-wrap:focus-visible {
+  outline: 3px solid rgba(82, 103, 223, .24);
+  outline-offset: -3px;
+}
+
+.teacher-reports-table {
+  width: 100%;
+  min-width: 1120px;
+  border-collapse: collapse;
+}
+
+.teacher-reports-attention-table { min-width: 760px; }
+
+.teacher-reports-table th,
+.teacher-reports-table td {
+  padding: 13px 15px;
+  border-bottom: 1px solid #edf0f5;
+  color: #475467;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.teacher-reports-table thead th {
+  background: #f8f9fc;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.teacher-reports-table tbody th {
+  max-width: 260px;
+  color: #25324c;
+  font-size: 13px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.teacher-reports-table tbody tr:last-child th,
+.teacher-reports-table tbody tr:last-child td { border-bottom: 0; }
+.teacher-reports-table tbody tr:hover { background: #fafbfe; }
+
+.teacher-reports-table-rate {
+  min-width: 112px;
+  display: grid;
+  gap: 6px;
+}
+
+.teacher-reports-table-rate > span {
+  color: #344054;
+  font-weight: 750;
+}
+
+.teacher-reports-table-rate > div {
+  width: 90px;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8ebf3;
+}
+
+.teacher-reports-table-rate i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #5267df;
+}
+
+.teacher-reports-table-empty {
+  height: 120px;
+  color: #667085 !important;
+  text-align: center !important;
+}
+
+.teacher-reports-table-empty--positive { color: #277c61 !important; }
+
+.teacher-reports-count-pill {
+  min-width: 28px;
+  min-height: 25px;
+  padding: 3px 8px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #f0f2f5;
+  color: #667085;
+  font-weight: 800;
+}
+
+.teacher-reports-count-pill--red { background: #fff0f1; color: #b83845; }
+.teacher-reports-count-pill--purple { background: #f4edff; color: #7042b2; }
+.teacher-reports-count-pill--orange { background: #fff4e6; color: #92500f; }
+
+.teacher-reports-quality {
+  padding: 14px 16px;
+  border: 1px solid #e5ddbf;
+  border-radius: 13px;
+  background: #fffdf5;
+  color: #735f2b;
+  font-size: 12px;
+}
+
+.teacher-reports-quality strong { color: #67511a; }
+.teacher-reports-quality p { margin: 4px 0 0; line-height: 1.5; }
+
+@media (max-width: 1120px) {
+  .teacher-reports-overview { grid-template-columns: 1fr; }
+  .teacher-reports-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 860px) {
+  .teacher-reports-header { align-items: flex-start; flex-direction: column; }
+  .teacher-reports-filter-summary { width: 100%; margin-left: 0; text-align: left; }
+}
+
+@media (max-width: 768px) {
+  .teacher-reports-page {
+    margin-left: 0;
+    padding: 24px 18px 112px;
+  }
+
+  .teacher-reports-content { gap: 17px; }
+  .teacher-reports-header { gap: 16px; }
+  .teacher-reports-export { width: 100%; }
+  .teacher-reports-filters { align-items: stretch; flex-direction: column; }
+  .teacher-reports-class-filter select { width: 100%; min-width: 0; }
+}
+
+@media (max-width: 560px) {
+  .teacher-reports-page { padding-right: 13px; padding-left: 13px; }
+  .teacher-reports-kpis { grid-template-columns: 1fr; }
+  .teacher-reports-kpi { min-height: 126px; }
+  .teacher-reports-range-options { width: 100%; }
+  .teacher-reports-range-button { flex: 1; }
+  .teacher-reports-card { padding: 17px; }
+  .teacher-reports-card-heading,
+  .teacher-reports-section-heading { flex-direction: column; }
+  .teacher-reports-message { align-items: flex-start; flex-wrap: wrap; }
+  .teacher-reports-message button { width: 100%; margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .teacher-reports-spinner { animation: none; }
+  .teacher-reports-export,
+  .teacher-reports-status-fill,
+  .teacher-reports-trend-bar { transition: none; }
+}

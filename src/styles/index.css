@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400&family=SN+Pro:wght@700&display=swap');
+
 * {
   margin: 0;
   padding: 0;
@@ -9,7 +11,8 @@ html, body {
 }
 
 body {
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 400;
   background: #FFFFFF;
   overflow-x: hidden;
   overflow-y: auto;
@@ -17,6 +20,17 @@ body {
   -moz-osx-font-smoothing: grayscale;
   font-size: 18px;
   line-height: 1.6;
+}
+
+/* Shared typography: SN Pro for display headings and Nunito for reading text. */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: 'SN Pro', sans-serif !important;
+  font-weight: 700 !important;
 }
 
 #root {

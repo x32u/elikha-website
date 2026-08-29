@@ -5,7 +5,27 @@
   margin-left: 120px;
 }
 
+/* Keep the class page scrollable without showing a browser-side scrollbar. */
+html:has(.class-details-shell) {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  scrollbar-width: none;
+}
+
+body:has(.class-details-shell) {
+  scrollbar-width: none;
+}
+
+html:has(.class-details-shell)::-webkit-scrollbar,
+body:has(.class-details-shell)::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 .class-details-shell {
+  width: 100%;
+  min-width: 0;
   max-width: 1200px;
   margin: 0 auto;
   display: flex;
@@ -72,11 +92,15 @@
 
 .class-details-layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 24px;
 }
 
 .class-section {
+  min-width: 0;
+  overflow: hidden;
   background: #ffffff;
   border: 1px solid #e6e0db;
   border-radius: 14px;
@@ -95,14 +119,6 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-
-.enroll-box {
-  border: 1px solid #e6e0db;
-  background: #f9f8f8;
-  border-radius: 10px;
-  padding: 12px;
-  margin-bottom: 14px;
 }
 
 .enroll-title {
@@ -280,6 +296,46 @@
 .activity-edit-form {
   margin-bottom: 0;
   width: 100%;
+}
+
+.activity-rubric-field {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+
+.activity-rubric-help,
+.activity-rubric-lock,
+.activity-rubric-warning,
+.activity-rubric-error {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.activity-rubric-help {
+  color: #6f6780;
+}
+
+.activity-rubric-lock {
+  color: #6b4f00;
+  background: #fff8d9;
+  border: 1px solid #ead88d;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.activity-rubric-warning {
+  color: #744700;
+}
+
+.activity-rubric-error {
+  color: #a51d2d;
+}
+
+.activity-rubric-field select:disabled {
+  cursor: not-allowed;
+  background: #f1eef5;
+  color: #665f70;
 }
 
 .object-kit-selector {
@@ -481,6 +537,21 @@
   background: #f9f8f8;
 }
 
+.class-details-container .activity-item.is-minimized {
+  align-items: center;
+  padding: 13px 16px;
+}
+
+.class-details-container .activity-item.is-minimized .activity-description,
+.class-details-container .activity-item.is-minimized .activity-list-thumbnail,
+.class-details-container .activity-item.is-minimized .activity-object-tags {
+  display: none;
+}
+
+.class-details-container .activity-item.is-minimized .activity-name {
+  margin-bottom: 4px;
+}
+
 .class-details-container .activity-content {
   flex: 1;
   min-width: 0;
@@ -600,24 +671,142 @@
 }
 
 .class-details-container .activity-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-shrink: 0;
 }
 
-.class-details-container .btn-edit {
-  background: #f0eefc;
-  color: #1800ad;
-  border: none;
-  border-radius: 8px;
-  padding: 8px 14px;
-  font-weight: 600;
+.btn-toggle-activity {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #cfd8ff;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #3154ca;
+  font-family: 'Nunito', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 12px;
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
 
-.class-details-container .btn-edit:hover {
-  background: #e0ddf8;
-  color: #13008c;
+.btn-toggle-activity:hover {
+  background: #f0f3ff;
+  border-color: #8ea4ff;
+}
+
+.activity-toggle-icon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+  transition: transform 0.2s ease;
+}
+
+.btn-toggle-activity[aria-expanded="true"] .activity-toggle-icon {
+  transform: rotate(180deg);
+}
+
+.btn-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #3f63f5, #2100b7);
+  color: #ffffff;
+  border: 1px solid #2100b7;
+  border-radius: 9px;
+  padding: 9px 15px;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 13px;
+  line-height: 1;
+  box-shadow: 0 7px 14px rgba(33, 0, 183, 0.2);
+}
+
+.btn-edit:hover {
+  background: linear-gradient(135deg, #3158ed, #19008f);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 18px rgba(33, 0, 183, 0.28);
+}
+
+.btn-edit:focus-visible {
+  outline: 3px solid rgba(63, 99, 245, 0.3);
+  outline-offset: 2px;
+}
+
+/* Keep collapsed class activities to one compact row. */
+.class-details-shell .activities-list .activity-item.is-minimized {
+  min-height: 0 !important;
+  height: auto !important;
+  padding: 12px 16px !important;
+  align-items: center !important;
+}
+
+.class-details-shell .activities-list .activity-item.is-minimized .activity-description,
+.class-details-shell .activities-list .activity-item.is-minimized .activity-list-thumbnail,
+.class-details-shell .activities-list .activity-item.is-minimized .activity-object-tags {
+  display: none !important;
+}
+
+.class-details-shell .activities-list .activity-item.is-minimized .activity-name {
+  margin-bottom: 4px;
+  font-size: 17px;
+}
+
+.class-details-shell .activities-list .activity-item.is-minimized .activity-due-date {
+  display: inline-flex;
+  margin: 0;
+  padding: 4px 9px;
+}
+
+.class-details-shell .activity-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.class-details-shell .activity-action .btn-edit {
+  display: none;
+}
+
+.activity-edit-button {
+  margin-top: 12px;
+}
+
+/* Activity cards keep one consistent width in both states. */
+.class-details-shell .activities-list .activity-item {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.class-details-shell .activities-list .activity-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.class-details-shell .activities-list .activity-action {
+  margin-left: auto;
+}
+
+.class-details-shell .activities-list .activity-item.is-minimized {
+  align-items: center;
 }
 
 .class-details-container .no-activities {

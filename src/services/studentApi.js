@@ -59,6 +59,100 @@ const resolveStudentActivityState = ({
   return { status: 'assigned', isSubmitted: false, isReviewed: false, isOverdue: false };
 };
 
+const cleanText = (value) => typeof value === 'string' ? value.trim() : '';
+
+const normalizeRubricLevels = (levels) => Array.isArray(levels)
+  ? levels.map((level) => ({
+    code: cleanText(level?.code).toUpperCase(),
+    label: cleanText(level?.label),
+    description: cleanText(level?.description),
+  })).filter((level) => level.code || level.label || level.description)
+  : [];
+
+const normalizeStudentRubric = (rubric) => {
+  if (!rubric || typeof rubric !== 'object') return null;
+
+  return {
+    id: rubric.id || null,
+    title: cleanText(rubric.title),
+    description: cleanText(rubric.description),
+    criteria: Array.isArray(rubric.criteria)
+      ? rubric.criteria.map((criterion) => ({
+        name: cleanText(criterion?.name),
+        levels: normalizeRubricLevels(criterion?.levels),
+      })).filter((criterion) => criterion.name || criterion.levels.length > 0)
+      : [],
+    metadata: rubric.metadata && typeof rubric.metadata === 'object' ? rubric.metadata : {},
+    assignedVersion: rubric.assignedVersion ?? null,
+  };
+};
+
+const normalizeApprovedColorSuggestion = (suggestion) => {
+  if (!suggestion || typeof suggestion !== 'object') return null;
+
+  const normalized = {
+    message: cleanText(suggestion.message),
+    rationale: cleanText(suggestion.rationale),
+    colors: Array.isArray(suggestion.colors)
+      ? suggestion.colors.map((color) => ({
+        name: cleanText(color?.name),
+        hex: cleanText(color?.hex),
+      })).filter((color) => color.name || color.hex)
+      : [],
+  };
+
+  return normalized.message || normalized.rationale || normalized.colors.length > 0
+    ? normalized
+    : null;
+};
+
+const normalizeFinalRubricCriteria = (criteria) => Array.isArray(criteria)
+  ? criteria.map((criterion) => ({
+    criterion_index: Number.isInteger(Number(criterion?.criterion_index))
+      ? Number(criterion.criterion_index)
+      : null,
+    criterion_title_snapshot: cleanText(criterion?.criterion_title_snapshot),
+    beginning_descriptor_snapshot: cleanText(criterion?.beginning_descriptor_snapshot),
+    developing_descriptor_snapshot: cleanText(criterion?.developing_descriptor_snapshot),
+    consistent_descriptor_snapshot: cleanText(criterion?.consistent_descriptor_snapshot),
+    selected_rating: cleanText(criterion?.selected_rating).toUpperCase(),
+    teacher_note: cleanText(criterion?.teacher_note),
+  })).filter((criterion) => criterion.criterion_title_snapshot || criterion.selected_rating)
+  : [];
+
+const normalizeFinalStudentReview = (review) => {
+  if (!review || typeof review !== 'object') return null;
+
+  const reviewedAt = cleanText(review.reviewed_at);
+  const confirmedAt = cleanText(review.teacher_confirmed_at);
+  if (!reviewedAt) return null;
+  const hasConfirmedObservation = Boolean(confirmedAt);
+
+  // Only allow teacher-finalized fields through to the learner. In particular,
+  // raw AI scores, summaries, and criterion drafts are intentionally omitted.
+  // Legacy reviews can still show their final score/feedback; rubric evidence
+  // and approved suggestions require a teacher-confirmed observation.
+  return {
+    score: review.score ?? null,
+    feedback: cleanText(review.feedback),
+    reviewed_at: reviewedAt,
+    observation_date: hasConfirmedObservation ? cleanText(review.observation_date) : '',
+    overall_comment: hasConfirmedObservation ? cleanText(review.overall_comment) : '',
+    evidence_url: hasConfirmedObservation ? cleanText(review.evidence_url) : '',
+    next_steps: hasConfirmedObservation ? cleanText(review.next_steps) : '',
+    teacher_confirmed_at: confirmedAt,
+    criteria: hasConfirmedObservation ? normalizeFinalRubricCriteria(review.criteria) : [],
+    approved_color_suggestion: hasConfirmedObservation
+      ? normalizeApprovedColorSuggestion(review.approved_color_suggestion)
+      : null,
+  };
+};
+
+const normalizeStudentActivityAssessment = (assessment) => ({
+  rubric: normalizeStudentRubric(assessment?.rubric),
+  final_review: normalizeFinalStudentReview(assessment?.final_review),
+});
+
 // ==================== STUDENT PROFILE ====================
 
 export const getStudentProfile = async (studentId) => {
@@ -81,31 +175,30 @@ export const getStudentProfile = async (studentId) => {
 
 export const getStudentClasses = async (studentId) => {
   try {
-    const { data, error } = await supabase
+    const { data: enrollments, error: enrollmentError } = await supabase
       .from('class_students')
-      .select(`
-        class_id,
-        enrolled_at,
-        classes:class_id (
-          id,
-          name,
-          grade,
-          section,
-          subject,
-          color,
-          teacher_id
-        )
-      `)
+      .select('class_id, enrolled_at')
       .eq('student_id', studentId)
       .order('enrolled_at', { ascending: false });
 
-    if (error) throw error;
-    
-    // Flatten the data
-    const classes = (data || []).map(enrollment => ({
-      ...enrollment.classes,
-      enrolled_at: enrollment.enrolled_at
-    }));
+    if (enrollmentError) throw enrollmentError;
+
+    const classIds = [...new Set((enrollments || []).map(({ class_id: classId }) => classId).filter(Boolean))];
+    if (classIds.length === 0) return { success: true, data: [] };
+
+    const { data: classRows, error: classError } = await supabase
+      .from('classes')
+      .select('id, name, grade, section, subject, color, teacher_id, is_active')
+      .in('id', classIds)
+      .eq('is_active', true);
+
+    if (classError) throw classError;
+
+    const classesById = new Map((classRows || []).map((classInfo) => [classInfo.id, classInfo]));
+    const classes = (enrollments || []).flatMap((enrollment) => {
+      const classInfo = classesById.get(enrollment.class_id);
+      return classInfo ? [{ ...classInfo, enrolled_at: enrollment.enrolled_at }] : [];
+    });
     
     return { success: true, data: classes };
   } catch (error) {
@@ -151,10 +244,25 @@ export const getStudentActivities = async (studentId) => {
       console.warn('Unable to fetch student class enrollments for activity fallback:', enrollmentError);
     }
 
-    const classIds = enrollmentError
+    const enrolledClassIds = enrollmentError
       ? []
       : [...new Set((enrollments || []).map((enrollment) => enrollment.class_id).filter(Boolean))];
+    let classIds = [];
     let classActivities = [];
+
+    if (enrolledClassIds.length > 0) {
+      const { data: activeClasses, error: classError } = await supabase
+        .from('classes')
+        .select('id')
+        .in('id', enrolledClassIds)
+        .eq('is_active', true);
+
+      if (classError) {
+        console.warn('Unable to confirm active classes for student activity fallback:', classError);
+      } else {
+        classIds = (activeClasses || []).map((classInfo) => classInfo.id).filter(Boolean);
+      }
+    }
 
     if (classIds.length > 0) {
       const { data, error } = await supabase
@@ -351,67 +459,41 @@ export const getActivityDetails = async (activityId, studentId) => {
   }
 };
 
+export const getStudentActivityAssessment = async (activityId) => {
+  if (!activityId) {
+    return { success: false, error: 'Activity information is required.' };
+  }
+
+  try {
+    const { data, error } = await supabase.rpc('get_student_activity_assessment', {
+      p_activity_id: activityId,
+    });
+
+    if (error) throw error;
+    return { success: true, data: normalizeStudentActivityAssessment(data) };
+  } catch (error) {
+    console.error('Error fetching student activity rubric and review:', error);
+    return {
+      success: false,
+      error: error?.message || 'Rubric and review details are unavailable right now.',
+    };
+  }
+};
+
 // ==================== SUBMISSIONS ====================
 
 export const submitActivity = async (studentId, activityId, submissionData) => {
   try {
-    // Check if submission already exists
-    const { data: existing } = await supabase
-      .from('submissions')
-      .select('id')
-      .eq('activity_id', activityId)
-      .eq('student_id', studentId)
-      .single();
+    const { data, error } = await supabase.rpc('submit_assigned_activity', {
+      p_student_id: studentId,
+      p_activity_id: activityId,
+      p_artwork_url: submissionData.artwork_url || null,
+      p_description: submissionData.description || null,
+      p_artwork_title: `AR Submission ${new Date().toLocaleDateString()}`,
+    });
 
-    if (existing) {
-      // Update existing submission
-      const { data, error } = await supabase
-        .from('submissions')
-        .update({
-          artwork_url: submissionData.artwork_url,
-          description: submissionData.description,
-          status: 'submitted',
-          submitted_at: new Date().toISOString()
-        })
-        .eq('id', existing.id)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      await supabase
-        .from('activity_assignments')
-        .update({ status: 'submitted' })
-        .eq('activity_id', activityId)
-        .eq('student_id', studentId);
-
-      return { success: true, data };
-    } else {
-      // Create new submission
-      const { data, error } = await supabase
-        .from('submissions')
-        .insert([{
-          activity_id: activityId,
-          student_id: studentId,
-          artwork_url: submissionData.artwork_url,
-          description: submissionData.description,
-          status: 'submitted',
-          submitted_at: new Date().toISOString()
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Update assignment status
-      await supabase
-        .from('activity_assignments')
-        .update({ status: 'submitted' })
-        .eq('activity_id', activityId)
-        .eq('student_id', studentId);
-
-      return { success: true, data };
-    }
+    if (error) throw error;
+    return { success: true, data };
   } catch (error) {
     console.error('Error submitting activity:', error);
     return { success: false, error: error.message };
@@ -541,6 +623,28 @@ export const reportGestureAlert = async ({
   } catch (error) {
     console.error('Error reporting gesture alert:', error);
     return { success: false, error: error.message };
+  }
+};
+
+export const reportActivityLockAlert = async ({ studentId, activityId, eventType, metadata = {} }) => {
+  try {
+    if (!studentId || !activityId || !eventType) {
+      return { success: false, error: 'Missing activity lock alert details.' };
+    }
+    const { error } = await supabase.from('activity_lock_alerts').insert([{
+      student_id: studentId,
+      activity_id: activityId,
+      event_type: eventType,
+      metadata,
+    }]);
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    console.error('Error reporting activity lock alert:', error);
+    return {
+      success: false,
+      error: error.message || 'Unable to report the activity lock event.',
+    };
   }
 };
 

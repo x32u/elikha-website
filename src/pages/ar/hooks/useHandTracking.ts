@@ -108,20 +108,6 @@ function isFingerExtended(
   return extendRatio > 0.35 && tipAheadOfPip;
 }
 
-// Check thumb extension (thumb has different geometry)
-function isThumbExtended(
-  thumbMCP: NormalizedLandmark,
-  _thumbIP: NormalizedLandmark,
-  thumbTip: NormalizedLandmark,
-  indexMCP: NormalizedLandmark
-): boolean {
-  // Thumb is extended if tip is far from index MCP
-  const thumbToIndex = calculateDistance(thumbTip, indexMCP);
-  const thumbLength = calculateDistance(thumbMCP, thumbTip);
-  
-  return thumbToIndex > thumbLength * 0.6;
-}
-
 function detectGesture(landmarks: HandLandmarks): GestureType {
   const handSpan = calculateHandSpan(landmarks);
   
@@ -138,10 +124,6 @@ function detectGesture(landmarks: HandLandmarks): GestureType {
   const pinkyExtended = isFingerExtended(
     landmarks.pinkyMCP, landmarks.pinkyPIP, landmarks.pinkyTip, handSpan
   );
-  const thumbExtended = isThumbExtended(
-    landmarks.thumbMCP, landmarks.thumbIP, landmarks.thumbTip, landmarks.indexMCP
-  );
-  
   // Check curled states for fist detection
   const indexCurled = isFingerCurled(
     landmarks.indexMCP, landmarks.indexPIP, landmarks.indexTip, handSpan
@@ -155,11 +137,6 @@ function detectGesture(landmarks: HandLandmarks): GestureType {
   const pinkyCurled = isFingerCurled(
     landmarks.pinkyMCP, landmarks.pinkyPIP, landmarks.pinkyTip, handSpan
   );
-  
-  // Pinch detection - thumb and index tips close together
-  const pinchDistance = calculateDistance(landmarks.thumbTip, landmarks.indexTip);
-  const normalizedPinchDistance = pinchDistance / handSpan;
-  const isPinching = normalizedPinchDistance < 0.28; // Slightly more forgiving
   
   // Calculate palm closure - how closed is the hand overall
   // Use average distance of fingertips to palm center

@@ -3,6 +3,7 @@ export const USER_SETTINGS_EVENT = 'elikha-user-settings-changed';
 export const DEFAULT_USER_SETTINGS = Object.freeze({
   backgroundMusic: true,
   soundEffects: true,
+  voiceInstructions: true,
   notifications: true,
   dataSaver: false,
   quality: 'auto',
@@ -21,6 +22,10 @@ export const normalizeUserSettings = (settings = {}) => ({
     typeof settings.soundEffects === 'boolean'
       ? settings.soundEffects
       : DEFAULT_USER_SETTINGS.soundEffects,
+  voiceInstructions:
+    typeof settings.voiceInstructions === 'boolean'
+      ? settings.voiceInstructions
+      : DEFAULT_USER_SETTINGS.voiceInstructions,
   notifications:
     typeof settings.notifications === 'boolean'
       ? settings.notifications

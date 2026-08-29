@@ -1,16 +1,23 @@
 import React from 'react';
 import './styles/AdminModels.css';
 import AdminShell from './components/AdminShell';
+import Navbar from '../../components/Navbar';
 import {
   AR_MODEL_LIBRARY_UPDATED_EVENT,
-  deleteCustomArModel,
   getArModelLibrary,
-  saveCustomArModel,
-  updateCustomArModel,
 } from '../../utils/activityArConfig';
 import { resolveFreeModelImport, searchFreeModelCatalog } from '../../services/modelSearchApi';
+import {
+  deleteR2Model,
+  fetchR2StorageUsage,
+  importR2ModelFromUrl,
+  isR2ModelStorageConfigured,
+  refreshR2ModelLibrary,
+  updateR2Model,
+  uploadR2Model,
+} from '../../services/r2ModelApi';
 
-const SUPPORTED_EXTENSIONS = ['obj', '3ds', 'glb'];
+const SUPPORTED_EXTENSIONS = ['obj', '3ds', 'glb', 'blend'];
 
 const getFileExtension = (name = '') => {
   const value = String(name || '').trim().toLowerCase();
@@ -29,6 +36,38 @@ const inferFileName = (model) => {
   return parts[parts.length - 1] || clean;
 };
 
+const formatStorage = (bytes) => {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`;
+  if (value < 1024 ** 3) return `${(value / (1024 ** 2)).toFixed(1)} MB`;
+  return `${(value / (1024 ** 3)).toFixed(2)} GB`;
+};
+
+const ModelPageShell = ({ role, onNavigate, homePageKey, isSuperAdmin, children }) => {
+  if (role === 'Teacher') {
+    return (
+      <div className="teacher-models-page">
+        <Navbar />
+        <main className="teacher-models-main page-models">{children}</main>
+      </div>
+    );
+  }
+
+  return (
+    <AdminShell
+      active="models"
+      onNavigate={onNavigate}
+      className="page-models"
+      homePageKey={homePageKey}
+      showAudit={isSuperAdmin}
+      auditPageKey="audit"
+    >
+      {children}
+    </AdminShell>
+  );
+};
+
 function AdminModels({ onNavigate, role }) {
   const isSuperAdmin = role === 'SuperAdmin';
   const homePageKey = isSuperAdmin ? 'sa-dashboard' : 'homepage';
@@ -43,6 +82,8 @@ function AdminModels({ onNavigate, role }) {
   const [removing, setRemoving] = React.useState(null);
   const [draft, setDraft] = React.useState({ name: '', desc: '', file: null });
   const [error, setError] = React.useState('');
+  const [libraryError, setLibraryError] = React.useState('');
+  const [storage, setStorage] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
   const [apiQuery, setApiQuery] = React.useState('');
   const [apiResults, setApiResults] = React.useState([]);
@@ -50,8 +91,18 @@ function AdminModels({ onNavigate, role }) {
   const [apiError, setApiError] = React.useState('');
   const [importingId, setImportingId] = React.useState('');
 
-  const refreshModels = React.useCallback(() => {
-    setModels(getArModelLibrary());
+  const refreshModels = React.useCallback(async () => {
+    try {
+      const nextModels = await refreshR2ModelLibrary();
+      setModels(nextModels);
+      setStorage(await fetchR2StorageUsage());
+      setLibraryError('');
+    } catch (refreshError) {
+      setModels(getArModelLibrary());
+      setLibraryError(
+        refreshError instanceof Error ? refreshError.message : 'Unable to reach Cloudflare R2 storage.'
+      );
+    }
   }, []);
 
   React.useEffect(() => {
@@ -59,10 +110,10 @@ function AdminModels({ onNavigate, role }) {
   }, [refreshModels]);
 
   React.useEffect(() => {
-    const onModelsUpdated = () => refreshModels();
+    const onModelsUpdated = () => setModels(getArModelLibrary());
     window.addEventListener(AR_MODEL_LIBRARY_UPDATED_EVENT, onModelsUpdated);
     return () => window.removeEventListener(AR_MODEL_LIBRARY_UPDATED_EVENT, onModelsUpdated);
-  }, [refreshModels]);
+  }, []);
 
   const closeModals = React.useCallback(() => {
     setIsAddOpen(false);
@@ -100,7 +151,7 @@ function AdminModels({ onNavigate, role }) {
 
     const extension = getFileExtension(file.name);
     if (!SUPPORTED_EXTENSIONS.includes(extension)) {
-      return { valid: false, error: 'Only .obj, .3ds, and .glb files are supported right now.' };
+      return { valid: false, error: 'Only .obj, .3ds, .glb, and .blend files are supported right now.' };
     }
 
     const maxBytes = 50 * 1024 * 1024;
@@ -161,21 +212,15 @@ function AdminModels({ onNavigate, role }) {
 
     try {
       const resolved = await resolveFreeModelImport(entry.id);
-      const saveResult = await saveCustomArModel({
-        id: `polyhaven-${entry.id}`,
+      await importR2ModelFromUrl({
+        sourceUrl: resolved.modelUrl,
         label: entry.name,
         description: entry.description || `${entry.source} • ${entry.license}`,
-        modelUrl: resolved.modelUrl,
-        fileType: resolved.fileType,
         fileName: resolved.fileName,
+        source: entry.source,
+        license: entry.license,
       });
-
-      if (!saveResult.success) {
-        setApiError(saveResult.error || 'Unable to import model.');
-        return;
-      }
-
-      refreshModels();
+      await refreshModels();
     } catch (importError) {
       setApiError(importError instanceof Error ? importError.message : 'Unable to import model.');
     } finally {
@@ -200,23 +245,14 @@ function AdminModels({ onNavigate, role }) {
     setError('');
 
     try {
-      const result = saveCustomArModel({
+      await uploadR2Model({
         label,
         description: draft.desc,
         file: draft.file,
-        fileType: validation.extension,
-        fileName: draft.file.name,
       });
-      const saved = await result;
-
-      if (!saved.success) {
-        setError(saved.error || 'Unable to add model.');
-        setBusy(false);
-        return;
-      }
 
       closeModals();
-      refreshModels();
+      await refreshModels();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Unable to add model.');
       setBusy(false);
@@ -236,9 +272,6 @@ function AdminModels({ onNavigate, role }) {
     setError('');
 
     try {
-      let modelUrl = editing.modelUrl;
-      let fileType = editing.fileType;
-      let fileName = editing.fileName || inferFileName(editing);
       let replacementFile = null;
 
       if (draft.file) {
@@ -250,28 +283,16 @@ function AdminModels({ onNavigate, role }) {
         }
 
         replacementFile = draft.file;
-        fileType = validation.extension;
-        fileName = draft.file.name;
       }
 
-      const result = updateCustomArModel(editing.id, {
+      await updateR2Model(editing.id, {
         label,
         description: draft.desc,
-        modelUrl,
-        fileType,
-        fileName,
         file: replacementFile,
       });
-      const saved = await result;
-
-      if (!saved.success) {
-        setError(saved.error || 'Unable to update model.');
-        setBusy(false);
-        return;
-      }
 
       closeModals();
-      refreshModels();
+      await refreshModels();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Unable to update model.');
       setBusy(false);
@@ -279,7 +300,7 @@ function AdminModels({ onNavigate, role }) {
   };
 
   const removeModel = (model) => {
-    if (!model.isCustom) return;
+    if (!model.isCustom || model.storageProvider !== 'r2') return;
     setRemoving(model);
     setError('');
     setIsRemoveOpen(true);
@@ -287,33 +308,46 @@ function AdminModels({ onNavigate, role }) {
 
   const confirmRemove = async () => {
     if (!removing) return;
-
-    const result = await deleteCustomArModel(removing.id);
-    if (!result.success) {
-      setError(result.error || 'Unable to remove model.');
-      return;
+    setBusy(true);
+    setError('');
+    try {
+      await deleteR2Model(removing.id);
+      closeModals();
+      await refreshModels();
+    } catch (removeError) {
+      setError(removeError instanceof Error ? removeError.message : 'Unable to remove model.');
+      setBusy(false);
     }
-
-    closeModals();
-    refreshModels();
   };
 
   return (
-    <AdminShell
-      active="models"
+    <ModelPageShell
+      role={role}
       onNavigate={onNavigate}
-      className="page-models"
       homePageKey={homePageKey}
-      showAudit={isSuperAdmin}
-      showPasswordResets={isSuperAdmin}
-      auditPageKey="audit"
+      isSuperAdmin={isSuperAdmin}
     >
       <header className="m3d-header">
         <h1 className="m3d-title">3D Models</h1>
-        <button className="m3d-add" type="button" onClick={openAdd}>
+        <button className="m3d-add" type="button" onClick={openAdd} disabled={!isR2ModelStorageConfigured}>
           Add New 3D Model
         </button>
       </header>
+
+      <section className="m3d-storage-summary" aria-label="Cloudflare R2 model storage">
+        <div>
+          <strong>Cloudflare R2 shared library</strong>
+          <span>
+            {storage
+              ? `${formatStorage(storage.usedBytes)} used • ${formatStorage(storage.remainingBytes)} remaining of ${formatStorage(storage.capacityBytes)}`
+              : 'Checking storage usage...'}
+          </span>
+        </div>
+        <span className={`m3d-cloud-status ${libraryError ? 'error' : ''}`}>
+          {libraryError ? 'Unavailable' : 'Connected'}
+        </span>
+      </section>
+      {libraryError ? <div className="m3d-page-note error">{libraryError}</div> : null}
 
       <section className="m3d-searchwrap" aria-label="Search 3D models">
         <div className="m3d-search">
@@ -404,11 +438,15 @@ function AdminModels({ onNavigate, role }) {
                 </td>
               </tr>
             ) : (
-              filtered.map((model) => (
+              filtered.map((model) => {
+                const canManage = model.isCustom && model.storageProvider === 'r2';
+                return (
                 <tr key={model.id}>
                   <td>
                     {model.label}
                     {!model.isCustom ? <div className="m3d-muted">Built-in</div> : null}
+                    {model.storageProvider === 'browser' ? <div className="m3d-muted">This device only (legacy)</div> : null}
+                    {model.fileType === 'blend' ? <div className="m3d-muted">Source file — convert to .glb for AR</div> : null}
                   </td>
                   <td className="m3d-muted">{model.description || '—'}</td>
                   <td className="m3d-muted">{inferFileName(model)}</td>
@@ -417,8 +455,8 @@ function AdminModels({ onNavigate, role }) {
                       className="m3d-action"
                       type="button"
                       onClick={() => openEdit(model)}
-                      disabled={!model.isCustom}
-                      title={!model.isCustom ? 'Built-in models cannot be edited' : 'Edit model'}
+                      disabled={!canManage}
+                      title={!canManage ? 'Only uploaded R2 models can be edited' : 'Edit model'}
                     >
                       Edit
                     </button>
@@ -426,14 +464,15 @@ function AdminModels({ onNavigate, role }) {
                       className="m3d-action danger"
                       type="button"
                       onClick={() => removeModel(model)}
-                      disabled={!model.isCustom}
-                      title={!model.isCustom ? 'Built-in models cannot be removed' : 'Remove model'}
+                      disabled={!canManage}
+                      title={!canManage ? 'Only uploaded R2 models can be removed' : 'Remove model'}
                     >
                       Remove
                     </button>
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
@@ -473,17 +512,18 @@ function AdminModels({ onNavigate, role }) {
               </label>
 
               <label className="m3d-file">
-                <span>Upload Model File (.obj, .3ds, or .glb)</span>
+                <span>Upload Model File (.obj, .3ds, .glb, or .blend)</span>
                 <input
                   className="m3d-file-input"
                   type="file"
-                  accept=".obj,.3ds,.glb"
+                  accept=".obj,.3ds,.glb,.blend"
                   onChange={(event) => setDraft((prev) => ({ ...prev, file: event.target.files?.[0] || null }))}
                 />
                 <div className={`m3d-file-meta ${draft.file ? '' : 'muted'}`}>
                   {draft.file ? draft.file.name : 'No file selected'}
                 </div>
                 <div className="m3d-file-meta muted">Max file size: 50MB</div>
+                <div className="m3d-file-meta muted">Blender files are stored as source files and must be converted to .glb before use in AR.</div>
               </label>
             </div>
 
@@ -535,7 +575,7 @@ function AdminModels({ onNavigate, role }) {
                 <input
                   className="m3d-file-input"
                   type="file"
-                  accept=".obj,.3ds,.glb"
+                  accept=".obj,.3ds,.glb,.blend"
                   onChange={(event) => setDraft((prev) => ({ ...prev, file: event.target.files?.[0] || null }))}
                 />
                 <div className="m3d-file-meta muted">Current: {inferFileName(editing)}</div>
@@ -582,14 +622,14 @@ function AdminModels({ onNavigate, role }) {
               <button className="m3d-btn ghost" type="button" onClick={closeModals}>
                 Cancel
               </button>
-              <button className="m3d-btn danger" type="button" onClick={confirmRemove}>
-                Remove
+              <button className="m3d-btn danger" type="button" onClick={confirmRemove} disabled={busy}>
+                {busy ? 'Removing...' : 'Remove'}
               </button>
             </div>
           </div>
         </div>
       )}
-    </AdminShell>
+    </ModelPageShell>
   );
 }
 

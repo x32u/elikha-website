@@ -1,0 +1,5 @@
+# Names only: replace these locally in `.dev.vars`, never in this file.
+SUPABASE_URL="https://YOUR_PROJECT_REF.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY="replace-locally"
+MANUAL_RUN_SECRET="replace-with-a-long-random-secret"
+SUPABASE_AUTH_EMAIL_HOOK_SECRET="v1,whsec_replace-with-dashboard-generated-secret"

@@ -8,6 +8,7 @@ import {
   fetchAdminClassStudents,
   fetchAdminTeachers,
   removeAdminStudentFromClass,
+  restoreAdminClassSection,
   updateAdminClassSection,
 } from '../../services/adminApi';
 import { formatClassLabel } from '../../utils/classLabels';
@@ -178,15 +179,26 @@ function AdminClasses({ onNavigate }) {
 
   const removeClass = async (classInfo) => {
     const label = formatClassLabel(classInfo);
-    const confirmed = window.confirm(`Delete ${label}? This only works if it has no students or activities.`);
+    const confirmed = window.confirm(
+      `Disable ${label}? It will disappear from active class lists, but its students, activities, submissions, and reports will stay in the database.`
+    );
     if (!confirmed) return;
 
     const result = await deleteAdminClassSection(classInfo.id);
     if (!result.success) {
-      setError(result.error || 'Failed to delete class.');
+      setError(result.error || 'Failed to disable class.');
       return;
     }
 
+    await loadData();
+  };
+
+  const restoreClass = async (classInfo) => {
+    const result = await restoreAdminClassSection(classInfo.id);
+    if (!result.success) {
+      setError(result.error || 'Failed to restore class.');
+      return;
+    }
     await loadData();
   };
 
@@ -237,16 +249,16 @@ function AdminClasses({ onNavigate }) {
 
       <section className="ac-summary" aria-label="Class summary">
         <div className="ac-stat">
-          <span>Total Classes</span>
-          <strong>{classes.length}</strong>
+          <span>Active Classes</span>
+          <strong>{classes.filter((item) => item.is_active !== false).length}</strong>
         </div>
         <div className="ac-stat">
           <span>Teachers Available</span>
           <strong>{teachers.length}</strong>
         </div>
         <div className="ac-stat">
-          <span>Students Assigned</span>
-          <strong>{classes.reduce((sum, item) => sum + Number(item.student_count || 0), 0)}</strong>
+          <span>Inactive Classes</span>
+          <strong>{classes.filter((item) => item.is_active === false).length}</strong>
         </div>
       </section>
 
@@ -273,12 +285,17 @@ function AdminClasses({ onNavigate }) {
               </tr>
             ) : (
               classes.map((classInfo) => (
-                <tr key={classInfo.id}>
+                <tr key={classInfo.id} className={classInfo.is_active === false ? 'is-inactive' : ''}>
                   <td>
                     <div className="ac-class-cell">
                       <span className="ac-color" style={{ background: classInfo.color || '#1800AD' }} />
                       <div>
-                        <strong>{formatClassLabel(classInfo)}</strong>
+                        <strong>
+                          {formatClassLabel(classInfo)}
+                          <span className={`ac-status ${classInfo.is_active === false ? 'inactive' : 'active'}`}>
+                            {classInfo.is_active === false ? 'Inactive' : 'Active'}
+                          </span>
+                        </strong>
                         <span>{classInfo.name || 'Class section'}</span>
                       </div>
                     </div>
@@ -293,7 +310,11 @@ function AdminClasses({ onNavigate }) {
                   <td>
                     <div className="ac-actions">
                       <button type="button" onClick={() => openEdit(classInfo)}>Edit</button>
-                      <button type="button" className="danger" onClick={() => removeClass(classInfo)}>Delete</button>
+                      {classInfo.is_active === false ? (
+                        <button type="button" onClick={() => restoreClass(classInfo)}>Restore</button>
+                      ) : (
+                        <button type="button" className="danger" onClick={() => removeClass(classInfo)}>Disable</button>
+                      )}
                     </div>
                   </td>
                 </tr>

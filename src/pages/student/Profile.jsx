@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Header from '../../components/Header';
 import Navbar from '../../components/Navbar';
 import { getStudentProfile, getStudentActivities, getStudentClasses } from '../../services/studentApi';
 import { useStoredUserSettings } from '../../hooks/useStoredUserSettings';
@@ -196,7 +195,7 @@ const Profile = () => {
       if (classesResult.success) {
         setClassLabel(formatStudentClassLabel(classesResult.data));
       } else {
-        setClassLabel('No class assigned');
+        setClassLabel('Unable to load class');
       }
       
       if (activitiesResult.success) {
@@ -260,7 +259,6 @@ const Profile = () => {
   if (loading) {
     return (
       <div className="student-profile-page-container student-shell">
-        <Header />
         <main className="student-profile-page">
           <div className="loading-state">
             <div className="loading-spinner"></div>
@@ -274,25 +272,12 @@ const Profile = () => {
 
   return (
     <div className="student-profile-page-container student-shell">
-      <Header />
       <main className="student-profile-page">
         <section className="profile-header">
           <div className="profile-avatar" aria-hidden="true">{initial}</div>
           <div className="profile-header-body">
             <div className="profile-name-row">
               <h1 className="profile-username">{displayName}</h1>
-            </div>
-            <div className="profile-stats" aria-label="Activity count">
-              <div className="stat">
-                <span className="stat-number">{activities.length}</span>
-                <span className="stat-label">Completed</span>
-              </div>
-              {favorites.length > 0 && (
-                <div className="stat">
-                  <span className="stat-number">{favorites.length}</span>
-                  <span className="stat-label">Favorite</span>
-                </div>
-              )}
             </div>
             <div className="profile-bio" aria-label="Grade level">
               <p className="bio-text">{gradeLevel}</p>

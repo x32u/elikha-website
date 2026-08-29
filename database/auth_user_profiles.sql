@@ -14,7 +14,7 @@ declare
 begin
   safe_role := replace(replace(replace(lower(coalesce(new.raw_user_meta_data->>'role', 'student')), '_', ''), '-', ''), ' ', '');
 
-  if safe_role not in ('student', 'teacher', 'admin', 'superadmin') then
+  if safe_role not in ('student', 'teacher', 'admin', 'superadmin', 'parent') then
     safe_role := 'student';
   end if;
 
@@ -55,7 +55,7 @@ select
   ) as name,
   case
     when replace(replace(replace(lower(coalesce(auth_user.raw_user_meta_data->>'role', 'student')), '_', ''), '-', ''), ' ', '')
-      in ('student', 'teacher', 'admin', 'superadmin')
+      in ('student', 'teacher', 'admin', 'superadmin', 'parent')
     then replace(replace(replace(lower(coalesce(auth_user.raw_user_meta_data->>'role', 'student')), '_', ''), '-', ''), ' ', '')
     else 'student'
   end as role
