@@ -157,6 +157,37 @@ only **Submit Review** publishes the final rating.
 Do not add `GROQ_API_KEY` to `.env`, `.env.local`, or any variable beginning
 with `REACT_APP_`, because those values are shipped to the browser.
 
+### DepEd SF9 kindergarten rubrics
+
+Rubrics follow the DepEd SF9 Kindergarten Progress Report. Ratings are the
+form's three developmental levels — **BG** Beginning, **DV** Developing, **CO**
+Consistent — plus **NO** (not observed) and **NA** (not applicable). The rubric
+builder only offers competencies an AR artwork can actually evidence (III.1,
+III.2, III.5, III.7, III.10, IV.G.24); competencies that need real materials,
+speech, patterns, or the child's own body (I.4, I.5, III.3, III.8, all of
+Domain II) are listed as "observe in class instead".
+
+The SF9 alignment shipped across two Supabase migrations that must be applied
+before use, in order:
+
+1. `supabase/migrations/20260829094000_sf9_rating_codes_and_terms.sql` — widens
+   the `selected_rating` check to accept both `BG/DV/CO` and legacy `B/D/C`,
+   relabels existing rows, and adds a nullable `term` (1–3) to
+   `rubric_observations`.
+2. `supabase/migrations/20260830083500_finalize_review_sf9_codes.sql` —
+   `CREATE OR REPLACE` on `finalize_submission_review` so teacher reviews accept
+   the SF9 codes. Both migrations are additive; existing `B/D/C` rubrics keep
+   working.
+
+**Redeploy the Edge Function after the SF9 change.** The grading prompt and its
+`CO/DV/BG/NO` response schema live in `grade-ar-submission`. Until it is
+redeployed, the deployed function still returns the old numeric rating and the
+`NO` "not observable" outcome is unavailable:
+
+```bash
+supabase functions deploy grade-ar-submission
+```
+
 ## Commands
 
 ```bash
