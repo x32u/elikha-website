@@ -1,8 +1,21 @@
-const FINAL_CRITERION_RATINGS = new Set(['B', 'D', 'C', 'NO', 'NA']);
+import { toSf9RatingCode } from './sf9Competencies';
+
+const FINAL_CRITERION_RATINGS = new Set(['CO', 'DV', 'BG', 'B', 'D', 'C', 'NO', 'NA']);
 
 const nullableText = (value) => {
   const normalized = String(value || '').trim();
   return normalized || null;
+};
+
+/**
+ * Reads a level's descriptor by its SF9 rating, accepting either the SF9 code
+ * (CO/DV/BG) written by the current builder or the legacy single letter
+ * (C/D/B) stored in rubrics created before the DepEd alignment.
+ */
+const descriptorForRating = (levels, ratingCode) => {
+  const match = (Array.isArray(levels) ? levels : [])
+    .find((level) => toSf9RatingCode(level?.code) === ratingCode);
+  return match?.description || '';
 };
 
 const confirmedAiEvaluationId = (aiEvaluation, submissionId) => {
@@ -66,10 +79,10 @@ export const buildTeacherRubricEvidence = ({
     criteria: rubricCriteria.map((criterion, index) => ({
       criterion_index: index,
       criterion_title_snapshot: criterion.name,
-      beginning_descriptor_snapshot: criterion.levels?.find((level) => level.code === 'B')?.description || '',
-      developing_descriptor_snapshot: criterion.levels?.find((level) => level.code === 'D')?.description || '',
-      consistent_descriptor_snapshot: criterion.levels?.find((level) => level.code === 'C')?.description || '',
-      selected_rating: criterionRatings[index],
+      beginning_descriptor_snapshot: descriptorForRating(criterion.levels, 'BG'),
+      developing_descriptor_snapshot: descriptorForRating(criterion.levels, 'DV'),
+      consistent_descriptor_snapshot: descriptorForRating(criterion.levels, 'CO'),
+      selected_rating: toSf9RatingCode(criterionRatings[index]),
       teacher_note: nullableText(criterionNotes[index]),
     })),
   };
