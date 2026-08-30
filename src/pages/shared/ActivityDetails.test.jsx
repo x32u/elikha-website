@@ -169,7 +169,7 @@ describe('student ActivityDetails AR guide', () => {
     expect(review.textContent).toContain('4/5');
     expect(review.textContent).toContain('Your shapes are neat and colorful.');
     expect(review.textContent).toContain('Places colors carefully');
-    expect(review.textContent).toContain('C — Consistent');
+    expect(review.textContent).toContain('CO — Consistent'); // legacy 'C' normalizes to SF9 'CO'
     expect(review.textContent).toContain('The color stayed inside the intended areas.');
     expect(review.textContent).toContain('Try adding a blue border next time.');
     expect(review.textContent).toContain('Teacher-approved color suggestion');
@@ -319,7 +319,7 @@ describe('student ActivityDetails AR guide', () => {
     expect(mockGetStudentActivityAssessment).toHaveBeenCalledTimes(2);
     expect(container.textContent).toContain('Lantern Rubric');
     expect(container.textContent).toContain('Places colors carefully');
-    expect(container.textContent).toContain('B — Beginning');
+    expect(container.textContent).toContain('BG — Beginning'); // legacy 'B' normalizes to SF9 'BG'
     expect(container.textContent).toContain('Try slower hand movements.');
     expect(container.querySelector('.activity-rubric-retry')).toBeNull();
   });
