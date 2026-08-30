@@ -6,6 +6,7 @@ import {
   SF9_AI_RATING_CODES,
   SF9_RATING_LABELS,
   sf9DraftStarRating,
+  sf9OrdinalScore,
   toSf9RatingCode,
 } from "./sf9.ts";
 
@@ -188,9 +189,17 @@ const normalizeRubric = (rubric: JsonRecord): RubricCriterion[] => {
 
     const levels = rawLevels.map((rawLevel) => {
       const level = asObject(rawLevel);
+      const code = cleanText(level.code, 12).toUpperCase();
+      // SF9 developmental levels (BG/DV/CO) carry no numeric score; the builder
+      // writes only a code. Derive an ordinal score from the code so the
+      // downstream max-score guard and stored rubric_score stay valid. Legacy
+      // point rubrics keep their explicit numeric score.
+      const score = Number.isFinite(Number(level.score))
+        ? Number(level.score)
+        : sf9OrdinalScore(code);
       return {
-        score: Number(level.score),
-        code: cleanText(level.code, 12).toUpperCase(),
+        score,
+        code,
         description: cleanText(level.description, 800),
       };
     }).filter((level) => Number.isFinite(level.score) && level.description);

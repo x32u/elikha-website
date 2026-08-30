@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   isSf9Rubric,
   sf9DraftStarRating,
+  sf9OrdinalScore,
   sf9RatingLabel,
   summarizeSf9Ratings,
   toSf9RatingCode,
@@ -85,4 +86,16 @@ test("detects SF9 rubrics by their level codes", () => {
   assert.equal(isSf9Rubric(legacy), true, "legacy letters are the same three levels");
   assert.equal(isSf9Rubric(points), false);
   assert.equal(isSf9Rubric([]), false);
+});
+
+test("gives SF9 and legacy codes an ordinal score, and NaN to the rest", () => {
+  assert.equal(sf9OrdinalScore("CO"), 3);
+  assert.equal(sf9OrdinalScore("DV"), 2);
+  assert.equal(sf9OrdinalScore("BG"), 1);
+  assert.equal(sf9OrdinalScore("C"), 3);
+  assert.equal(sf9OrdinalScore("D"), 2);
+  assert.equal(sf9OrdinalScore("B"), 1);
+  assert.ok(Number.isNaN(sf9OrdinalScore("NO")));
+  assert.ok(Number.isNaN(sf9OrdinalScore("NA")));
+  assert.ok(Number.isNaN(sf9OrdinalScore("")));
 });

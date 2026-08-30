@@ -86,3 +86,14 @@ export const isSf9Rubric = (
       criterion.levels.some((level) => toSf9RatingCode(level.code) === code)
     )
   );
+
+/**
+ * Ordinal score for a rating code: BG=1, DV=2, CO=3 (legacy B/D/C map the
+ * same). SF9 rubric levels carry a code but no numeric score, so this supplies
+ * one for the max-score guard and stored rubric_score. Returns NaN for codes
+ * with no developmental rank (NO/NA/unknown).
+ */
+export const sf9OrdinalScore = (code: unknown): number => {
+  const mapped = toSf9RatingCode(code);
+  return mapped === 'CO' ? 3 : mapped === 'DV' ? 2 : mapped === 'BG' ? 1 : NaN;
+};

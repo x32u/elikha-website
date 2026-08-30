@@ -179,10 +179,13 @@ before use, in order:
    the SF9 codes. Both migrations are additive; existing `B/D/C` rubrics keep
    working.
 
-**Redeploy the Edge Function after the SF9 change.** The grading prompt and its
-`CO/DV/BG/NO` response schema live in `grade-ar-submission`. Until it is
-redeployed, the deployed function still returns the old numeric rating and the
-`NO` "not observable" outcome is unavailable:
+**Redeploy the Edge Function after the SF9 change — this is required, not
+optional.** The grading prompt and its `CO/DV/BG/NO` response schema live in
+`grade-ar-submission`, and the function now derives an ordinal score for
+score-less SF9 rubric levels. Until it is redeployed, an AI check against a
+rubric built by the current builder **fails** with "no valid scoring levels"
+(SF9 levels carry a code but no numeric score). Teacher review still works
+without it; only the AI draft is affected.
 
 ```bash
 supabase functions deploy grade-ar-submission
