@@ -1,6 +1,13 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { callGroqEvaluation } from "./groq.ts";
 import { AR_COLOR_PALETTE, normalizeArColorSuggestions } from "./colorPalette.ts";
+import {
+  isSf9Rubric,
+  SF9_AI_RATING_CODES,
+  SF9_RATING_LABELS,
+  sf9DraftStarRating,
+  toSf9RatingCode,
+} from "./sf9.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,6 +45,7 @@ type EvaluationCriterion = {
   criterionName: string;
   score: number;
   levelCode?: string;
+  levelLabel?: string;
   maxScore: number;
   levelDescription: string;
   evidence: string;
@@ -53,7 +61,10 @@ const responseSchema = {
         type: "object",
         properties: {
           criterionIndex: { type: "integer" },
-          score: { type: "number" },
+          rating: {
+            type: "string",
+            enum: [...SF9_AI_RATING_CODES],
+          },
           evidence: { type: "string" },
           confidence: {
             type: "string",
@@ -62,7 +73,7 @@ const responseSchema = {
         },
         required: [
           "criterionIndex",
-          "score",
+          "rating",
           "evidence",
           "confidence",
         ],
@@ -376,8 +387,10 @@ const buildPrompt = ({
     "Use the saved AR state for objective counts, colors, placement, and puzzle completion. If it conflicts with the image, lower confidence and state the conflict.",
     "Give one short, child-friendly color suggestion after the activity. Base it on the teacher instructions and rubric when they specify target colors.",
     "When no color is objectively correct, present the suggestion as an optional harmonious or contrasting idea and explicitly respect the child's creative choice.",
-    `Return one to three suggested colors, using only this exact AR palette: ${JSON.stringify(AR_COLOR_PALETTE)}. Do not invent, rename, or substitute any color outside this list.`,
-    "For every criterion, select exactly one score that appears in that criterion's levels.",
+    `Return one to three suggested colors, using only this exact AR palette: ${JSON.stringify(AR_COLOR_PALETTE)}. Do not invent, rename, or substitute any color outside this list. A color the learner cannot pick in AR is useless advice.`,
+    "Rate every criterion with exactly one DepEd SF9 code: CO (Consistent), DV (Developing), BG (Beginning), or NO.",
+    `SF9 rating meanings: ${JSON.stringify(SF9_RATING_LABELS)}.`,
+    "Use NO when the submitted image and AR state do not show enough evidence to judge that criterion, or when the criterion does not apply to this activity. Never guess BG just because evidence is missing: BG means the child rarely demonstrates the competency, which is a claim about the child, not about the photo.",
     "Use low confidence and explain the visibility limitation when the snapshot does not show enough evidence.",
     "Return one criterionScores item for every rubric criterion, using its exact criterionIndex.",
     "",
@@ -422,7 +435,7 @@ const validateEvaluation = (
     ? raw.criterionScores
     : [];
   if (rawScores.length !== criteria.length) {
-    throw new Error("The AI did not return one score for every rubric criterion.");
+    throw new Error("The AI did not return one rating for every rubric criterion.");
   }
 
   const byIndex = new Map<number, JsonRecord>();
@@ -431,6 +444,8 @@ const validateEvaluation = (
     byIndex.set(Number(entry.criterionIndex), entry);
   });
 
+  const developmental = isSf9Rubric(criteria);
+
   const criterionScores: EvaluationCriterion[] = criteria.map(
     (criterion, criterionIndex) => {
       const entry = byIndex.get(criterionIndex);
@@ -438,24 +453,49 @@ const validateEvaluation = (
         throw new Error(`The AI omitted rubric criterion ${criterionIndex + 1}.`);
       }
 
-      const score = Number(entry.score);
-      const matchingLevel = criterion.levels.find(
-        (level) => Math.abs(level.score - score) < 0.000001,
-      );
-      if (!matchingLevel) {
-        throw new Error(
-          `The AI returned a score outside the rubric for "${criterion.name}".`,
+      // Developmental rubrics are rated by SF9 code; legacy point rubrics still
+      // return a numeric score that has to match one of the rubric's levels.
+      const ratingCode = toSf9RatingCode(entry.rating);
+      let matchingLevel: RubricLevel | undefined;
+
+      if (developmental) {
+        if (!SF9_AI_RATING_CODES.includes(ratingCode)) {
+          throw new Error(
+            `The AI returned an invalid rating for "${criterion.name}".`,
+          );
+        }
+        matchingLevel = criterion.levels.find(
+          (level) => toSf9RatingCode(level.code) === ratingCode,
         );
+      } else {
+        const score = Number(entry.score ?? entry.rating);
+        matchingLevel = criterion.levels.find(
+          (level) => Math.abs(level.score - score) < 0.000001,
+        );
+        if (!matchingLevel) {
+          throw new Error(
+            `The AI returned a score outside the rubric for "${criterion.name}".`,
+          );
+        }
       }
 
       const confidence = cleanText(entry.confidence, 20).toLowerCase();
+      const levelCode = developmental
+        ? ratingCode
+        : (matchingLevel?.code || undefined);
+
       return {
         criterionIndex,
         criterionName: criterion.name,
-        score: matchingLevel.score,
-        levelCode: matchingLevel.code || undefined,
+        // "Not observed" carries no level, so it contributes no points.
+        score: matchingLevel ? matchingLevel.score : 0,
+        levelCode,
+        levelLabel: levelCode
+          ? SF9_RATING_LABELS[levelCode as keyof typeof SF9_RATING_LABELS]
+          : undefined,
         maxScore: Math.max(...criterion.levels.map((level) => level.score)),
-        levelDescription: matchingLevel.description,
+        levelDescription: matchingLevel?.description ||
+          "Not enough visible evidence to judge this criterion.",
         evidence: cleanText(entry.evidence, 1200),
         confidence: (
           ["low", "medium", "high"].includes(confidence)
@@ -475,18 +515,18 @@ const validateEvaluation = (
     throw new Error("The attached rubric has no positive maximum score.");
   }
 
-  const isDevelopmentalRubric = criteria.every((criterion) =>
-    criterion.levels.some((level) => level.code === "B") &&
-    criterion.levels.some((level) => level.code === "D") &&
-    criterion.levels.some((level) => level.code === "C"),
-  );
-  // Developmental levels are ordinal categories, not a DepEd point scale.
-  // Numeric values are only used internally to create an optional overall draft.
-  const developmentalPoints = criterionScores.reduce((total, item) => total + (item.levelCode === "C" ? 3 : item.levelCode === "D" ? 2 : item.levelCode === "B" ? 1 : 0), 0);
-  const equivalentScore = isDevelopmentalRubric ? developmentalPoints : rubricScore;
-  const equivalentMaximum = isDevelopmentalRubric ? criteria.length * 3 : rubricMaxScore;
-  const percentage = Math.max(0, Math.min(1, equivalentScore / equivalentMaximum));
-  const suggestedScore = Math.max(1, Math.min(5, Math.round(percentage * 4) + 1));
+  // SF9 levels are ordinal categories, so they are never averaged as points.
+  // Averaging collapsed distinct learners onto one star (four Developing
+  // ratings and two Consistent + two Beginning both produced 4) and made "not
+  // observed" read as the bottom of the scale. sf9DraftStarRating instead keeps
+  // a Beginning rating visible and ignores unobserved criteria; it returns null
+  // when nothing could be judged, so the teacher sees no draft at all.
+  const suggestedScore = developmental
+    ? sf9DraftStarRating(criterionScores.map((item) => item.levelCode))
+    : Math.max(
+      1,
+      Math.min(5, Math.round(Math.max(0, Math.min(1, rubricScore / rubricMaxScore)) * 4) + 1),
+    );
   const summary = cleanText(raw.summary, 1800);
   const strengths = (Array.isArray(raw.strengths) ? raw.strengths : [])
     .map((item) => cleanText(item, 500))

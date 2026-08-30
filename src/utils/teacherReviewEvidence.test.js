@@ -63,10 +63,41 @@ describe('teacher review evidence contract', () => {
         beginning_descriptor_snapshot: 'Needs guidance.',
         developing_descriptor_snapshot: 'Sometimes follows the guide.',
         consistent_descriptor_snapshot: 'Consistently follows the guide.',
-        selected_rating: 'C',
+        // Ratings are normalized to the SF9 code the DepEd form uses, so a
+        // legacy 'C' from an older client is stored as 'CO'.
+        selected_rating: 'CO',
         teacher_note: 'The required areas are visibly complete.',
       }],
     });
+  });
+
+  test('normalizes legacy and SF9 ratings to the SF9 code', () => {
+    expect(build({ criterionRatings: ['C'] }).criteria[0].selected_rating).toBe('CO');
+    expect(build({ criterionRatings: ['CO'] }).criteria[0].selected_rating).toBe('CO');
+    expect(build({ criterionRatings: ['B'] }).criteria[0].selected_rating).toBe('BG');
+    expect(build({ criterionRatings: ['BG'] }).criteria[0].selected_rating).toBe('BG');
+    expect(build({ criterionRatings: ['NO'] }).criteria[0].selected_rating).toBe('NO');
+  });
+
+  test('reads descriptors from a rubric that uses SF9 level codes', () => {
+    const sf9Rubric = {
+      id: 'rubric-2',
+      assignedVersion: '1',
+      criteria: [{
+        name: 'Fills the shapes with colour',
+        levels: [
+          { code: 'CO', description: 'Always demonstrates the expected competency.' },
+          { code: 'DV', description: 'Sometimes demonstrates the competency.' },
+          { code: 'BG', description: 'Rarely demonstrates the expected competency.' },
+        ],
+      }],
+    };
+
+    const criteria = build({ rubric: sf9Rubric, criterionRatings: ['DV'] }).criteria[0];
+    expect(criteria.beginning_descriptor_snapshot).toBe('Rarely demonstrates the expected competency.');
+    expect(criteria.developing_descriptor_snapshot).toBe('Sometimes demonstrates the competency.');
+    expect(criteria.consistent_descriptor_snapshot).toBe('Always demonstrates the expected competency.');
+    expect(criteria.selected_rating).toBe('DV');
   });
 
   test.each([

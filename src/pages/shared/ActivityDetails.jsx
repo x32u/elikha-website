@@ -6,24 +6,21 @@ import { getActivityById } from '../../services/teacherApi';
 import { getActivityDetails, getStudentActivityAssessment } from '../../services/studentApi';
 import { parseActivityDescription } from '../../utils/activityArConfig';
 import { hasStarRating, normalizeStarRating, starRatingLabel } from '../../utils/starRating';
+import { sf9RatingLabel, toSf9RatingCode } from '../../utils/sf9Competencies';
 import './ActivityDetails.css';
 
 const EMPTY_ASSESSMENT = { rubric: null, final_review: null };
-const REVIEW_LEVEL_LABELS = {
-  B: 'Beginning',
-  D: 'Developing',
-  C: 'Consistent',
-  NO: 'Not observed',
-  NA: 'Not applicable',
-};
+// Rating labels come from the shared SF9 helper, which understands both the
+// SF9 codes (CO/DV/BG) and the legacy single letters (C/D/B).
+const reviewLevelLabel = (rating) => sf9RatingLabel(rating);
 
 const cleanDisplayText = (value) => typeof value === 'string' ? value.trim() : '';
 
 const criterionResultDescriptor = (criterion) => {
-  const rating = cleanDisplayText(criterion?.selected_rating).toUpperCase();
-  if (rating === 'B') return cleanDisplayText(criterion?.beginning_descriptor_snapshot);
-  if (rating === 'D') return cleanDisplayText(criterion?.developing_descriptor_snapshot);
-  if (rating === 'C') return cleanDisplayText(criterion?.consistent_descriptor_snapshot);
+  const rating = toSf9RatingCode(criterion?.selected_rating);
+  if (rating === 'BG') return cleanDisplayText(criterion?.beginning_descriptor_snapshot);
+  if (rating === 'DV') return cleanDisplayText(criterion?.developing_descriptor_snapshot);
+  if (rating === 'CO') return cleanDisplayText(criterion?.consistent_descriptor_snapshot);
   return '';
 };
 
@@ -376,7 +373,7 @@ const ActivityDetails = () => {
                             <div key={`${level.code || level.label || 'level'}-${levelIndex}`}>
                               <dt>
                                 {level.code && <span>{level.code}</span>}
-                                {level.label || REVIEW_LEVEL_LABELS[level.code] || 'Level'}
+                                {level.label || reviewLevelLabel(level.code) || 'Level'}
                               </dt>
                               <dd>{level.description || 'No description provided.'}</dd>
                             </div>
@@ -474,14 +471,14 @@ const ActivityDetails = () => {
                     <div className="final-criteria" aria-label="Criterion results">
                       <h4>Criterion results</h4>
                       {finalCriteria.map((criterion, criterionIndex) => {
-                        const rating = cleanDisplayText(criterion.selected_rating).toUpperCase();
+                        const rating = toSf9RatingCode(criterion.selected_rating);
                         const descriptor = criterionResultDescriptor(criterion);
                         return (
                           <article className="final-criterion" key={`${criterion.criterion_index ?? criterionIndex}-${criterion.criterion_title_snapshot}`}>
                             <div className="final-criterion-heading">
                               <h5>{criterion.criterion_title_snapshot || `Criterion ${criterionIndex + 1}`}</h5>
                               <span className={`final-criterion-rating rating-${rating.toLowerCase()}`}>
-                                {rating || '—'}{REVIEW_LEVEL_LABELS[rating] ? ` — ${REVIEW_LEVEL_LABELS[rating]}` : ''}
+                                {rating || '—'}{reviewLevelLabel(rating) ? ` — ${reviewLevelLabel(rating)}` : ''}
                               </span>
                             </div>
                             {descriptor && <p>{descriptor}</p>}
