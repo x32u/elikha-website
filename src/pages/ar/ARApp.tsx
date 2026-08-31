@@ -279,7 +279,7 @@ function ARApp({
       instanceId: '',
       id: 'model-0',
       label: 'Model',
-      modelUrl: modelUrl || '/models/13137_LatinMask1_v1.obj',
+      modelUrl: modelUrl || '/models/cute_cactus.glb',
       modelFileType,
     }];
   }, [modelConfigs, modelFileType, modelUrl]);
@@ -1241,7 +1241,7 @@ function ARApp({
 
       {/* Three.js AR scene V2 */}
       <ARSceneV2
-        modelUrl={modelUrl || '/models/13137_LatinMask1_v1.obj'}
+        modelUrl={modelUrl || '/models/cute_cactus.glb'}
         modelFileType={modelFileType || undefined}
         modelConfigs={sceneModelConfigs}
         handLandmarks={arInteractionAllowed && !historyRestoring ? landmarks : null}

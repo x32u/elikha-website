@@ -13,7 +13,7 @@
  *   - paint, paint bucket, and eraser on a model surface, 16 fixed colors,
  *     brush size 1-10
  *   - place and move primitives (cube, sphere, cone, cylinder) and 3D models
- *     (mask, cactus, tree, paper cup, button, flower, lion, popsicle stick,
+ *     (cactus, tree, paper cup, button, flower, lion, popsicle stick,
  *     torii shrine, sarcophagus, sakura tree, sphinx, bottle)
  *   - assemble a 3 or 4 piece puzzle onto matching guides
  *   - hand-tracked pointing, open palm, and thumbs-up gestures

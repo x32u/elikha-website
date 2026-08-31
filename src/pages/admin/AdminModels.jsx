@@ -6,13 +6,13 @@ import {
   AR_MODEL_LIBRARY_UPDATED_EVENT,
   getArModelLibrary,
 } from '../../utils/activityArConfig';
-import { resolveFreeModelImport, searchFreeModelCatalog } from '../../services/modelSearchApi';
 import {
   deleteR2Model,
   fetchR2StorageUsage,
   importR2ModelFromUrl,
   isR2ModelStorageConfigured,
   refreshR2ModelLibrary,
+  searchFreeModelCatalog,
   updateR2Model,
   uploadR2Model,
 } from '../../services/r2ModelApi';
@@ -192,7 +192,7 @@ function AdminModels({ onNavigate, role }) {
     setApiError('');
 
     try {
-      const results = await searchFreeModelCatalog(search, { limit: 12 });
+      const { results } = await searchFreeModelCatalog(search, { page: 1 });
       setApiResults(results);
       if (results.length === 0) {
         setApiError('No matching free models found.');
@@ -211,14 +211,14 @@ function AdminModels({ onNavigate, role }) {
     setApiError('');
 
     try {
-      const resolved = await resolveFreeModelImport(entry.id);
       await importR2ModelFromUrl({
-        sourceUrl: resolved.modelUrl,
+        sourceUrl: entry.downloadUrl,
         label: entry.name,
         description: entry.description || `${entry.source} • ${entry.license}`,
-        fileName: resolved.fileName,
+        fileName: `${entry.id}.glb`,
         source: entry.source,
         license: entry.license,
+        attribution: entry.attribution,
       });
       await refreshModels();
     } catch (importError) {
@@ -369,8 +369,8 @@ function AdminModels({ onNavigate, role }) {
 
       <section className="m3d-sourcewrap" aria-label="Find free 3D models">
         <div className="m3d-source-head">
-          <h2 className="m3d-source-title">Find Free Models (Poly Haven)</h2>
-          <p className="m3d-source-sub">Search and import CC0 models directly to your library.</p>
+          <h2 className="m3d-source-title">Find Free Models (Poly Pizza)</h2>
+          <p className="m3d-source-sub">Search and import free CC-BY / CC0 3D models directly to your library. Attribution is saved and shown with each model.</p>
         </div>
         <div className="m3d-source-search">
           <input
@@ -401,7 +401,7 @@ function AdminModels({ onNavigate, role }) {
                 <div className="m3d-source-body">
                   <div className="m3d-source-name">{entry.name}</div>
                   <div className="m3d-source-meta">
-                    {entry.categories.slice(0, 2).join(' • ') || 'Model'} • {entry.license}
+                    {[entry.category || 'Model', entry.creator, entry.license].filter(Boolean).join(' • ')}
                   </div>
                   <div className="m3d-source-desc">{entry.description || 'No description provided.'}</div>
                 </div>
@@ -447,6 +447,7 @@ function AdminModels({ onNavigate, role }) {
                     {!model.isCustom ? <div className="m3d-muted">Built-in</div> : null}
                     {model.storageProvider === 'browser' ? <div className="m3d-muted">This device only (legacy)</div> : null}
                     {model.fileType === 'blend' ? <div className="m3d-muted">Source file — convert to .glb for AR</div> : null}
+                    {model.attribution ? <div className="m3d-muted m3d-attribution">{model.attribution}</div> : null}
                   </td>
                   <td className="m3d-muted">{model.description || '—'}</td>
                   <td className="m3d-muted">{inferFileName(model)}</td>

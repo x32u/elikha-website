@@ -201,7 +201,7 @@ function normalizeBaseModelConfigs(
     : [{
         id: 'model-0',
         label: 'Model',
-        modelUrl: fallbackUrl || '/models/13137_LatinMask1_v1.obj',
+        modelUrl: fallbackUrl || '/models/cute_cactus.glb',
         modelFileType: fallbackFileType || '',
       }];
 
@@ -3925,7 +3925,7 @@ function SceneContent({
     });
     return stateById;
   }, [normalizedInitialModelState]);
-  const puzzleSeed = `${baseModels[0]?.modelUrl || modelUrl || '/models/13137_LatinMask1_v1.obj'}:${baseModels[0]?.modelFileType || modelFileType || 'obj'}:${normalizedPuzzlePieces}`;
+  const puzzleSeed = `${baseModels[0]?.modelUrl || modelUrl || '/models/cute_cactus.glb'}:${baseModels[0]?.modelFileType || modelFileType || 'glb'}:${normalizedPuzzlePieces}`;
   const baseModelLoadKey = useMemo(
     () => baseModels.map((model) => (
       `${model.instanceId || model.id}:${model.modelUrl}:${model.modelFileType}`

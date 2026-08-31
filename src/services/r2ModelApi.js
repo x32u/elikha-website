@@ -119,18 +119,44 @@ export const importR2ModelFromUrl = async ({
   label,
   description = '',
   fileName,
-  source = 'Poly Haven',
+  source = 'Poly Pizza',
   license = 'CC0',
+  attribution = '',
 }) => {
   requireApiBase();
   const response = await fetch(`${API_BASE}/models/import`, {
     method: 'POST',
     headers: await authenticatedHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ sourceUrl, label, description, fileName, source, license }),
+    body: JSON.stringify({ sourceUrl, label, description, fileName, source, license, attribution }),
   });
   const model = await parseResponse(response);
   await refreshR2ModelLibrary();
   return model;
+};
+
+// Searches the free-model catalogue through the Worker. The provider API key
+// lives as a Worker secret and never reaches the browser, and the route is
+// authenticated so an allowed origin alone cannot spend the request quota.
+export const searchFreeModelCatalog = async (query, { page = 1 } = {}) => {
+  requireApiBase();
+  const search = String(query || '').trim();
+  if (!search) return { total: 0, page: 1, results: [] };
+
+  const url = new URL(`${API_BASE}/models/search`);
+  url.searchParams.set('q', search);
+  url.searchParams.set('page', String(Math.max(1, Number(page) || 1)));
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: await authenticatedHeaders(),
+    cache: 'no-store',
+  });
+  const data = await parseResponse(response);
+  return {
+    total: Number(data?.total) || 0,
+    page: Number(data?.page) || 1,
+    results: Array.isArray(data?.results) ? data.results : [],
+  };
 };
 
 export const fetchR2StorageUsage = async () => {

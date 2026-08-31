@@ -203,6 +203,32 @@
   border-bottom: none;
 }
 
+.activity-model-credits {
+  margin: 4px 16px 12px;
+  padding: 10px 12px;
+  background: #f6f8ff;
+  border: 1px solid #eef2ff;
+  border-radius: 8px;
+}
+
+.activity-model-credits-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7db3;
+  margin-bottom: 4px;
+}
+
+.activity-model-credit {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #4d5b82;
+  word-break: break-word;
+}
+
 .material-name {
   font-size: 15px;
   color: #253c6d;

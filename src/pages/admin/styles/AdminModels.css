@@ -349,6 +349,15 @@
   color: var(--m3d-muted);
 }
 
+.m3d-attribution {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  max-width: 320px;
+  word-break: break-word;
+  opacity: 0.85;
+}
+
 .m3d-empty {
   text-align: center;
   padding: 18px 16px;

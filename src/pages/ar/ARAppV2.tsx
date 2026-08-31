@@ -326,7 +326,7 @@ function ARAppV2({ onExit, activityId, studentId, viewMode = 'edit', artworkUrl 
 
       {/* Three.js AR scene V2 */}
       <ARSceneV2
-        modelUrl="/models/13137_LatinMask1_v1.obj"
+        modelUrl="/models/cute_cactus.glb"
         handLandmarks={landmarks}
         grabState={grabState}
         debugInfo={debugInfo}

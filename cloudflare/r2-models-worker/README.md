@@ -8,11 +8,19 @@ bucket.
 
 - `GET /health` checks service availability.
 - `GET /models` lists built-in and uploaded model metadata.
+- `GET /models/search?q=&page=` proxies a Poly Pizza catalogue search. The
+  provider API key is a Worker secret and never reaches the browser; the route
+  is authenticated (teacher/admin/superadmin) so an allowed origin alone cannot
+  spend the request quota. Results are filtered to single-file `.glb` downloads
+  that this Worker can import.
 - `GET|HEAD /models/files/:id` streams a model and supports byte ranges.
 - `GET /storage` reports actual bytes currently stored under the R2 `models/`
   prefix, plus configured capacity and remaining space.
 - `POST /models` uploads a model.
-- `POST /models/import` imports an allowlisted HTTPS model from Poly Haven.
+- `POST /models/import` imports an allowlisted HTTPS model from Poly Pizza
+  (`static.poly.pizza`). The importer stores the provider's attribution string,
+  which the app displays on the admin model list and in every activity that
+  uses the model, satisfying the CC-BY credit requirement.
 - `PATCH /models/:id` edits custom-model metadata.
 - `PUT /models/:id/file` replaces a custom-model file.
 - `DELETE /models/:id` removes a custom model and its metadata.
@@ -81,9 +89,18 @@ run deliberately when reseeding that bucket.
    npx wrangler secret put SUPABASE_ANON_KEY
    ```
 
-4. Run `npm run check`, `npx wrangler deploy --dry-run`, and relevant contract
+4. Store the Poly Pizza API key as a Worker secret so free-model search works.
+   Without it, `GET /models/search` returns `503 MODEL_SEARCH_UNCONFIGURED` and
+   the admin "Find Free Models" panel shows that message; import and all other
+   routes are unaffected:
+
+   ```sh
+   npx wrangler secret put POLY_PIZZA_API_KEY
+   ```
+
+5. Run `npm run check`, `npx wrangler deploy --dry-run`, and relevant contract
    tests before any deployment.
-5. Set the deployed Worker URL as `REACT_APP_R2_MODEL_API_URL` in the React
+6. Set the deployed Worker URL as `REACT_APP_R2_MODEL_API_URL` in the React
    hosting environment and rebuild the web app.
 
 Never add a Supabase service-role key to this Worker. Role authorization is

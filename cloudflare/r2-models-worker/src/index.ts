@@ -5,6 +5,7 @@ interface Env {
   ALLOWED_ORIGINS: string;
   MODEL_STORAGE_CAPACITY_BYTES: string;
   MAX_MODEL_FILE_BYTES: string;
+  POLY_PIZZA_API_KEY: string;
 }
 
 interface ModelMetadata {
@@ -22,6 +23,12 @@ interface ModelMetadata {
   isBuiltIn: boolean;
   source?: string;
   license?: string;
+  /**
+   * Credit line required by the model's licence, stored verbatim from the
+   * provider. CC-BY models may only be displayed alongside this text, so it
+   * travels with the model rather than being reconstructed in the browser.
+   */
+  attribution?: string;
 }
 
 interface AuthenticatedUser {
@@ -309,6 +316,7 @@ const toPublicModel = (metadata: ModelMetadata, request: Request): Record<string
   isCustom: !metadata.isBuiltIn,
   source: metadata.source ?? "E-Likha",
   license: metadata.license ?? "",
+  attribution: metadata.attribution ?? "",
   modelUrl: `${new URL(request.url).origin}/models/files/${encodeURIComponent(metadata.id)}?v=${encodeURIComponent(metadata.updatedAt)}`,
 });
 
@@ -625,12 +633,7 @@ const replaceModelFile = async (request: Request, env: Env, id: string): Promise
 
 const isAllowedImportHost = (hostname: string): boolean => {
   const normalized = hostname.toLowerCase();
-  return (
-    normalized === "polyhaven.com" ||
-    normalized.endsWith(".polyhaven.com") ||
-    normalized === "polyhaven.org" ||
-    normalized.endsWith(".polyhaven.org")
-  );
+  return normalized === "static.poly.pizza" || normalized === "poly.pizza";
 };
 
 const fetchAllowedImport = async (initialUrl: URL): Promise<Response> => {
@@ -638,7 +641,7 @@ const fetchAllowedImport = async (initialUrl: URL): Promise<Response> => {
 
   for (let redirects = 0; redirects <= 3; redirects += 1) {
     if (current.protocol !== "https:" || !isAllowedImportHost(current.hostname)) {
-      throw new ApiError(400, "SOURCE_NOT_ALLOWED", "Only HTTPS models from Poly Haven can be imported.");
+      throw new ApiError(400, "SOURCE_NOT_ALLOWED", "Only HTTPS models from Poly Pizza can be imported.");
     }
 
     const response = await fetch(current.toString(), { redirect: "manual" });
@@ -665,11 +668,12 @@ const importRemoteModel = async (request: Request, env: Env): Promise<Response> 
     throw new ApiError(400, "INVALID_SOURCE_URL", "The model source URL is invalid.");
   }
   if (sourceUrl.protocol !== "https:" || !isAllowedImportHost(sourceUrl.hostname)) {
-    throw new ApiError(400, "SOURCE_NOT_ALLOWED", "Only HTTPS models from Poly Haven can be imported.");
+    throw new ApiError(400, "SOURCE_NOT_ALLOWED", "Only HTTPS models from Poly Pizza can be imported.");
   }
 
   const label = String(input.label ?? "").trim().slice(0, 80);
   const description = String(input.description ?? "").trim().slice(0, 500);
+  const attribution = String(input.attribution ?? "").trim().slice(0, 300);
   const fileName = sanitizeFileName(String(input.fileName ?? sourceUrl.pathname.split("/").pop() ?? "model.glb"));
   const extension = getExtension(fileName);
   if (!label) throw new ApiError(400, "NAME_REQUIRED", "Model name is required.");
@@ -716,8 +720,9 @@ const importRemoteModel = async (request: Request, env: Env): Promise<Response> 
     uploadedBy: user.id,
     uploadedByRole: user.role,
     isBuiltIn: false,
-    source: String(input.source ?? "Poly Haven").trim().slice(0, 80),
+    source: String(input.source ?? "Poly Pizza").trim().slice(0, 80),
     license: String(input.license ?? "CC0").trim().slice(0, 40),
+    attribution,
   };
 
   try {
@@ -728,6 +733,103 @@ const importRemoteModel = async (request: Request, env: Env): Promise<Response> 
     await env.MODEL_BUCKET.delete(objectKey);
     throw error;
   }
+};
+
+const POLY_PIZZA_API_BASE = "https://api.poly.pizza/v1.1";
+const SEARCH_RESULT_LIMIT = 12;
+const MAX_SEARCH_QUERY_LENGTH = 80;
+
+/**
+ * Proxies a Poly Pizza catalogue search.
+ *
+ * The API key is a Worker secret and never reaches the browser. The route is
+ * authenticated for the same reason: an origin-only gate would let any visitor
+ * to an allowed origin spend this project's request quota, and every screen
+ * that searches is already role-locked in the React router.
+ */
+const searchRemoteCatalog = async (request: Request, env: Env): Promise<Response> => {
+  await authenticateMutation(request, env);
+
+  const apiKey = String(env.POLY_PIZZA_API_KEY ?? "").trim();
+  if (!apiKey) {
+    throw new ApiError(
+      503,
+      "MODEL_SEARCH_UNCONFIGURED",
+      "Free model search is not configured on this deployment.",
+    );
+  }
+
+  const url = new URL(request.url);
+  const query = (url.searchParams.get("q") ?? "").trim().slice(0, MAX_SEARCH_QUERY_LENGTH);
+  if (!query) {
+    throw new ApiError(400, "QUERY_REQUIRED", "Enter a keyword to search free models.");
+  }
+  const page = Math.min(Math.max(toPositiveInteger(url.searchParams.get("page") ?? "1", 1), 1), 50);
+
+  const searchUrl = new URL(`${POLY_PIZZA_API_BASE}/search/${encodeURIComponent(query)}`);
+  searchUrl.searchParams.set("limit", String(SEARCH_RESULT_LIMIT));
+  searchUrl.searchParams.set("page", String(page));
+
+  const upstream = await fetch(searchUrl.toString(), {
+    headers: { "X-Auth-Token": apiKey },
+  });
+
+  if (upstream.status === 401 || upstream.status === 403) {
+    console.error("Poly Pizza rejected the configured API key", upstream.status);
+    throw new ApiError(502, "MODEL_SEARCH_REJECTED", "The free model provider rejected this deployment's key.");
+  }
+  if (upstream.status === 429) {
+    throw new ApiError(429, "MODEL_SEARCH_RATE_LIMITED", "Too many searches right now. Try again in a moment.");
+  }
+  if (!upstream.ok) {
+    console.error("Poly Pizza search failed", upstream.status);
+    throw new ApiError(502, "MODEL_SEARCH_FAILED", "The free model provider could not be reached.");
+  }
+
+  const payload = (await upstream.json()) as { total?: unknown; results?: unknown };
+  const rawResults = Array.isArray(payload.results) ? payload.results : [];
+
+  // Only single-file GLB downloads can be imported, so entries without one are
+  // dropped here rather than offering a button that cannot succeed.
+  const results = rawResults
+    .map((entry) => (isJsonObject(entry) ? entry : null))
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry))
+    .map((entry) => {
+      const download = String(entry.Download ?? "").trim();
+      const creator = isJsonObject(entry.Creator) ? entry.Creator : {};
+      return {
+        id: String(entry.ID ?? "").trim(),
+        name: String(entry.Title ?? "").trim(),
+        description: String(entry.Description ?? "").trim().slice(0, 500),
+        thumbnailUrl: String(entry.Thumbnail ?? "").trim(),
+        downloadUrl: download,
+        triangleCount: Number(entry["Tri Count"] ?? 0) || 0,
+        creator: String((creator as { Username?: unknown }).Username ?? "").trim(),
+        category: String(entry.Category ?? "").trim(),
+        license: String(entry.Licence ?? "").trim(),
+        attribution: String(entry.Attribution ?? "").trim().slice(0, 300),
+        animated: entry.Animated === true,
+        source: "Poly Pizza",
+      };
+    })
+    .filter((entry) => {
+      if (!entry.id || !entry.name || !entry.downloadUrl) return false;
+      if (!entry.downloadUrl.toLowerCase().split("?")[0].endsWith(".glb")) return false;
+      try {
+        const candidate = new URL(entry.downloadUrl);
+        return candidate.protocol === "https:" && isAllowedImportHost(candidate.hostname);
+      } catch {
+        return false;
+      }
+    });
+
+  return jsonResponse(
+    request,
+    env,
+    { success: true, data: { total: Number(payload.total ?? 0) || 0, page, results } },
+    200,
+    { "Cache-Control": "no-store" },
+  );
 };
 
 const deleteModel = async (request: Request, env: Env, id: string): Promise<Response> => {
@@ -752,6 +854,7 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
     return jsonResponse(request, env, { success: true, service: "elikha-r2-models" });
   }
   if (request.method === "GET" && path === "/models") return listModels(request, env);
+  if (request.method === "GET" && path === "/models/search") return searchRemoteCatalog(request, env);
   if (request.method === "GET" && path === "/storage") return storageUsage(request, env);
 
   const fileMatch = path.match(/^\/models\/files\/([^/]+)(?:\/.*)?$/);

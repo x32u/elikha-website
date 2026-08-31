@@ -10,7 +10,6 @@ const bucket = 'elikha-3d-models';
 const timestamp = '2026-08-09T00:00:00.000Z';
 
 const models = [
-  { id: 'mask', label: 'Latin Mask', file: '13137_LatinMask1_v1.obj', type: 'obj', size: 10565500 },
   { id: 'bottle', label: 'Bottle', file: 'Bottle Coca-Cola N080710.3ds', type: '3ds', size: 8420224 },
   { id: 'cactus', label: 'Cactus', file: 'cute_cactus.glb', type: 'glb', size: 5858836 },
   { id: 'tree', label: 'Tree', file: 'maple_tree.glb', type: 'glb', size: 4851616 },

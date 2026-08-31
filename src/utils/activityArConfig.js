@@ -71,14 +71,6 @@ export const AR_OBJECT_LIBRARY = Object.freeze(sortArLibraryItems([
 
 const BUILT_IN_AR_MODELS = Object.freeze([
   {
-    id: 'mask',
-    label: 'Latin Mask',
-    modelUrl: resolveBuiltInModelUrl('mask', '/models/13137_LatinMask1_v1.obj'),
-    fileType: 'obj',
-    aliases: ['latin-mask', 'kabuki-mask'],
-    isCustom: false,
-  },
-  {
     id: 'bottle',
     label: 'Bottle',
     modelUrl: resolveBuiltInModelUrl('bottle', '/models/Bottle Coca-Cola N080710.3ds'),
@@ -181,7 +173,7 @@ const AR_OBJECT_BY_ID = new Map(AR_OBJECT_LIBRARY.map((item) => [item.id, item])
 const DEFAULT_ALLOWED_OBJECT_IDS = Object.freeze(['cube', 'sphere', 'cone']);
 export const DEFAULT_PUZZLE_PIECES = 0;
 export const PUZZLE_PIECE_OPTIONS = Object.freeze([0, 3, 4]);
-export const DEFAULT_MODEL_ID = 'mask';
+export const DEFAULT_MODEL_ID = 'cactus';
 
 const isBrowser = typeof window !== 'undefined';
 const isFileLike = (value) => isBrowser && typeof File !== 'undefined' && value instanceof File;
@@ -308,6 +300,7 @@ const normalizeR2ModelEntry = (entry) => {
     storageProvider: 'r2',
     source: String(entry?.source || ''),
     license: String(entry?.license || ''),
+    attribution: String(entry?.attribution || ''),
   };
 };
 

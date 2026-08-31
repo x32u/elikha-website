@@ -4,7 +4,7 @@ import Navbar from '../../components/Navbar';
 import ArPreparationGuide from '../../components/ArPreparationGuide';
 import { getActivityById } from '../../services/teacherApi';
 import { getActivityDetails, getStudentActivityAssessment } from '../../services/studentApi';
-import { parseActivityDescription } from '../../utils/activityArConfig';
+import { getArModelLibrary, parseActivityDescription } from '../../utils/activityArConfig';
 import { hasStarRating, normalizeStarRating, starRatingLabel } from '../../utils/starRating';
 import { sf9RatingLabel, toSf9RatingCode } from '../../utils/sf9Competencies';
 import './ActivityDetails.css';
@@ -161,6 +161,27 @@ const ActivityDetails = () => {
     const count = Number(activity?.puzzle_pieces ?? parsedActivityConfig.puzzlePieces);
     return count === 3 || count === 4 ? count : 0;
   }, [activity?.puzzle_pieces, parsedActivityConfig.puzzlePieces]);
+
+  // CC-BY imports must credit their creator wherever the model is shown, so the
+  // saved attribution string for each model this activity uses is surfaced here.
+  const modelAttributions = useMemo(() => {
+    const ids = Array.isArray(parsedActivityConfig.modelIds) && parsedActivityConfig.modelIds.length > 0
+      ? parsedActivityConfig.modelIds
+      : [parsedActivityConfig.modelId].filter(Boolean);
+    if (ids.length === 0) return [];
+    const library = getArModelLibrary();
+    const byId = new Map(library.map((model) => [model.id, model]));
+    const seen = new Set();
+    const credits = [];
+    ids.forEach((id) => {
+      const attribution = String(byId.get(id)?.attribution || '').trim();
+      if (attribution && !seen.has(attribution)) {
+        seen.add(attribution);
+        credits.push(attribution);
+      }
+    });
+    return credits;
+  }, [parsedActivityConfig.modelId, parsedActivityConfig.modelIds]);
 
   const loadAssessment = useCallback(async () => {
     if (!isStudent || !id) return;
@@ -322,6 +343,14 @@ const ActivityDetails = () => {
               </span>
             </div>
           </div>
+          {modelAttributions.length > 0 && (
+            <div className="activity-model-credits">
+              <span className="activity-model-credits-label">3D model credits</span>
+              {modelAttributions.map((credit) => (
+                <p className="activity-model-credit" key={credit}>{credit}</p>
+              ))}
+            </div>
+          )}
         </section>
 
         {isStudent && (

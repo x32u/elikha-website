@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import {
+  DEFAULT_MODEL_ID,
   encodeActivityDescription,
   parseActivityDescription,
 } from '../utils/activityArConfig';
@@ -1321,7 +1322,7 @@ export const fetchAdminAnalytics = async ({ days = 30 } = {}) => {
       if (!outcome.submission || !inRange(outcome.submission.submitted_at)) return;
       const activity = activityMap.get(outcome.activityId);
       const parsed = parseActivityDescription(activity?.description);
-      const modelId = parsed.modelId || 'mask';
+      const modelId = parsed.modelId || DEFAULT_MODEL_ID;
       modelUsageMap.set(modelId, (modelUsageMap.get(modelId) || 0) + 1);
     });
     const modelUsage = Array.from(modelUsageMap.entries())
