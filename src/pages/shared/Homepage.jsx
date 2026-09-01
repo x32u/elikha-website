@@ -4,7 +4,8 @@ import ProfileSection from '../../components/ProfileSection';
 import ArtworkCarousel from '../../components/ArtworkCarousel';
 import ActivityCard from '../../components/ActivityCard';
 import Navbar from '../../components/Navbar';
-import { getStudentPendingActivities, getStudentArtworks, getStudentDashboardStats, getStudentActivities, getStudentClasses } from '../../services/studentApi';
+import { getStudentPendingActivities, getStudentArtworks, getStudentDashboardStats, getStudentActivities, getStudentClasses, getStudentProfile } from '../../services/studentApi';
+import { resolveAvatarUrl } from '../../services/avatarApi';
 import { formatStudentClassLabel } from '../../utils/classLabels';
 import './Homepage.css';
 
@@ -17,6 +18,7 @@ const Homepage = () => {
   const [showAllActivities, setShowAllActivities] = useState(false);
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
+  const [avatarUrl, setAvatarUrl] = useState('');
 
   useEffect(() => {
     const userInfo = sessionStorage.getItem('userInfo');
@@ -40,13 +42,18 @@ const Homepage = () => {
   const loadStudentData = async (studentId) => {
     setLoading(true);
     try {
-      const [activitiesResult, artworksResult, statsResult, allActivitiesResult, classesResult] = await Promise.all([
+      const [activitiesResult, artworksResult, statsResult, allActivitiesResult, classesResult, profileResult] = await Promise.all([
         getStudentPendingActivities(studentId),
         getStudentArtworks(studentId),
         getStudentDashboardStats(studentId),
         getStudentActivities(studentId),
-        getStudentClasses(studentId)
+        getStudentClasses(studentId),
+        getStudentProfile(studentId)
       ]);
+
+      if (profileResult.success) {
+        setAvatarUrl(await resolveAvatarUrl(profileResult.data?.avatar_url || ''));
+      }
 
       if (classesResult.success) {
         const classLabel = formatStudentClassLabel(classesResult.data);
@@ -187,6 +194,7 @@ const Homepage = () => {
             <ProfileSection
               userName={user.name}
               classLabel={user.classLabel}
+              avatarUrl={avatarUrl}
               completedCount={stats.completedCount || 0}
               pendingCount={stats.pendingCount || activities.length}
             />

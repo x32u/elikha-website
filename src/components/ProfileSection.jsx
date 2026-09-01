@@ -7,15 +7,19 @@ const formatFallbackGrade = (grade) => {
   return /^grade\b/i.test(value) ? value : `Grade ${value}`;
 };
 
-const ProfileSection = ({ userName, grade, classLabel, completedCount = 0, pendingCount = 0 }) => {
+const ProfileSection = ({ userName, grade, classLabel, completedCount = 0, pendingCount = 0, avatarUrl = '' }) => {
   const displayClass = classLabel || formatFallbackGrade(grade);
 
   return (
     <section className="profile-section">
       <div className="profile-image">
-        <div className="profile-placeholder">
-          {userName.charAt(0).toUpperCase()}
-        </div>
+        {avatarUrl ? (
+          <img src={avatarUrl} alt={`${userName} profile`} />
+        ) : (
+          <div className="profile-placeholder">
+            {userName.charAt(0).toUpperCase()}
+          </div>
+        )}
       </div>
       <div className="profile-info">
         <h1 className="profile-greeting">Hi, {userName}!</h1>
