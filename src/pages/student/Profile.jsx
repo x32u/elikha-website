@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import { getStudentProfile, getStudentActivities, getStudentClasses } from '../../services/studentApi';
+import { resolveAvatarUrl } from '../../services/avatarApi';
 import { useStoredUserSettings } from '../../hooks/useStoredUserSettings';
 import { shouldLoadRichMedia } from '../../utils/userSettings';
 import { formatStudentClassLabel } from '../../utils/classLabels';
@@ -133,6 +134,7 @@ const Profile = () => {
   const [profile, setProfile] = useState(null);
   const [classLabel, setClassLabel] = useState('Loading class...');
   const [loading, setLoading] = useState(true);
+  const [avatarSrc, setAvatarSrc] = useState('');
   const settings = useStoredUserSettings();
 
   // Get current user from session
@@ -190,6 +192,8 @@ const Profile = () => {
 
       if (profileResult.success) {
         setProfile(profileResult.data);
+        const signed = await resolveAvatarUrl(profileResult.data?.avatar_url || '');
+        setAvatarSrc(signed);
       }
 
       if (classesResult.success) {
@@ -274,7 +278,13 @@ const Profile = () => {
     <div className="student-profile-page-container student-shell">
       <main className="student-profile-page">
         <section className="profile-header">
-          <div className="profile-avatar" aria-hidden="true">{initial}</div>
+          <div className="profile-avatar">
+            {avatarSrc ? (
+              <img className="profile-avatar-img" src={avatarSrc} alt={`${displayName} profile`} />
+            ) : (
+              <span aria-hidden="true">{initial}</span>
+            )}
+          </div>
           <div className="profile-header-body">
             <div className="profile-name-row">
               <h1 className="profile-username">{displayName}</h1>

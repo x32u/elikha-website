@@ -1,5 +1,7 @@
 import React from "react";
 import "../styles/AdminShell.css";
+import { supabase } from "../../../lib/supabase";
+import { resolveAvatarUrl } from "../../../services/avatarApi";
 
 function Icon({ children }) {
   return (
@@ -48,6 +50,38 @@ function Sidebar({
     return () => {
       window.removeEventListener("storage", refresh);
       window.removeEventListener("elikha-profile-updated", refresh);
+    };
+  }, []);
+
+  // Resolve the current user's avatar from the database so it shows on any
+  // device, not just the browser that uploaded it. Re-runs when a profile
+  // update is signalled.
+  React.useEffect(() => {
+    let cancelled = false;
+    const loadAvatar = async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const userId = sessionData?.session?.user?.id;
+        if (!userId) return;
+        const { data, error } = await supabase
+          .from("users")
+          .select("avatar_url")
+          .eq("id", userId)
+          .single();
+        if (cancelled || error) return;
+        const signed = await resolveAvatarUrl(data?.avatar_url || "");
+        if (!cancelled && signed) {
+          setProfile((prev) => ({ ...prev, avatar: signed }));
+        }
+      } catch {
+        // fall back to whatever localStorage/initials provide
+      }
+    };
+    loadAvatar();
+    window.addEventListener("elikha-profile-updated", loadAvatar);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("elikha-profile-updated", loadAvatar);
     };
   }, []);
 

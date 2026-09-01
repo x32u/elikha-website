@@ -657,3 +657,63 @@
     flex-direction: column;
   }
 }
+
+/* Avatar picker (add/edit user modals) */
+.um-avatar-field {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.um-avatar-preview {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex: 0 0 auto;
+  background: linear-gradient(135deg, #eef2ff 0%, #f3ebff 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e4e9f7;
+}
+
+.um-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.um-avatar-initial {
+  font-size: 26px;
+  font-weight: 600;
+  color: #4d5b82;
+}
+
+.um-avatar-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.um-avatar-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #253c6d;
+}
+
+.um-avatar-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.um-avatar-btn {
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.um-avatar-hint {
+  font-size: 11px;
+  color: #8a97b8;
+}

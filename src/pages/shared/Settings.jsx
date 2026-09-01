@@ -3,6 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import { supabase } from '../../lib/supabase';
 import { getUserSettings, saveUserSettings } from '../../services/userSettingsApi';
+import {
+  AVATAR_ACCEPT_ATTR,
+  removeUserAvatar,
+  resolveAvatarUrl,
+  uploadUserAvatar,
+  validateAvatarFile,
+} from '../../services/avatarApi';
 import { DEFAULT_USER_SETTINGS, normalizeUserSettings, storeUserSettings } from '../../utils/userSettings';
 import './Settings.css';
 
@@ -31,6 +38,13 @@ const Settings = () => {
   const [permissionLabel, setPermissionLabel] = useState(getNotificationPermissionLabel);
   const [requirementsOpen, setRequirementsOpen] = useState(false);
   const [restrictionsOpen, setRestrictionsOpen] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [avatarStoredPath, setAvatarStoredPath] = useState('');
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
+
+  const displayName = userInfo.name || userInfo.firstName || userInfo.email?.split('@')[0] || 'User';
+  const avatarInitial = displayName.charAt(0).toUpperCase();
 
   const dirty = JSON.stringify(settings) !== JSON.stringify(initialSettings);
 
@@ -62,6 +76,70 @@ const Settings = () => {
       cancelled = true;
     };
   }, [userInfo.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadAvatar = async () => {
+      if (!userInfo.id) return;
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('avatar_url')
+          .eq('id', userInfo.id)
+          .single();
+        if (cancelled || error) return;
+        const stored = data?.avatar_url || '';
+        setAvatarStoredPath(stored);
+        const signed = await resolveAvatarUrl(stored);
+        if (!cancelled) setAvatarUrl(signed);
+      } catch {
+        // fall back to initials
+      }
+    };
+    loadAvatar();
+    return () => {
+      cancelled = true;
+    };
+  }, [userInfo.id]);
+
+  const handleAvatarPick = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !userInfo.id) return;
+    const check = validateAvatarFile(file);
+    if (!check.valid) {
+      setAvatarError(check.error);
+      return;
+    }
+    setAvatarError('');
+    setAvatarBusy(true);
+    try {
+      const { path, signedUrl } = await uploadUserAvatar(userInfo.id, file);
+      setAvatarStoredPath(path);
+      setAvatarUrl(signedUrl);
+      window.dispatchEvent(new Event('elikha-profile-updated'));
+    } catch (uploadError) {
+      setAvatarError(uploadError?.message || 'Failed to upload the profile picture.');
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    if (!userInfo.id) return;
+    setAvatarBusy(true);
+    setAvatarError('');
+    try {
+      await removeUserAvatar(userInfo.id, avatarStoredPath);
+      setAvatarStoredPath('');
+      setAvatarUrl('');
+      window.dispatchEvent(new Event('elikha-profile-updated'));
+    } catch (removeError) {
+      setAvatarError(removeError?.message || 'Failed to remove the profile picture.');
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
 
   const updateSetting = (key, value) => {
     setSettings((prev) => {
@@ -129,6 +207,45 @@ const Settings = () => {
 
         <section className="settings-panel">
           {status && <div className={`settings-status ${status.type}`}>{status.text}</div>}
+
+          <div className="settings-card">
+            <div className="card-title">Profile Picture</div>
+            {avatarError && <div className="settings-status error">{avatarError}</div>}
+            <div className="settings-avatar-row">
+              <div className="settings-avatar-preview" aria-hidden="true">
+                {avatarUrl ? (
+                  <img className="settings-avatar-img" src={avatarUrl} alt={`${displayName} profile`} />
+                ) : (
+                  <span className="settings-avatar-initial">{avatarInitial}</span>
+                )}
+              </div>
+              <div className="settings-avatar-controls">
+                <div className="settings-avatar-buttons">
+                  <label className={`settings-btn primary ${avatarBusy ? 'disabled' : ''}`}>
+                    {avatarBusy ? 'Working…' : avatarUrl ? 'Change photo' : 'Upload photo'}
+                    <input
+                      type="file"
+                      accept={AVATAR_ACCEPT_ATTR}
+                      onChange={handleAvatarPick}
+                      disabled={avatarBusy}
+                      hidden
+                    />
+                  </label>
+                  {avatarUrl && (
+                    <button
+                      className="settings-btn ghost"
+                      type="button"
+                      onClick={handleAvatarRemove}
+                      disabled={avatarBusy}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <p className="settings-help">PNG, JPG, or WebP up to 2 MB. Shown across your profile.</p>
+              </div>
+            </div>
+          </div>
 
           <div className="settings-card">
             <div className="card-title">Audio</div>

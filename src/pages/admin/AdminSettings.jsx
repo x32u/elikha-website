@@ -4,6 +4,13 @@ import AdminShell from "./components/AdminShell";
 import { supabase } from "../../lib/supabase";
 import { updatePlatformUser } from "../../services/adminApi";
 import { getUserSettings, saveUserSettings } from "../../services/userSettingsApi";
+import {
+  AVATAR_ACCEPT_ATTR,
+  removeUserAvatar,
+  resolveAvatarUrl,
+  uploadUserAvatar,
+  validateAvatarFile,
+} from "../../services/avatarApi";
 
 function Settings({ onNavigate, role, onLogout }) {
   const isSuperAdmin = role === "SuperAdmin";
@@ -19,6 +26,9 @@ function Settings({ onNavigate, role, onLogout }) {
   const [savingProfile, setSavingProfile] = React.useState(false);
   const [savingPassword, setSavingPassword] = React.useState(false);
   const [savingSettings, setSavingSettings] = React.useState(false);
+  const [avatarUrl, setAvatarUrl] = React.useState("");
+  const [avatarStoredPath, setAvatarStoredPath] = React.useState("");
+  const [avatarBusy, setAvatarBusy] = React.useState(false);
 
   React.useEffect(() => {
     if (!toast) return undefined;
@@ -42,8 +52,69 @@ function Settings({ onNavigate, role, onLogout }) {
           setAllowNotifications(result.data.notifications);
         }
       });
+
+      supabase
+        .from("users")
+        .select("avatar_url")
+        .eq("id", userInfo.id)
+        .single()
+        .then(async ({ data, error }) => {
+          if (error) return;
+          const stored = data?.avatar_url || "";
+          setAvatarStoredPath(stored);
+          setAvatarUrl(await resolveAvatarUrl(stored));
+        });
     }
   }, []);
+
+  const handleAvatarPick = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !profileUserId) return;
+    const check = validateAvatarFile(file);
+    if (!check.valid) {
+      showToast("error", check.error);
+      return;
+    }
+    setAvatarBusy(true);
+    try {
+      const { path, signedUrl } = await uploadUserAvatar(profileUserId, file);
+      setAvatarStoredPath(path);
+      setAvatarUrl(signedUrl);
+      try {
+        window.localStorage.setItem("elikha_profile_avatar", signedUrl);
+      } catch {
+        // ignore
+      }
+      window.dispatchEvent(new Event("elikha-profile-updated"));
+      showToast("success", "Profile picture updated.");
+    } catch (uploadError) {
+      showToast("error", uploadError?.message || "Failed to upload the profile picture.");
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    if (!profileUserId) return;
+    setAvatarBusy(true);
+    try {
+      await removeUserAvatar(profileUserId, avatarStoredPath);
+      setAvatarStoredPath("");
+      setAvatarUrl("");
+      try {
+        window.localStorage.removeItem("elikha_profile_avatar");
+      } catch {
+        // ignore
+      }
+      window.dispatchEvent(new Event("elikha-profile-updated"));
+      showToast("success", "Profile picture removed.");
+    } catch (removeError) {
+      showToast("error", removeError?.message || "Failed to remove the profile picture.");
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
 
   const showToast = (type, message) => {
     setToast({ type, message });
@@ -163,6 +234,36 @@ function Settings({ onNavigate, role, onLogout }) {
 
         <h2 className="set-section-title">Profile</h2>
         <section className="set-block" aria-label="Profile settings">
+          <div className="set-avatar-row">
+            <div className="set-avatar-preview" aria-hidden="true">
+              {avatarUrl ? (
+                <img className="set-avatar-img" src={avatarUrl} alt={`${profileName} profile`} />
+              ) : (
+                <span className="set-avatar-initial">{(profileName || "A").charAt(0).toUpperCase()}</span>
+              )}
+            </div>
+            <div className="set-avatar-controls">
+              <div className="set-avatar-buttons">
+                <label className={`set-btn ${avatarBusy ? "disabled" : ""}`}>
+                  {avatarBusy ? "Working…" : avatarUrl ? "Change photo" : "Upload photo"}
+                  <input
+                    type="file"
+                    accept={AVATAR_ACCEPT_ATTR}
+                    onChange={handleAvatarPick}
+                    disabled={avatarBusy}
+                    hidden
+                  />
+                </label>
+                {avatarUrl && (
+                  <button className="set-btn ghost" type="button" onClick={handleAvatarRemove} disabled={avatarBusy}>
+                    Remove
+                  </button>
+                )}
+              </div>
+              <div className="set-help">PNG, JPG, or WebP up to 2 MB.</div>
+            </div>
+          </div>
+
           <label className="set-field">
             <div className="set-label">Display Name</div>
             <input

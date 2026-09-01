@@ -112,7 +112,7 @@ describe('Super Admin create-account password control', () => {
     });
     await openCreateAccountModal();
 
-    const inputs = container.querySelectorAll('.um-modal-body input');
+    const inputs = container.querySelectorAll('.um-modal-body input:not([type="file"])');
     await act(async () => {
       setInputValue(inputs[0], 'jc');
       setInputValue(inputs[1], 'jcxxme@gmail.com');

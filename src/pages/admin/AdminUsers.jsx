@@ -12,6 +12,13 @@ import {
   updatePlatformUser,
 } from '../../services/adminApi';
 import { formatClassOptionLabel } from '../../utils/classLabels';
+import {
+  AVATAR_ACCEPT_ATTR,
+  removeUserAvatar,
+  resolveAvatarUrl,
+  uploadUserAvatar,
+  validateAvatarFile,
+} from '../../services/avatarApi';
 
 const ROLE_OPTIONS = [
   { value: 'student', label: 'Student' },
@@ -63,6 +70,16 @@ function AdminUsers({ onNavigate, role }) {
     role: 'student',
     classId: '',
   });
+  // Selected-but-not-yet-uploaded avatar file for the add/edit modals, plus a
+  // local object-URL preview. On create the upload happens after the user row
+  // exists (RLS keys on the folder = an existing uid); on edit it uploads
+  // immediately against the target user's id.
+  const [addAvatarFile, setAddAvatarFile] = React.useState(null);
+  const [addAvatarPreview, setAddAvatarPreview] = React.useState('');
+  const [editAvatarFile, setEditAvatarFile] = React.useState(null);
+  const [editAvatarPreview, setEditAvatarPreview] = React.useState('');
+  const [editAvatarUrl, setEditAvatarUrl] = React.useState('');
+  const [avatarBusy, setAvatarBusy] = React.useState(false);
   const [showParentLinks, setShowParentLinks] = React.useState(false);
   const [parentLinks, setParentLinks] = React.useState([]);
   const [parentLinkOptions, setParentLinkOptions] = React.useState({
@@ -185,12 +202,21 @@ function AdminUsers({ onNavigate, role }) {
       status: user.status_label || 'Active',
     });
     setSaveError('');
+    setEditAvatarFile(null);
+    setEditAvatarPreview('');
+    setEditAvatarUrl('');
+    resolveAvatarUrl(user.avatar_url || '').then((signed) => {
+      if (signed) setEditAvatarUrl(signed);
+    });
   };
 
   const closeEdit = () => {
     setEditing(null);
     setEditDraft(null);
     setSaveError('');
+    setEditAvatarFile(null);
+    setEditAvatarPreview('');
+    setEditAvatarUrl('');
   };
 
   const openAdd = () => {
@@ -205,6 +231,8 @@ function AdminUsers({ onNavigate, role }) {
       role: 'student',
       classId: '',
     });
+    setAddAvatarFile(null);
+    setAddAvatarPreview('');
   };
 
   const closeAdd = () => {
@@ -212,6 +240,8 @@ function AdminUsers({ onNavigate, role }) {
     setShowAddPassword(false);
     setAddBusy(false);
     setAddError('');
+    setAddAvatarFile(null);
+    setAddAvatarPreview('');
   };
 
   const openParentLinkManager = () => {
@@ -225,6 +255,53 @@ function AdminUsers({ onNavigate, role }) {
     setShowParentLinks(false);
     setParentLinkBusy(false);
     setParentLinkError('');
+  };
+
+  const handleAddAvatarPick = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const check = validateAvatarFile(file);
+    if (!check.valid) {
+      setAddError(check.error);
+      return;
+    }
+    setAddError('');
+    setAddAvatarFile(file);
+    setAddAvatarPreview(URL.createObjectURL(file));
+  };
+
+  const handleEditAvatarPick = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !editDraft) return;
+    const check = validateAvatarFile(file);
+    if (!check.valid) {
+      setSaveError(check.error);
+      return;
+    }
+    setSaveError('');
+    setEditAvatarFile(file);
+    setEditAvatarPreview(URL.createObjectURL(file));
+  };
+
+  const handleEditAvatarRemove = async () => {
+    if (!editDraft) return;
+    setAvatarBusy(true);
+    setSaveError('');
+    try {
+      await removeUserAvatar(editDraft.id, editing?.avatar_url || '');
+      setEditAvatarFile(null);
+      setEditAvatarPreview('');
+      setEditAvatarUrl('');
+      setUsers((prev) =>
+        prev.map((user) => (user.id === editDraft.id ? { ...user, avatar_url: null } : user))
+      );
+    } catch (removeError) {
+      setSaveError(removeError?.message || 'Failed to remove the profile picture.');
+    } finally {
+      setAvatarBusy(false);
+    }
   };
 
   const saveEdit = async () => {
@@ -247,14 +324,29 @@ function AdminUsers({ onNavigate, role }) {
       role: editDraft.role,
     });
 
-    setSaveBusy(false);
-
     if (!result.success) {
+      setSaveBusy(false);
       setSaveError(result.error || 'Failed to save user changes.');
       return;
     }
 
-    setUsers((prev) => prev.map((user) => (user.id === result.data.id ? result.data : user)));
+    let updatedUser = result.data;
+    if (editAvatarFile) {
+      try {
+        const { path } = await uploadUserAvatar(editDraft.id, editAvatarFile);
+        updatedUser = { ...updatedUser, avatar_url: path };
+      } catch (avatarError) {
+        setSaveBusy(false);
+        setSaveError(
+          `Saved profile details, but the picture upload failed: ${avatarError?.message || 'unknown error'}`
+        );
+        setUsers((prev) => prev.map((user) => (user.id === updatedUser.id ? { ...user, ...updatedUser } : user)));
+        return;
+      }
+    }
+
+    setSaveBusy(false);
+    setUsers((prev) => prev.map((user) => (user.id === updatedUser.id ? { ...user, ...updatedUser } : user)));
     closeEdit();
   };
 
@@ -285,20 +377,33 @@ function AdminUsers({ onNavigate, role }) {
       classId,
     });
 
-    setAddBusy(false);
-
     if (!result.success) {
+      setAddBusy(false);
       setAddError(result.error || 'Failed to add user.');
       return;
     }
 
-    setUsers((prev) => [result.data, ...prev.filter((user) => user.id !== result.data.id)]);
+    let createdUser = result.data;
+    const messages = [result.message || 'User account created successfully.', result.warning];
+
+    // Upload the avatar only after the account row exists — Storage RLS keys on
+    // the folder being the new user's id. A failed upload is non-fatal: the
+    // account is already created, so surface a note instead of rolling back.
+    if (addAvatarFile && createdUser?.id) {
+      try {
+        const { path } = await uploadUserAvatar(createdUser.id, addAvatarFile);
+        createdUser = { ...createdUser, avatar_url: path };
+      } catch (avatarError) {
+        messages.push(
+          `Profile picture was not saved (${avatarError?.message || 'upload failed'}); add it later from Edit.`
+        );
+      }
+    }
+
+    setAddBusy(false);
+    setUsers((prev) => [createdUser, ...prev.filter((user) => user.id !== createdUser.id)]);
     closeAdd();
-    setNotice(
-      [result.message || 'User account created successfully.', result.warning]
-        .filter(Boolean)
-        .join(' ')
-    );
+    setNotice(messages.filter(Boolean).join(' '));
   };
 
   const saveParentLink = async () => {
@@ -606,6 +711,47 @@ function AdminUsers({ onNavigate, role }) {
             <div className="um-modal-body">
               {saveError && <div className="um-empty" style={{ marginBottom: '10px' }}>{saveError}</div>}
 
+              <div className="um-avatar-field">
+                <div className="um-avatar-preview" aria-hidden="true">
+                  {editAvatarPreview || editAvatarUrl ? (
+                    <img
+                      className="um-avatar-img"
+                      src={editAvatarPreview || editAvatarUrl}
+                      alt=""
+                    />
+                  ) : (
+                    <span className="um-avatar-initial">
+                      {(editDraft.name || '?').charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div className="um-avatar-controls">
+                  <span className="um-avatar-label">Profile picture</span>
+                  <div className="um-avatar-buttons">
+                    <label className="um-btn ghost um-avatar-btn">
+                      {editAvatarPreview ? 'Change photo' : 'Upload photo'}
+                      <input
+                        type="file"
+                        accept={AVATAR_ACCEPT_ATTR}
+                        onChange={handleEditAvatarPick}
+                        hidden
+                      />
+                    </label>
+                    {(editAvatarUrl || editAvatarPreview) && (
+                      <button
+                        className="um-btn ghost um-avatar-btn"
+                        type="button"
+                        onClick={handleEditAvatarRemove}
+                        disabled={avatarBusy}
+                      >
+                        {avatarBusy ? 'Removing…' : 'Remove'}
+                      </button>
+                    )}
+                  </div>
+                  <span className="um-avatar-hint">PNG, JPG, or WebP up to 2 MB.</span>
+                </div>
+              </div>
+
               <label className="um-field">
                 <span>Name</span>
                 <input
@@ -689,6 +835,45 @@ function AdminUsers({ onNavigate, role }) {
 
             <div className="um-modal-body">
               {addError && <div className="um-empty" style={{ marginBottom: '10px' }}>{addError}</div>}
+
+              <div className="um-avatar-field">
+                <div className="um-avatar-preview" aria-hidden="true">
+                  {addAvatarPreview ? (
+                    <img className="um-avatar-img" src={addAvatarPreview} alt="" />
+                  ) : (
+                    <span className="um-avatar-initial">
+                      {(addDraft.name || '?').charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div className="um-avatar-controls">
+                  <span className="um-avatar-label">Profile picture (optional)</span>
+                  <div className="um-avatar-buttons">
+                    <label className="um-btn ghost um-avatar-btn">
+                      {addAvatarPreview ? 'Change photo' : 'Upload photo'}
+                      <input
+                        type="file"
+                        accept={AVATAR_ACCEPT_ATTR}
+                        onChange={handleAddAvatarPick}
+                        hidden
+                      />
+                    </label>
+                    {addAvatarPreview && (
+                      <button
+                        className="um-btn ghost um-avatar-btn"
+                        type="button"
+                        onClick={() => {
+                          setAddAvatarFile(null);
+                          setAddAvatarPreview('');
+                        }}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <span className="um-avatar-hint">PNG, JPG, or WebP up to 2 MB.</span>
+                </div>
+              </div>
 
               <label className="um-field">
                 <span>Name</span>

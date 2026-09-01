@@ -233,7 +233,7 @@ export const fetchAllUsers = async () => {
   try {
     const { data, error } = await supabase
       .from('users')
-      .select('id, name, email, role, created_at, updated_at')
+      .select('id, name, email, role, avatar_url, created_at, updated_at')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -268,7 +268,7 @@ export const updatePlatformUser = async (userId, updates) => {
       .from('users')
       .update(payload)
       .eq('id', userId)
-      .select('id, name, email, role, created_at, updated_at')
+      .select('id, name, email, role, avatar_url, created_at, updated_at')
       .single();
 
     if (error) throw error;

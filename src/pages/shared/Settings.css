@@ -384,3 +384,74 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Profile picture card */
+.settings-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.settings-avatar-preview {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex: 0 0 auto;
+  background: linear-gradient(135deg, #496fff 0%, #2a46c0 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.settings-avatar-initial {
+  font-size: 30px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.settings-avatar-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-avatar-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.settings-btn.primary {
+  background: #3152cc;
+  color: #ffffff;
+}
+
+.settings-btn.ghost {
+  background: transparent;
+  border-color: #d4ddf5;
+  color: #3152cc;
+}
+
+.settings-btn.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
