@@ -64,7 +64,6 @@ const ActivityDetails = () => {
     ['submitted', 'reviewed', 'graded', 'completed'].includes(String(activity?.assignment?.status || '').toLowerCase())
   );
   const isReviewed = Boolean(activity?.is_reviewed || submission?.reviewed_at);
-  const completion = isSubmitted ? 100 : 0;
   const activityRubric = assessment?.rubric || null;
   const rawFinalReview = assessment?.final_review || null;
   const submissionStatus = String(submission?.status || '').trim().toLowerCase();
@@ -273,11 +272,33 @@ const ActivityDetails = () => {
     });
   };
 
+  const viewSubmittedWork = () => {
+    navigate(`/activity/${id}/start`, {
+      state: {
+        mode: 'view',
+        artworkUrl: submission?.artwork_url || undefined,
+        paintState: activity?.paint_state || [],
+        sceneState: activity?.scene_state || [],
+        puzzleState: activity?.puzzle_state || [],
+        modelState: activity?.model_state || [],
+        groupState: activity?.group_state || null,
+        allowedObjectIds,
+        modelUrl,
+        modelFileType,
+        modelConfigs,
+        arInstructions,
+        puzzlePieces,
+        colorRequirements: activity?.color_requirements || parsedActivityConfig.colorRequirements || [],
+        allowedColors: activity?.allowed_colors || parsedActivityConfig.allowedColors || [],
+      },
+    });
+  };
+
   if (loading) {
     return (
       <div className={`activity-details-container ${isStudent ? 'student-activity-details' : 'teacher-activity-details'}`}>
         <div className="activity-not-found">
-          <p>Loading...</p>
+          <p>Loading…</p>
         </div>
         <Navbar />
       </div>
@@ -420,16 +441,6 @@ const ActivityDetails = () => {
           </section>
         )}
 
-        <section className="section progress-section">
-          <div className="progress-head">
-            <span className="progress-label">Project Progress</span>
-          </div>
-          <div className="progress-bar" aria-label="Progress" role="progressbar" aria-valuenow={completion} aria-valuemin={0} aria-valuemax={100}>
-            <div className="progress-fill" style={{ width: `${completion}%` }} />
-          </div>
-          <div className="progress-foot">{completion}% Complete</div>
-        </section>
-
         <section className="section">
           {isStudent && !isSubmitted && (
             <button
@@ -449,6 +460,13 @@ const ActivityDetails = () => {
               {submission?.reviewed_at && (
                 <p>Reviewed on {formatDate(submission.reviewed_at)}</p>
               )}
+              <button
+                className="view-ar-button"
+                type="button"
+                onClick={viewSubmittedWork}
+              >
+                View in AR
+              </button>
               {!isReviewed && (
                 <p className="final-review-pending" role="status">
                   Waiting for your teacher's review. Your final score and rubric results will appear here after confirmation.

@@ -1,10 +1,15 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import ActivityDetails from './ActivityDetails';
 
 const mockGetActivityDetails = jest.fn();
 const mockGetStudentActivityAssessment = jest.fn();
+
+const ArStartRoute = () => {
+  const location = useLocation();
+  return <pre data-testid="ar-route-state">{JSON.stringify(location.state)}</pre>;
+};
 
 jest.mock('../../components/Navbar', () => () => <nav>Navigation</nav>);
 jest.mock('../../services/studentApi', () => ({
@@ -21,6 +26,7 @@ const renderActivity = async (root) => {
       <MemoryRouter initialEntries={['/activity/activity-1']}>
         <Routes>
           <Route path="/activity/:id" element={<ActivityDetails />} />
+          <Route path="/activity/:id/start" element={<ArStartRoute />} />
         </Routes>
       </MemoryRouter>
     );
@@ -76,6 +82,73 @@ describe('student ActivityDetails AR guide', () => {
     expect(guide).not.toBeNull();
     expect(header.nextElementSibling).toBe(guide);
     expect(guide.nextElementSibling).toBe(hero);
+    expect(container.textContent).not.toContain('Project Progress');
+  });
+
+  it('opens a submitted activity in view-only AR from its details page', async () => {
+    mockGetActivityDetails.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'activity-1',
+        title: 'Color the Lantern',
+        description: 'Practice coloring a 3D lantern.',
+        is_submitted: true,
+        assignment: { id: 'assignment-1', status: 'submitted' },
+        paint_state: [{ objectId: 'lantern', color: '#2255CC' }],
+        scene_state: [{ id: 'lantern', position: [0, 0, 0] }],
+        puzzle_state: [{ id: 'piece-1', connected: true }],
+        model_state: [{ id: 'lantern', rotation: [0, 1, 0] }],
+        group_state: { rotation: [0, 1, 0] },
+        allowed_object_ids: ['lantern'],
+        model_url: 'https://example.com/lantern.glb',
+        model_file_type: 'glb',
+        puzzle_pieces: 3,
+        allowed_colors: [{ hex: '#2255CC', name: 'Blue' }],
+        color_requirements: [{
+          targetType: 'model',
+          targetId: 'lantern',
+          targetLabel: 'Lantern',
+          colorHex: '#2255CC',
+        }],
+        submission: {
+          id: 'submission-1',
+          artwork_url: 'https://example.com/submitted-lantern.png',
+          submitted_at: '2026-08-12T01:00:00Z',
+        },
+      },
+    });
+
+    await renderActivity(root);
+
+    const viewButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.trim() === 'View in AR');
+    expect(viewButton).toBeDefined();
+    expect(container.textContent).not.toContain('Project Progress');
+
+    await act(async () => {
+      viewButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const state = JSON.parse(container.querySelector('[data-testid="ar-route-state"]').textContent);
+    expect(state).toMatchObject({
+      mode: 'view',
+      artworkUrl: 'https://example.com/submitted-lantern.png',
+      allowedObjectIds: ['lantern'],
+      modelUrl: 'https://example.com/lantern.glb',
+      modelFileType: 'glb',
+      puzzlePieces: 3,
+      allowedColors: [{ hex: '#2255CC', name: 'Blue' }],
+      colorRequirements: [{
+        targetType: 'model',
+        targetId: 'lantern',
+        targetLabel: 'Lantern',
+        colorHex: '#2255CC',
+      }],
+    });
+    expect(state.paintState).toHaveLength(1);
+    expect(state.sceneState).toHaveLength(1);
+    expect(state.puzzleState).toHaveLength(1);
+    expect(state.modelState).toHaveLength(1);
   });
 
   it('shows the attached rubric and all developmental levels before work starts', async () => {

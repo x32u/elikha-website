@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import { getStudentProfile, getStudentActivities, getStudentClasses } from '../../services/studentApi';
 import { resolveAvatarUrl } from '../../services/avatarApi';
@@ -48,7 +48,7 @@ const getFeedbackPreview = (feedback) => {
   if (typeof feedback !== 'string') return '';
   const text = feedback.trim();
   if (text.length <= 90) return text;
-  return `${text.slice(0, 87)}...`;
+  return `${text.slice(0, 87)}…`;
 };
 
 const keyOutBlackBackground = (source) =>
@@ -123,16 +123,15 @@ const SnapshotThumbnailImage = ({ src, alt, className }) => {
     };
   }, [src]);
 
-  return <img src={displaySrc} alt={alt} className={className} />;
+  return <img src={displaySrc} alt={alt} className={className} width="640" height="360" />;
 };
 
 const Profile = () => {
-  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('activities');
   const [activities, setActivities] = useState([]);
   const [favoriteIds, setFavoriteIds] = useState([]);
   const [profile, setProfile] = useState(null);
-  const [classLabel, setClassLabel] = useState('Loading class...');
+  const [classLabel, setClassLabel] = useState('Loading class…');
   const [loading, setLoading] = useState(true);
   const [avatarSrc, setAvatarSrc] = useState('');
   const settings = useStoredUserSettings();
@@ -266,7 +265,7 @@ const Profile = () => {
         <main className="student-profile-page">
           <div className="loading-state">
             <div className="loading-spinner"></div>
-            <p>Loading profile...</p>
+            <p>Loading profile…</p>
           </div>
         </main>
         <Navbar />
@@ -315,71 +314,38 @@ const Profile = () => {
         <section className="profile-grid" aria-label="Activities grid">
           {(activeTab === 'favorites' ? favorites : activitiesWithFavoriteState).length > 0 ? (
             (activeTab === 'favorites' ? favorites : activitiesWithFavoriteState).map((activity) => (
-              <div
-                key={activity.id}
-                className="post-card"
-                role="button"
-                tabIndex={0}
-                onClick={() =>
-                  navigate(`/activity/${activity.id}/start`, {
-                    state: {
-                      mode: 'view',
-                      artworkUrl: activity.image_url,
-                      paintState: activity.paint_state || [],
-                      sceneState: activity.scene_state || [],
-                      puzzleState: activity.puzzle_state || [],
-                      modelState: activity.model_state || [],
-                      groupState: activity.group_state || null,
-                      allowedObjectIds: activity.allowed_object_ids || [],
-                      modelUrl: activity.model_url || undefined,
-                      modelFileType: activity.model_file_type || undefined,
-                      modelConfigs: activity.model_configs || [],
-                      puzzlePieces: activity.puzzle_pieces || 0,
-                      colorRequirements: activity.color_requirements || [],
-                      allowedColors: activity.allowed_colors || [],
-                    },
-                  })
-                }
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    navigate(`/activity/${activity.id}/start`, {
-                      state: {
-                        mode: 'view',
-                        artworkUrl: activity.image_url,
-                        paintState: activity.paint_state || [],
-                        sceneState: activity.scene_state || [],
-                        puzzleState: activity.puzzle_state || [],
-                        modelState: activity.model_state || [],
-                        groupState: activity.group_state || null,
-                        allowedObjectIds: activity.allowed_object_ids || [],
-                        modelUrl: activity.model_url || undefined,
-                        modelFileType: activity.model_file_type || undefined,
-                        modelConfigs: activity.model_configs || [],
-                        puzzlePieces: activity.puzzle_pieces || 0,
-                        colorRequirements: activity.color_requirements || [],
-                        allowedColors: activity.allowed_colors || [],
-                      },
-                    });
-                  }
-                }}
+              <article key={activity.id} className="post-card">
+                <Link
+                  className="post-card-main"
+                  to={`/activity/${activity.id}`}
+                  aria-label={`Open ${activity.title} details`}
                 >
-                <div
-                  className="post-thumb"
-                  style={{
-                    background: `linear-gradient(135deg, ${activity.thumbPalette?.[0]} 0%, ${activity.thumbPalette?.[1]} 52%, ${activity.thumbPalette?.[2]} 100%)`,
-                  }}
-                  aria-hidden="true"
-                >
-                  {shouldLoadRichMedia(settings) && shouldRenderImageThumb(activity.image_url) ? (
-                    <SnapshotThumbnailImage
-                      src={activity.image_url}
-                      alt={activity.title}
-                      className={`post-thumb-img ${isSnapshotDataUri(activity.image_url) ? 'post-thumb-img--snapshot' : ''}`}
-                    />
-                  ) : (
-                    <span className="post-thumb-icon" aria-hidden="true">{activity.emoji}</span>
-                  )}
-                </div>
+                  <div
+                    className="post-thumb"
+                    style={{
+                      background: `linear-gradient(135deg, ${activity.thumbPalette?.[0]} 0%, ${activity.thumbPalette?.[1]} 52%, ${activity.thumbPalette?.[2]} 100%)`,
+                    }}
+                  >
+                    {shouldLoadRichMedia(settings) && shouldRenderImageThumb(activity.image_url) ? (
+                      <SnapshotThumbnailImage
+                        src={activity.image_url}
+                        alt=""
+                        className={`post-thumb-img ${isSnapshotDataUri(activity.image_url) ? 'post-thumb-img--snapshot' : ''}`}
+                      />
+                    ) : (
+                      <span className="post-thumb-icon" aria-hidden="true">{activity.emoji}</span>
+                    )}
+                  </div>
+                  <div className="post-meta">
+                    <p className="post-title">{activity.title}</p>
+                    {hasSubmissionScore(activity) && (
+                      <p className="post-grade">Rating: {starRatingText(activity.score)}</p>
+                    )}
+                    {getFeedbackPreview(activity.feedback) && (
+                      <p className="post-feedback">Feedback: {getFeedbackPreview(activity.feedback)}</p>
+                    )}
+                  </div>
+                </Link>
                 <button
                   type="button"
                   className={`favorite-badge ${activity.favorite ? '' : 'is-off'}`}
@@ -392,16 +358,7 @@ const Profile = () => {
                 >
                   ★
                 </button>
-                <div className="post-meta">
-                  <p className="post-title">{activity.title}</p>
-                  {hasSubmissionScore(activity) && (
-                    <p className="post-grade">Rating: {starRatingText(activity.score)}</p>
-                  )}
-                  {getFeedbackPreview(activity.feedback) && (
-                    <p className="post-feedback">Feedback: {getFeedbackPreview(activity.feedback)}</p>
-                  )}
-                </div>
-              </div>
+              </article>
             ))
           ) : (
             <div className="no-activities-profile">
