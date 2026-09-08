@@ -5,6 +5,7 @@ import AdminUsers from './AdminUsers';
 const mockFetchAllUsers = jest.fn();
 const mockFetchClassDirectory = jest.fn();
 const mockCreatePlatformUser = jest.fn();
+const mockUpdatePlatformUser = jest.fn();
 const setInputValue = (input, value) => {
   const valueSetter = Object.getOwnPropertyDescriptor(
     window.HTMLInputElement.prototype,
@@ -23,7 +24,7 @@ jest.mock('../../services/adminApi', () => ({
   fetchClassDirectory: (...args) => mockFetchClassDirectory(...args),
   fetchParentLinkDirectory: jest.fn(),
   fetchParentStudentLinks: jest.fn(),
-  updatePlatformUser: jest.fn(),
+  updatePlatformUser: (...args) => mockUpdatePlatformUser(...args),
 }));
 
 describe('Super Admin create-account password control', () => {
@@ -138,5 +139,73 @@ describe('Super Admin create-account password control', () => {
       'missing E-Likha profile was restored'
     );
     expect(container.textContent).toContain('jcxxme@gmail.com');
+  });
+});
+
+describe('Admin role-assignment restrictions', () => {
+  let container;
+  let root;
+
+  beforeEach(() => {
+    mockFetchAllUsers.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 'teacher-id',
+          name: 'Teacher One',
+          email: 'teacher@example.com',
+          role: 'teacher',
+          status_label: 'Active',
+        },
+        {
+          id: 'admin-id',
+          name: 'Admin Two',
+          email: 'admin@example.com',
+          role: 'admin',
+          status_label: 'Active',
+        },
+      ],
+    });
+    mockFetchClassDirectory.mockResolvedValue({ success: true, data: [] });
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    global.IS_REACT_ACT_ENVIRONMENT = true;
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    delete global.IS_REACT_ACT_ENVIRONMENT;
+    jest.clearAllMocks();
+  });
+
+  it('does not let a regular admin select or edit administrator roles', async () => {
+    await act(async () => {
+      root.render(<AdminUsers role="Admin" />);
+    });
+
+    const rows = Array.from(container.querySelectorAll('tbody tr'));
+    const teacherEdit = Array.from(rows[0].querySelectorAll('button')).find(
+      (button) => button.textContent.trim() === 'Edit'
+    );
+    const adminEdit = Array.from(rows[1].querySelectorAll('button')).find(
+      (button) => button.textContent.trim() === 'Edit'
+    );
+
+    expect(adminEdit.disabled).toBe(true);
+
+    await act(async () => {
+      teacherEdit.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const roleSelect = Array.from(container.querySelectorAll('select')).find(
+      (select) => select.closest('.um-field')?.textContent.includes('Role')
+    );
+    const roleValues = Array.from(roleSelect.options).map((option) => option.value);
+
+    expect(roleValues).toEqual(['student', 'teacher', 'parent']);
+    expect(roleValues).not.toContain('admin');
+    expect(roleValues).not.toContain('superadmin');
   });
 });

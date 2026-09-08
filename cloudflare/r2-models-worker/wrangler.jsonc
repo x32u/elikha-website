@@ -15,7 +15,7 @@
   "vars": {
     "SUPABASE_URL": "https://qoixmfuxinmbtwfrhles.supabase.co",
     "ALLOWED_ORIGINS": "https://elikhaweb.vercel.app,http://localhost:3000,http://127.0.0.1:3000",
-    "MODEL_STORAGE_CAPACITY_BYTES": "1073741824",
+    "MODEL_STORAGE_CAPACITY_BYTES": "10000000000",
     "MAX_MODEL_FILE_BYTES": "52428800"
   }
 }

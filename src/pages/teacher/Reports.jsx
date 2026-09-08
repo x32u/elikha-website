@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Navbar from '../../components/Navbar';
 import { fetchTeacherAnalytics } from '../../services/teacherAnalyticsApi';
+import {
+  addFallbackInsightExplanations,
+  fetchStudentInsightExplanations,
+} from '../../services/studentInsightAiApi';
 import { serializeCsvRow } from '../../utils/reportAnalytics';
 import './Reports.css';
 
@@ -32,6 +36,7 @@ const normalizeReport = (value = {}) => ({
   activityPerformance: Array.isArray(value.activityPerformance) ? value.activityPerformance : [],
   studentAttention: Array.isArray(value.studentAttention) ? value.studentAttention : [],
   submissionTrend: Array.isArray(value.submissionTrend) ? value.submissionTrend : [],
+  studentInsights: Array.isArray(value.studentInsights) ? value.studentInsights : [],
   classes: Array.isArray(value.classes) ? value.classes : [],
   dataQuality: value.dataQuality && typeof value.dataQuality === 'object' ? value.dataQuality : {},
 });
@@ -72,6 +77,103 @@ const formatDate = (value) => {
 };
 
 const clampPercent = (value) => Math.max(0, Math.min(100, asNumber(value)));
+
+const insightChartValue = (insight) => {
+  if (!insight?.value) return null;
+  if (insight.key === 'fastest') return null;
+  const numeric = Number.parseFloat(String(insight.value));
+  if (!Number.isFinite(numeric)) return null;
+  return insight.key === 'improved' ? clampPercent((numeric / 5) * 100) : clampPercent(numeric);
+};
+
+const InsightRing = ({ insight }) => {
+  const percent = insightChartValue(insight);
+  const radius = 42;
+  const chartLabel = insight?.value || 'No data';
+  return (
+    <div
+      className={`teacher-reports-insight-ring teacher-reports-insight-ring--${insight?.key || 'default'} ${percent === null ? 'is-empty' : ''}`}
+      role={percent === null ? 'img' : 'progressbar'}
+      aria-label={`${insight?.title || 'Insight'}: ${chartLabel}`}
+      {...(percent === null ? {} : { 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': Math.round(percent) })}
+    >
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <circle className="teacher-reports-insight-ring__track" cx="50" cy="50" r={radius} />
+        {percent !== null && (
+          <circle
+            className="teacher-reports-insight-ring__value"
+            cx="50"
+            cy="50"
+            r={radius}
+            pathLength="100"
+            style={{ '--insight-progress': percent, strokeDasharray: 100, strokeDashoffset: 100 - percent }}
+          />
+        )}
+      </svg>
+      <div>
+        <strong>{insight?.value || '—'}</strong>
+        <span>{insight?.key === 'improved' ? 'change' : insight?.key === 'fastest' ? 'time' : 'score'}</span>
+      </div>
+    </div>
+  );
+};
+
+const InsightLeaderboardModal = ({ insight, onClose }) => {
+  if (!insight) return null;
+  const rankings = Array.isArray(insight.rankings) ? insight.rankings : [];
+  const qualifyingCount = rankings.filter((item) => item.qualified).length;
+  return (
+    <div className="teacher-insight-modal" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <section className="teacher-insight-dialog" role="dialog" aria-modal="true" aria-labelledby="teacher-insight-dialog-title">
+        <header>
+          <div>
+            <span>Complete class ranking</span>
+            <h2 id="teacher-insight-dialog-title">{insight.title}</h2>
+            <p>{insight.ai_explanation || insight.detail}</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close student ranking">×</button>
+        </header>
+        <div className="teacher-insight-dialog__summary">
+          <strong>{formatCount(rankings.length)} students</strong>
+          <span>{formatCount(qualifyingCount)} with enough evidence to rank</span>
+        </div>
+        <div className="teacher-insight-leaderboard" role="region" aria-label={`${insight.title} student ranking`} tabIndex={0}>
+          <table>
+            <thead>
+              <tr><th scope="col">Rank</th><th scope="col">Student</th><th scope="col">Result</th><th scope="col">Evidence</th></tr>
+            </thead>
+            <tbody>
+              {rankings.length === 0 ? (
+                <tr><td colSpan={4}>No students are available for this class filter.</td></tr>
+              ) : rankings.map((item) => (
+                <tr className={item.qualified ? '' : 'is-unranked'} key={item.student_id}>
+                  <td>{item.rank ? `#${item.rank}` : '—'}</td>
+                  <th scope="row">{item.student_name || 'Student'}</th>
+                  <td>{item.value}</td>
+                  <td>{item.qualified ? `${formatCount(item.evidence)} record${asNumber(item.evidence) === 1 ? '' : 's'}` : 'Awaiting evidence'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {Array.isArray(insight.evidenceItems) && insight.evidenceItems.length > 0 && (
+          <div className="teacher-insight-dialog__evidence">
+            <strong>Top learner evidence</strong>
+            {insight.evidenceItems.map((item) => (
+              <p key={`${item.label}-${item.activity}-${item.date}`}>
+                <b>{item.label}:</b> {item.activity} · {Number(item.stars).toFixed(1)}/5 stars · {item.source} · {formatDate(item.date)}
+              </p>
+            ))}
+            <p><b>Calculation:</b> {insight.calculation}</p>
+          </div>
+        )}
+        <footer><button type="button" onClick={onClose}>Done</button></footer>
+      </section>
+    </div>
+  );
+};
 
 const classLabel = (classInfo = {}) => {
   const name = String(classInfo.name || '').trim();
@@ -117,12 +219,15 @@ const Reports = () => {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [activeSection, setActiveSection] = useState('overview');
+  const [selectedInsight, setSelectedInsight] = useState(null);
 
   const loadReport = useCallback(async () => {
     const requestId = requestSequence.current + 1;
     requestSequence.current = requestId;
     setLoading(true);
     setError('');
+    setSelectedInsight(null);
 
     if (!teacherId) {
       setReport(null);
@@ -144,7 +249,11 @@ const Reports = () => {
       }
 
       const nextReport = normalizeReport(result.data);
-      setReport(nextReport);
+      const reportWithFallbacks = {
+        ...nextReport,
+        studentInsights: addFallbackInsightExplanations(nextReport.studentInsights),
+      };
+      setReport(reportWithFallbacks);
       setClassOptions((current) => {
         const optionsById = new Map();
         [...current, ...nextReport.classes].forEach((item) => {
@@ -154,6 +263,10 @@ const Reports = () => {
           classLabel(left).localeCompare(classLabel(right))
         ));
       });
+      const explainedInsights = await fetchStudentInsightExplanations(nextReport.studentInsights);
+      if (requestSequence.current === requestId) {
+        setReport((current) => current ? { ...current, studentInsights: explainedInsights } : current);
+      }
     } catch (loadError) {
       if (requestSequence.current !== requestId) return;
       setReport(null);
@@ -169,6 +282,20 @@ const Reports = () => {
       requestSequence.current += 1;
     };
   }, [loadReport]);
+
+  useEffect(() => {
+    if (!selectedInsight) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setSelectedInsight(null);
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [selectedInsight]);
 
   const summary = report?.summary || EMPTY_SUMMARY;
   const selectedClass = classOptions.find((item) => item.id === classId);
@@ -257,6 +384,12 @@ const Reports = () => {
         formatScore(student.average_score),
       ])),
       '',
+      serializeCsvRow(['Student insights']),
+      serializeCsvRow(['Category', 'Student', 'Result', 'Evidence count', 'Method']),
+      ...report.studentInsights.map((insight) => serializeCsvRow([
+        insight.title, insight.student_name || 'Not enough data', insight.value || '', insight.evidence || 0, insight.detail || '',
+      ])),
+      '',
       serializeCsvRow(['Submission trend']),
       serializeCsvRow(['Period', 'Submissions']),
       ...report.submissionTrend.map((item) => serializeCsvRow([item.label, item.count])),
@@ -325,6 +458,17 @@ const Reports = () => {
           </div>
         </section>
 
+        <nav className="teacher-reports-nav" aria-label="Report sections">
+          {[
+            ['overview', 'Overview'], ['insights', 'Student insights'],
+            ['activities', 'Activities'], ['support', 'Needs support'],
+          ].map(([key, label]) => (
+            <button key={key} type="button" className={activeSection === key ? 'is-active' : ''} onClick={() => setActiveSection(key)}>
+              {label}
+            </button>
+          ))}
+        </nav>
+
         {error && (
           <section className="teacher-reports-message teacher-reports-message--error" role="alert">
             <div>
@@ -347,7 +491,7 @@ const Reports = () => {
 
         {!loading && report && (
           <>
-            <section className="teacher-reports-kpis" aria-label="Report summary">
+            {activeSection === 'overview' && <><section className="teacher-reports-kpis" aria-label="Report summary">
               <article className="teacher-reports-kpi">
                 <span>Students</span>
                 <strong>{formatCount(summary.totalStudents)}</strong>
@@ -454,9 +598,49 @@ const Reports = () => {
                   </figure>
                 )}
               </article>
-            </section>
+            </section></>}
 
-            <section className="teacher-reports-section" aria-labelledby="teacher-reports-activity-title">
+            {activeSection === 'insights' && (
+              <section className="teacher-reports-section teacher-reports-insights" aria-labelledby="teacher-reports-insights-title">
+                <div className="teacher-reports-section-heading">
+                  <div>
+                    <h2 id="teacher-reports-insights-title">Student insights</h2>
+                    <p>Evidence-based highlights. AI can structure instructions, while rankings use saved AR events and teacher-confirmed results.</p>
+                  </div>
+                </div>
+                <div className="teacher-reports-insight-grid">
+                  {report.studentInsights.map((insight) => (
+                    <button
+                      type="button"
+                      className={`teacher-reports-insight-card teacher-reports-insight-card--${insight.key}`}
+                      key={insight.key}
+                      onClick={() => setSelectedInsight(insight)}
+                      aria-label={`View the complete ${insight.title} student ranking`}
+                    >
+                      <div className="teacher-reports-insight-card__visual">
+                        <InsightRing insight={insight} />
+                      </div>
+                      <div className="teacher-reports-insight-card__body">
+                        <span>{insight.title}</span>
+                        {insight.student_id ? <h3>{insight.student_name}</h3> : <h3>Not enough data yet</h3>}
+                        <em className={`teacher-reports-insight-source is-${insight.explanation_source || 'evidence'}`}>
+                          {insight.explanation_source === 'ai' ? 'Groq AI explanation' : 'Evidence explanation'}
+                        </em>
+                        <p>{insight.ai_explanation || insight.detail}</p>
+                        <small>{formatCount(insight.evidence)} qualifying {insight.key === 'improved' ? 'reviewed activities' : `record${asNumber(insight.evidence) === 1 ? '' : 's'}`}</small>
+                        <b className="teacher-reports-insight-card__action">View all students →</b>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                <aside className="teacher-reports-quality">
+                  <strong>Fair-use safeguard</strong>
+                  <p>Insights are category-specific, show their evidence count, and never replace the teacher’s final assessment.</p>
+                </aside>
+              </section>
+            )}
+
+            {activeSection === 'activities' && <section className="teacher-reports-section" aria-labelledby="teacher-reports-activity-title">
               <div className="teacher-reports-section-heading">
                 <div>
                   <h2 id="teacher-reports-activity-title">Activity performance</h2>
@@ -509,9 +693,9 @@ const Reports = () => {
                   </tbody>
                 </table>
               </div>
-            </section>
+            </section>}
 
-            <section className="teacher-reports-section" aria-labelledby="teacher-reports-attention-title">
+            {activeSection === 'support' && <section className="teacher-reports-section" aria-labelledby="teacher-reports-attention-title">
               <div className="teacher-reports-section-heading">
                 <div>
                   <h2 id="teacher-reports-attention-title">Learners needing attention</h2>
@@ -551,7 +735,7 @@ const Reports = () => {
                   </tbody>
                 </table>
               </div>
-            </section>
+            </section>}
 
             {qualityItems.length > 0 && (
               <aside className="teacher-reports-quality" aria-label="Report data notes">
@@ -564,6 +748,7 @@ const Reports = () => {
           </>
         )}
       </main>
+      <InsightLeaderboardModal insight={selectedInsight} onClose={() => setSelectedInsight(null)} />
     </div>
   );
 };

@@ -1,68 +1,58 @@
-/**
- * Colors available in the AR activity picker.
- *
- * This is the single source of truth for the web app. The Groq grading Edge
- * Function keeps its own copy at
- * `supabase/functions/grade-ar-submission/colorPalette.ts` because Deno cannot
- * import from `src/`; `arColorPalette.test.js` fails if the two ever drift.
- *
- * A learner can only paint with these colors, so any AI color suggestion that
- * falls outside the list is unusable advice and must never reach a child.
- */
-export const AR_COLOR_PALETTE = Object.freeze([
-  // Primary colors
-  { hex: '#FF0000', name: 'red' },
-  { hex: '#FFFF00', name: 'yellow' },
-  { hex: '#0000FF', name: 'blue' },
-  // Secondary colors
-  { hex: '#00A651', name: 'green' },
-  { hex: '#FF8C00', name: 'orange' },
-  { hex: '#7B2CFF', name: 'violet' },
-  // Tertiary colors
-  { hex: '#FF4500', name: 'red orange' },
-  { hex: '#FFC300', name: 'yellow orange' },
-  { hex: '#B6E600', name: 'yellow green' },
-  { hex: '#00B8A9', name: 'blue green' },
-  { hex: '#2563EB', name: 'blue violet' },
-  { hex: '#C026D3', name: 'red violet' },
-  // Helpful neutrals and art tones
-  { hex: '#8B5A2B', name: 'brown' },
-  { hex: '#F2C29B', name: 'skin tone' },
-  { hex: '#FFFFFF', name: 'white' },
-  { hex: '#000000', name: 'black' },
+export const MAX_ACTIVITY_COLORS = 10;
+
+export const DEFAULT_AR_COLOR_PALETTE = Object.freeze([
+  { hex: '#FF0000', name: 'red' }, { hex: '#FFFF00', name: 'yellow' },
+  { hex: '#0000FF', name: 'blue' }, { hex: '#00A651', name: 'green' },
+  { hex: '#FF8C00', name: 'orange' }, { hex: '#7B2CFF', name: 'violet' },
+  { hex: '#8B5A2B', name: 'brown' }, { hex: '#F2C29B', name: 'skin tone' },
+  { hex: '#FFFFFF', name: 'white' }, { hex: '#000000', name: 'black' },
 ]);
 
+export const AR_COLOR_PALETTE = DEFAULT_AR_COLOR_PALETTE;
+
 const normalizeName = (value) => String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+const toDisplayName = (value) => String(value || '').replace(/(^|\s)\S/g, (letter) => letter.toUpperCase());
 
-const toDisplayName = (value) => value.replace(/(^|\s)\S/g, (letter) => letter.toUpperCase());
-
-/**
- * Matches one suggested color against the AR palette by hex or by name.
- * Returns null when the color is not something the learner can actually use.
- */
-export const matchArPaletteColor = (color) => {
-  if (!color || typeof color !== 'object') return null;
-  const hex = String(color.hex ?? '').trim().toUpperCase();
-  const name = normalizeName(color.name);
-  const match = AR_COLOR_PALETTE.find(
-    (paletteColor) => (hex && paletteColor.hex === hex) || (name && paletteColor.name === name),
-  );
-  return match ? { name: toDisplayName(match.name), hex: match.hex } : null;
+export const normalizeHexColor = (value) => {
+  const raw = String(value ?? '').trim().replace(/^#/, '');
+  const expanded = /^[0-9a-f]{3}$/i.test(raw) ? raw.split('').map((character) => `${character}${character}`).join('') : raw;
+  return /^[0-9a-f]{6}$/i.test(expanded) ? `#${expanded.toUpperCase()}` : null;
 };
 
-/**
- * Keeps only palette colors, canonicalizes their labels, and drops duplicates.
- * Mirrors `normalizeArColorSuggestions` in the grading Edge Function so a
- * learner sees the same filtered list no matter which layer served it.
- */
-export const filterToArPalette = (colors, limit = 3) => {
+export const sanitizeActivityColorPalette = (colors, { fallback = false } = {}) => {
   const seen = new Set();
-  return (Array.isArray(colors) ? colors : [])
-    .map(matchArPaletteColor)
+  const sanitized = (Array.isArray(colors) ? colors : [])
+    .map((color) => {
+      if (typeof color === 'string') return { hex: normalizeHexColor(color) };
+      if (!color || typeof color !== 'object') return null;
+      return { hex: normalizeHexColor(color.hex), name: normalizeName(color.name).slice(0, 40) || undefined };
+    })
     .filter((color) => {
-      if (!color || seen.has(color.hex)) return false;
+      if (!color?.hex || seen.has(color.hex)) return false;
       seen.add(color.hex);
       return true;
     })
-    .slice(0, limit);
+    .slice(0, MAX_ACTIVITY_COLORS);
+  return sanitized.length || !fallback ? sanitized : DEFAULT_AR_COLOR_PALETTE.map((color) => ({ ...color }));
+};
+
+export const resolveActivityColorPalette = (colors) => sanitizeActivityColorPalette(colors, { fallback: true });
+
+export const matchArPaletteColor = (color, palette = DEFAULT_AR_COLOR_PALETTE) => {
+  if (!color || typeof color !== 'object') return null;
+  const available = resolveActivityColorPalette(palette);
+  const hex = normalizeHexColor(color.hex);
+  const name = normalizeName(color.name);
+  const match = available.find((paletteColor) => (hex && paletteColor.hex === hex)
+    || (name && normalizeName(paletteColor.name) === name));
+  return match ? { name: match.name ? toDisplayName(match.name) : match.hex, hex: match.hex } : null;
+};
+
+export const filterToArPalette = (colors, limit = 3, palette = DEFAULT_AR_COLOR_PALETTE) => {
+  const seen = new Set();
+  return (Array.isArray(colors) ? colors : []).map((color) => matchArPaletteColor(color, palette)).filter((color) => {
+    if (!color || seen.has(color.hex)) return false;
+    seen.add(color.hex);
+    return true;
+  }).slice(0, limit);
 };

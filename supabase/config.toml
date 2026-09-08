@@ -11,3 +11,9 @@ verify_jwt = true
 
 [functions.manage-platform-user]
 verify_jwt = true
+
+[functions.analyze-activity-instructions]
+verify_jwt = true
+
+[functions.explain-student-insights]
+verify_jwt = true

@@ -16,15 +16,11 @@ function Settings({ onNavigate, role, onLogout }) {
   const isSuperAdmin = role === "SuperAdmin";
   const homePageKey = isSuperAdmin ? "sa-dashboard" : "homepage";
   const [allowNotifications, setAllowNotifications] = React.useState(true);
-  const [currentPassword, setCurrentPassword] = React.useState("");
-  const [newPassword, setNewPassword] = React.useState("");
-  const [confirmPassword, setConfirmPassword] = React.useState("");
   const [toast, setToast] = React.useState(null);
   const [profileName, setProfileName] = React.useState("Admin");
   const [profileEmail, setProfileEmail] = React.useState("");
   const [profileUserId, setProfileUserId] = React.useState("");
   const [savingProfile, setSavingProfile] = React.useState(false);
-  const [savingPassword, setSavingPassword] = React.useState(false);
   const [savingSettings, setSavingSettings] = React.useState(false);
   const [avatarUrl, setAvatarUrl] = React.useState("");
   const [avatarStoredPath, setAvatarStoredPath] = React.useState("");
@@ -156,47 +152,6 @@ function Settings({ onNavigate, role, onLogout }) {
     showToast("success", "Profile updated.");
   };
 
-  const handleChangePassword = async () => {
-    if (!currentPassword) {
-      showToast("error", "Current password is required.");
-      return;
-    }
-    if (newPassword.length < 8) {
-      showToast("error", "New password must be at least 8 characters.");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      showToast("error", "Passwords do not match.");
-      return;
-    }
-
-    setSavingPassword(true);
-
-    const { error: verifyError } = await supabase.auth.signInWithPassword({
-      email: profileEmail,
-      password: currentPassword,
-    });
-
-    if (verifyError) {
-      setSavingPassword(false);
-      showToast("error", "Current password is incorrect.");
-      return;
-    }
-
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    setSavingPassword(false);
-
-    if (error) {
-      showToast("error", error.message || "Failed to update password.");
-      return;
-    }
-
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-    showToast("success", "Password updated.");
-  };
-
   const handleSaveAll = async () => {
     setSavingSettings(true);
     const result = await saveUserSettings(profileUserId, {
@@ -282,51 +237,6 @@ function Settings({ onNavigate, role, onLogout }) {
         <div className="set-actions">
           <button className="set-btn" type="button" onClick={handleSaveProfile} disabled={savingProfile}>
             {savingProfile ? "Saving..." : "Save Profile"}
-          </button>
-        </div>
-
-        <section className="set-block" aria-label="Change password - current">
-          <div className="set-field">
-            <div className="set-label">Current Password</div>
-            <input
-              className="set-input"
-              type="password"
-              placeholder="Enter current password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-            />
-          </div>
-        </section>
-
-        <section className="set-block" aria-label="Change password - new">
-          <div className="set-field">
-            <div className="set-label">New Password</div>
-            <input
-              className="set-input"
-              type="password"
-              placeholder="Enter new password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-            />
-          </div>
-        </section>
-
-        <section className="set-block" aria-label="Change password - confirm">
-          <div className="set-field">
-            <div className="set-label">Confirm New Password</div>
-            <input
-              className="set-input"
-              type="password"
-              placeholder="Confirm new password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-            />
-          </div>
-        </section>
-
-        <div className="set-actions">
-          <button className="set-btn" type="button" onClick={handleChangePassword} disabled={savingPassword}>
-            {savingPassword ? "Changing..." : "Change Password"}
           </button>
         </div>
 

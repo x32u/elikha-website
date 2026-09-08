@@ -18,6 +18,9 @@ import { uploadActivityThumbnail } from '../../services/activityThumbnailStorage
 import { formatClassLabel } from '../../utils/classLabels';
 import { getDueDateState } from '../../utils/dateDisplay';
 import { getActivityRubricOptions } from '../../services/rubricApi';
+import ActivityColorRequirements from '../../components/ActivityColorRequirements';
+import ActivityColorPalettePicker from '../../components/ActivityColorPalettePicker';
+import { sanitizeColorRequirements } from '../../utils/activityColorRequirements';
 
 const MAX_MODEL_QUANTITY = 12;
 const ASSIGNMENTS_PER_PAGE = 5;
@@ -69,6 +72,8 @@ const Activities = () => {
     thumbnailName: '',
     thumbnailError: '',
     rubricId: '',
+    allowedColors: [],
+    colorRequirements: [],
   });
 
   useEffect(() => {
@@ -172,6 +177,8 @@ const Activities = () => {
       thumbnailName: '',
       thumbnailError: '',
       rubricId: '',
+      allowedColors: [],
+      colorRequirements: [],
     });
   };
 
@@ -233,6 +240,8 @@ const Activities = () => {
         modelId: formData.modelIds?.[0] || formData.modelId,
         modelIds: formData.modelIds,
         puzzlePieces: formData.puzzlePieces,
+        allowedColors: formData.allowedColors,
+        colorRequirements: formData.colorRequirements,
       });
       const result = await createActivity({
         teacher_id: userInfo.id,
@@ -665,6 +674,23 @@ const Activities = () => {
                     value={formData.instructions}
                     onChange={(e) => setFormData({ ...formData, instructions: e.target.value })}
                     rows="4"
+                  />
+                  <ActivityColorPalettePicker
+                    value={formData.allowedColors}
+                    onChange={(allowedColors) => setFormData((current) => ({
+                      ...current,
+                      allowedColors,
+                      colorRequirements: sanitizeColorRequirements(current.colorRequirements, allowedColors),
+                    }))}
+                  />
+                  <ActivityColorRequirements
+                    instructions={formData.instructions}
+                    allowedObjectIds={formData.allowedObjects}
+                    modelIds={formData.modelIds}
+                    modelOptions={modelOptions}
+                    allowedColors={formData.allowedColors}
+                    value={formData.colorRequirements}
+                    onChange={(colorRequirements) => setFormData((current) => ({ ...current, colorRequirements }))}
                   />
                 </div>
               </div>

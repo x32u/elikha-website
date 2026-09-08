@@ -77,6 +77,8 @@ const Homepage = () => {
           modelFileType: a.model_file_type || undefined,
           modelConfigs: a.model_configs || [],
           puzzlePieces: a.puzzle_pieces || 0,
+          colorRequirements: a.color_requirements || [],
+          allowedColors: a.allowed_colors || [],
         }));
         setActivities(formattedActivities);
       }
@@ -100,6 +102,8 @@ const Homepage = () => {
             modelFileType: a.model_file_type || undefined,
             modelConfigs: a.model_configs || [],
             puzzlePieces: a.puzzle_pieces || 0,
+            colorRequirements: a.color_requirements || [],
+            allowedColors: a.allowed_colors || [],
           }))
         : [];
 
@@ -120,6 +124,8 @@ const Homepage = () => {
           modelFileType: a.model_file_type || undefined,
           modelConfigs: a.model_configs || [],
           puzzlePieces: a.puzzle_pieces || 0,
+          colorRequirements: a.color_requirements || [],
+          allowedColors: a.allowed_colors || [],
         }));
         if (formattedArtworks.length > 0) {
           setArtworks(formattedArtworks);
@@ -151,6 +157,8 @@ const Homepage = () => {
         modelConfigs: activity.modelConfigs || [],
         arInstructions: activity.arInstructions || '',
         puzzlePieces: activity.puzzlePieces || 0,
+        colorRequirements: activity.colorRequirements || [],
+        allowedColors: activity.allowedColors || [],
       },
     });
   };
@@ -176,6 +184,8 @@ const Homepage = () => {
         modelConfigs: artwork.modelConfigs || [],
         arInstructions: artwork.arInstructions || '',
         puzzlePieces: artwork.puzzlePieces || 0,
+        colorRequirements: artwork.colorRequirements || [],
+        allowedColors: artwork.allowedColors || [],
       },
     });
   };

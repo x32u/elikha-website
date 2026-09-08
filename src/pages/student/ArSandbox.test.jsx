@@ -6,7 +6,17 @@ const mockSaveUserSettings = jest.fn();
 const mockUseUserSettings = jest.fn();
 
 jest.mock('../../components/Navbar', () => () => <nav>Navigation</nav>);
-jest.mock('../ar/ARApp', () => () => <div>AR session</div>);
+jest.mock('../ar/ARApp', () => ({ mobileMode, sandboxDifficulty, onExit }) => (
+  <div
+    data-mobile-mode={String(mobileMode)}
+    data-sandbox-difficulty={sandboxDifficulty}
+  >
+    AR session
+    <button type="button" data-testid="exit-ar" onClick={() => onExit?.('exit')}>
+      Exit AR
+    </button>
+  </div>
+));
 jest.mock('../../hooks/useUserSettings', () => ({
   useUserSettings: () => mockUseUserSettings(),
 }));
@@ -41,6 +51,8 @@ describe('AR Sandbox voice guide preference', () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    window.history.replaceState({}, '', '/');
+    delete window.ElikhaMobile;
     delete global.IS_REACT_ACT_ENVIRONMENT;
   });
 
@@ -93,5 +105,61 @@ describe('AR Sandbox voice guide preference', () => {
       'student-7',
       expect.objectContaining({ voiceInstructions: true })
     );
+  });
+
+  it('keeps the compact mobile AR layout on a wide landscape phone', async () => {
+    window.matchMedia = jest.fn((query) => ({
+      matches: query === '(pointer: coarse)',
+    }));
+
+    await act(async () => {
+      root.render(<ArSandbox />);
+    });
+
+    const start = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent.includes('Start Easy Practice')
+    );
+
+    await act(async () => {
+      start.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(container.querySelector('[data-mobile-mode="true"]')).not.toBeNull();
+  });
+
+  it('enters the immersive sandbox directly from the native mobile launch', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/sandbox?mobile=1&autostart=1&difficulty=advanced'
+    );
+
+    await act(async () => {
+      root.render(<ArSandbox />);
+    });
+
+    const session = container.querySelector('[data-mobile-mode="true"]');
+    expect(session).not.toBeNull();
+    expect(session.getAttribute('data-sandbox-difficulty')).toBe('advanced');
+    expect(container.querySelector('.sandbox-setup')).toBeNull();
+  });
+
+  it('returns an immersive mobile sandbox to the native app on exit', async () => {
+    window.history.replaceState({}, '', '/sandbox?mobile=1&autostart=1&difficulty=easy');
+    window.ElikhaMobile = { postMessage: jest.fn() };
+
+    await act(async () => {
+      root.render(<ArSandbox />);
+    });
+    await act(async () => {
+      container.querySelector('[data-testid="exit-ar"]').dispatchEvent(
+        new MouseEvent('click', { bubbles: true })
+      );
+    });
+
+    expect(window.ElikhaMobile.postMessage).toHaveBeenCalledWith(
+      JSON.stringify({ type: 'exit', source: 'sandbox' })
+    );
+    expect(container.querySelector('.sandbox-setup')).toBeNull();
   });
 });

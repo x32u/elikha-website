@@ -957,7 +957,14 @@ export const getSubmissionById = async (submissionId) => {
       .select(`
         *,
         student:users!submissions_student_id_fkey(id, name, email),
-        activity:activities!submissions_activity_id_fkey(id, title, due_date)
+        activity:activities!submissions_activity_id_fkey(
+          id,
+          title,
+          description,
+          due_date,
+          teacher_id,
+          class_id
+        )
       `)
       .eq('id', submissionId)
       .single();

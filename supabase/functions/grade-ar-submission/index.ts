@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { callGroqEvaluation } from "./groq.ts";
-import { AR_COLOR_PALETTE, normalizeArColorSuggestions } from "./colorPalette.ts";
+import { normalizeArColorSuggestions, resolveActivityColorPalette } from "./colorPalette.ts";
 import {
   isSf9Rubric,
   SF9_AI_RATING_CODES,
@@ -216,6 +216,8 @@ const parseActivityDetails = (description: unknown) => {
   const fallback = {
     summary: cleanText(description, 1500),
     instructions: "",
+    colorRequirements: [],
+    allowedColors: resolveActivityColorPalette([]),
   };
 
   if (typeof description !== "string" || !description.trim().startsWith("{")) {
@@ -227,6 +229,14 @@ const parseActivityDetails = (description: unknown) => {
     return {
       summary: cleanText(parsed?.summary, 1500),
       instructions: cleanText(parsed?.instructions, 2000),
+      allowedColors: resolveActivityColorPalette(parsed?.allowedColors),
+      colorRequirements: (Array.isArray(parsed?.colorRequirements) ? parsed.colorRequirements : []).slice(0, 24).map((item: unknown) => {
+        const requirement = asObject(item);
+        return {
+          target: cleanText(requirement.targetLabel ?? requirement.targetId, 120),
+          color: cleanText(requirement.colorName ?? requirement.colorHex, 40),
+        };
+      }),
     };
   } catch {
     return fallback;
@@ -279,6 +289,9 @@ const summarizeSubmissionState = (description: unknown) => {
       };
     });
     const group = asObject(parsed?.groupState);
+    const analytics = asObject(parsed?.analytics);
+    const coloring = asObject(analytics.coloring);
+    const puzzleAnalytics = asObject(analytics.puzzle);
 
     return {
       summary: cleanText(parsed?.summary, 500),
@@ -299,6 +312,20 @@ const summarizeSubmissionState = (description: unknown) => {
         rotation: summarizeVector(group.rotation),
         scale: summarizeVector(group.scale),
       } : null,
+      objectiveAnalytics: {
+        activeDurationSeconds: Number.isFinite(Number(analytics.activeDurationSeconds)) ? Number(analytics.activeDurationSeconds) : null,
+        coloring: {
+          matched: Number.isFinite(Number(coloring.matched)) ? Number(coloring.matched) : null,
+          total: Number.isFinite(Number(coloring.total)) ? Number(coloring.total) : null,
+          accuracyPercent: Number.isFinite(Number(coloring.accuracyPercent)) ? Number(coloring.accuracyPercent) : null,
+        },
+        puzzle: {
+          connectedPieces: Number.isFinite(Number(puzzleAnalytics.connectedPieces)) ? Number(puzzleAnalytics.connectedPieces) : null,
+          totalPieces: Number.isFinite(Number(puzzleAnalytics.totalPieces)) ? Number(puzzleAnalytics.totalPieces) : null,
+          completionSeconds: Number.isFinite(Number(puzzleAnalytics.completionSeconds)) ? Number(puzzleAnalytics.completionSeconds) : null,
+          completed: puzzleAnalytics.completed === true,
+        },
+      },
     };
   } catch {
     return { summary: cleanText(description, 500) };
@@ -396,7 +423,7 @@ const buildPrompt = ({
     "Use the saved AR state for objective counts, colors, placement, and puzzle completion. If it conflicts with the image, lower confidence and state the conflict.",
     "Give one short, child-friendly color suggestion after the activity. Base it on the teacher instructions and rubric when they specify target colors.",
     "When no color is objectively correct, present the suggestion as an optional harmonious or contrasting idea and explicitly respect the child's creative choice.",
-    `Return one to three suggested colors, using only this exact AR palette: ${JSON.stringify(AR_COLOR_PALETTE)}. Do not invent, rename, or substitute any color outside this list. A color the learner cannot pick in AR is useless advice.`,
+    `Return one to three suggested colors, using only this exact activity palette: ${JSON.stringify(activityDetails.allowedColors)}. Do not invent, rename, or substitute any color outside this list. A color the learner cannot pick in AR is useless advice.`,
     "Rate every criterion with exactly one DepEd SF9 code: CO (Consistent), DV (Developing), BG (Beginning), or NO.",
     `SF9 rating meanings: ${JSON.stringify(SF9_RATING_LABELS)}.`,
     "Use NO when the submitted image and AR state do not show enough evidence to judge that criterion, or when the criterion does not apply to this activity. Never guess BG just because evidence is missing: BG means the child rarely demonstrates the competency, which is a claim about the child, not about the photo.",
@@ -439,6 +466,7 @@ const extractGeminiText = (payload: JsonRecord) => {
 const validateEvaluation = (
   raw: JsonRecord,
   criteria: RubricCriterion[],
+  allowedColors: unknown,
 ) => {
   const rawScores = Array.isArray(raw.criterionScores)
     ? raw.criterionScores
@@ -546,7 +574,7 @@ const validateEvaluation = (
     .filter(Boolean)
     .slice(0, 6);
   const rawColorSuggestion = asObject(raw.colorSuggestion);
-  const normalizedColors = normalizeArColorSuggestions(rawColorSuggestion.colors);
+  const normalizedColors = normalizeArColorSuggestions(rawColorSuggestion.colors, allowedColors);
   const colorNames = normalizedColors.map((color) => color.name).join(', ');
   const colorSuggestion: ColorSuggestion = {
     // Rebuild the child-facing copy from canonical palette entries too. This
@@ -651,12 +679,14 @@ const callGroq = async ({
   prompt,
   image,
   criteria,
+  allowedColors,
 }: {
   apiKey: string;
   model: string;
   prompt: string;
   image: { mimeType: string; base64: string };
   criteria: RubricCriterion[];
+  allowedColors: unknown;
 }) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 52_000);
@@ -668,7 +698,7 @@ const callGroq = async ({
       prompt,
       image,
       signal: controller.signal,
-      validate: (raw) => validateEvaluation(raw, criteria),
+      validate: (raw) => validateEvaluation(raw, criteria, allowedColors),
     });
   } finally {
     clearTimeout(timeout);
@@ -871,6 +901,7 @@ Deno.serve(async (request) => {
   try {
     const image = await loadImage(submission.artwork_url, supabaseUrl);
     const submissionState = summarizeSubmissionState(submission.description);
+    const activityDetails = parseActivityDetails(activity.description);
     const prompt = buildPrompt({
       activity: asObject(activity),
       rubric,
@@ -878,10 +909,11 @@ Deno.serve(async (request) => {
       submissionState: asObject(submissionState),
     });
     const validated = provider === "groq"
-      ? await callGroq({ apiKey: groqApiKey, model, prompt, image, criteria })
+      ? await callGroq({ apiKey: groqApiKey, model, prompt, image, criteria, allowedColors: activityDetails.allowedColors })
       : validateEvaluation(
         await callGemini({ apiKey: geminiApiKey, model, prompt, image }),
         criteria,
+        activityDetails.allowedColors,
       );
     const evaluatedAt = new Date().toISOString();
 

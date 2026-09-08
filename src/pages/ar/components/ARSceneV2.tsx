@@ -42,6 +42,7 @@ export interface SerializedPaintDecal {
   timestamp: number;
   layer?: number;
   mode?: 'decal' | 'fill';
+  targetId?: string;
 }
 
 export interface SerializedSceneObjectPaintDecal {
@@ -161,6 +162,7 @@ interface ARSceneV2Props {
   onGroupStateChange?: (groupState: SerializedArGroupTransform) => void;
   initialPuzzleState?: SerializedPuzzlePiece[];
   onPuzzleStateChange?: (puzzleState: SerializedPuzzlePiece[]) => void;
+  onPuzzleAttempt?: (result: 'connected' | 'missed') => void;
   renderQuality?: 'auto' | 'high' | 'medium' | 'low';
   dataSaver?: boolean;
   onModelLoadError?: (message: string) => void;
@@ -2799,6 +2801,7 @@ function PuzzlePieceSystem({
   pieceIdPrefix = '',
   initialPuzzleState,
   onPuzzleStateChange,
+  onPuzzleAttempt,
   puzzlePieceSpawnRequest,
   handLandmarks,
   isPinching,
@@ -2822,6 +2825,7 @@ function PuzzlePieceSystem({
   pieceIdPrefix?: string;
   initialPuzzleState?: SerializedPuzzlePiece[];
   onPuzzleStateChange?: (puzzleState: SerializedPuzzlePiece[]) => void;
+  onPuzzleAttempt?: (result: 'connected' | 'missed') => void;
   puzzlePieceSpawnRequest?: PuzzlePieceSpawnRequest | null;
   handLandmarks: HandLandmarks | null;
   isPinching: boolean;
@@ -3049,6 +3053,10 @@ function PuzzlePieceSystem({
   useFrame(() => {
     syncPuzzleTraceVisibility();
 
+    if (!isPinching && pinchMoveActiveRef.current && activePieceIdRef.current) {
+      onPuzzleAttempt?.('missed');
+    }
+
     if (!isPinching && pinchInteractionOwnerRef?.current === puzzleInteractionOwner) {
       pinchInteractionOwnerRef.current = null;
     }
@@ -3263,6 +3271,7 @@ function PuzzlePieceSystem({
           ? 'Puzzle complete. Great job!'
           : 'Puzzle part snapped into place.'
       );
+      onPuzzleAttempt?.('connected');
     }
 
     emitPuzzleState();
@@ -3330,6 +3339,14 @@ function PaintSystem({
   const PAINT_STATE_EMIT_INTERVAL = 140;
   const POSITION_SMOOTHING = 0.72;
   const NORMAL_SMOOTHING = 0.5;
+  const getPaintTargetId = (object: THREE.Object3D | null) => {
+    let current = object;
+    while (current) {
+      if (typeof current.userData?.activityModelId === 'string') return current.userData.activityModelId;
+      current = current.parent;
+    }
+    return undefined;
+  };
 
   const disposeStamp = useCallback((stamp: PaintStamp) => {
     stamp.mesh.parent?.remove(stamp.mesh);
@@ -3672,6 +3689,7 @@ function PaintSystem({
           timestamp,
           layer: (serializedPaintRef.current[serializedPaintRef.current.length - 1]?.layer || 0) + 1,
           mode: 'fill',
+          targetId: getPaintTargetId(targetMesh),
         };
 
         serializedPaintRef.current = puzzlePieceRoot
@@ -3805,6 +3823,7 @@ function PaintSystem({
         timestamp,
         layer: nextLayer,
         mode: 'decal',
+        targetId: getPaintTargetId(targetMesh),
       });
     };
 
@@ -3884,6 +3903,7 @@ function SceneContent({
   onGroupStateChange,
   initialPuzzleState,
   onPuzzleStateChange,
+  onPuzzleAttempt,
   onModelLoadError,
 }: ARSceneV2Props) {
   const anchorRef = useRef<THREE.Group | null>(null);
@@ -3964,6 +3984,7 @@ function SceneContent({
     handleModelError(baseModel?.instanceId || baseModel?.id || 'model-0', baseModel?.label || '3D model', '');
     modelRef.current = model;
     const instanceId = baseModel?.instanceId || baseModel?.id || 'model-0';
+    model.userData.activityModelId = baseModel?.id || instanceId;
     const refObject = getModelRefObject(instanceId);
     refObject.current = model;
     if (!defaultModelStateByIdRef.current.has(instanceId)) {
@@ -3982,6 +4003,7 @@ function SceneContent({
     const baseModel = baseModels.find((candidate) => (
       (candidate.instanceId || candidate.id) === instanceId
     ));
+    model.userData.activityModelId = baseModel?.id || instanceId;
     handleModelError(instanceId, baseModel?.label || '3D model', '');
     const refObject = getModelRefObject(instanceId);
     refObject.current = model;
@@ -4233,6 +4255,7 @@ function SceneContent({
             onPuzzleMoveActiveChange={setIsMovingPuzzlePiece}
             onPuzzleReady={() => setPuzzleReadyTick((prev) => prev + 1)}
             onPuzzleFeedback={onSceneObjectFeedback}
+            onPuzzleAttempt={onPuzzleAttempt}
             mirrorX={mirrorX}
             pinchInteractionOwnerRef={pinchInteractionOwnerRef}
             showTraceWhileDisabled={groupBaseModels}
@@ -4258,6 +4281,7 @@ function SceneContent({
           onPuzzleMoveActiveChange={setIsMovingPuzzlePiece}
           onPuzzleReady={() => setPuzzleReadyTick((prev) => prev + 1)}
           onPuzzleFeedback={onSceneObjectFeedback}
+          onPuzzleAttempt={onPuzzleAttempt}
           mirrorX={mirrorX}
           pinchInteractionOwnerRef={pinchInteractionOwnerRef}
           showTraceWhileDisabled={groupBaseModels}

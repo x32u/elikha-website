@@ -40,7 +40,7 @@ const METADATA_PREFIX = "metadata/";
 const MODEL_PREFIX = "models/";
 const SUPPORTED_EXTENSIONS = new Set(["obj", "3ds", "glb", "blend"]);
 const MUTATION_ROLES = new Set(["teacher", "admin", "superadmin"]);
-const DEFAULT_CAPACITY_BYTES = 1024 * 1024 * 1024;
+const DEFAULT_CAPACITY_BYTES = 10_000_000_000;
 const DEFAULT_MAX_FILE_BYTES = 50 * 1024 * 1024;
 const MAX_METADATA_BYTES = 16 * 1024;
 
@@ -285,7 +285,7 @@ const ensureCapacity = async (env: Env, incomingBytes: number, replacingBytes = 
     throw new ApiError(
       507,
       "STORAGE_CAPACITY_REACHED",
-      "The 1 GB 3D-model storage is full. Delete an unused model before uploading another.",
+      "The 10 GB 3D-model storage is full. Delete an unused model before uploading another.",
     );
   }
 };
@@ -297,7 +297,7 @@ const ensureCurrentUsageWithinCapacity = async (env: Env, replacingBytes = 0): P
     throw new ApiError(
       507,
       "STORAGE_CAPACITY_REACHED",
-      "The 1 GB 3D-model storage is full. Delete an unused model before uploading another.",
+      "The 10 GB 3D-model storage is full. Delete an unused model before uploading another.",
     );
   }
 };

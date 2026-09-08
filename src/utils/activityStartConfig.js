@@ -1,4 +1,6 @@
-import { DEFAULT_ALLOWED_OBJECT_IDS } from './activityArConfig';
+import { DEFAULT_ALLOWED_OBJECT_IDS, parseActivityDescription } from './activityArConfig';
+import { resolveActivityColorPalette } from './arColorPalette';
+import { parseArSubmissionDescription } from './arSubmission';
 
 const SUBMITTED_STATUSES = new Set([
   'submitted',
@@ -59,6 +61,37 @@ export const resolveActivitySubmissionState = (activity) => {
   return { submitted, reviewed };
 };
 
+export const buildTeacherSubmissionViewerActivity = (submission) => {
+  if (!submission || typeof submission !== 'object') return null;
+
+  const parsedSubmission = parseArSubmissionDescription(submission.description);
+  const parsedActivity = parseActivityDescription(submission.activity?.description);
+
+  return {
+    ...(submission.activity || {}),
+    submission,
+    is_submitted: true,
+    is_reviewed: Boolean(
+      submission.reviewed_at ||
+      REVIEWED_STATUSES.has(normalizeStatus(submission.status))
+    ),
+    artwork_url: submission.artwork_url || '',
+    ar_instructions: parsedActivity.instructions || '',
+    color_requirements: parsedActivity.colorRequirements || [],
+    allowed_colors: parsedActivity.allowedColors || [],
+    allowed_object_ids: parsedActivity.allowedObjectIds || [],
+    model_url: parsedActivity.modelUrl || undefined,
+    model_file_type: parsedActivity.modelFileType || undefined,
+    model_configs: parsedActivity.models || [],
+    puzzle_pieces: parsedActivity.puzzlePieces || 0,
+    paint_state: parsedSubmission?.paintState || [],
+    scene_state: parsedSubmission?.sceneState || [],
+    puzzle_state: parsedSubmission?.puzzleState || [],
+    model_state: parsedSubmission?.modelState || [],
+    group_state: parsedSubmission?.groupState || null,
+  };
+};
+
 export const buildActivityStartConfig = ({ activity = null, routeState = null } = {}) => {
   const route = routeState && typeof routeState === 'object' ? routeState : {};
   const serverActivity = activity && typeof activity === 'object' ? activity : null;
@@ -100,6 +133,14 @@ export const buildActivityStartConfig = ({ activity = null, routeState = null } 
     arInstructions: String(
       serverActivity ? serverActivity.ar_instructions || '' : route.arInstructions || ''
     ),
+    colorRequirements: Array.isArray(
+      serverActivity ? serverActivity.color_requirements : route.colorRequirements
+    )
+      ? [...(serverActivity ? serverActivity.color_requirements : route.colorRequirements)]
+      : [],
+    allowedColors: resolveActivityColorPalette(
+      serverActivity ? serverActivity.allowed_colors : route.allowedColors
+    ),
     initialPaintState: Array.isArray(
       serverActivity ? serverActivity.paint_state : route.paintState
     )
@@ -140,4 +181,3 @@ export const buildActivityStartConfig = ({ activity = null, routeState = null } 
     puzzlePieces,
   };
 };
-

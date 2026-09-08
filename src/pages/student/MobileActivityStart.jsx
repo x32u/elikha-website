@@ -228,6 +228,8 @@ const MobileActivityStart = () => {
       vrMode={vrMode}
       artworkUrl={arConfig?.artworkUrl || ''}
       arInstructions={arConfig?.arInstructions || ''}
+      colorRequirements={arConfig?.colorRequirements || []}
+      allowedColors={arConfig?.allowedColors || []}
       initialPaintState={arConfig?.initialPaintState || []}
       initialSceneState={arConfig?.initialSceneState || []}
       initialPuzzleState={arConfig?.initialPuzzleState || []}

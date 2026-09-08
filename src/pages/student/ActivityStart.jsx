@@ -5,7 +5,11 @@ import ActivityLock from '../../components/ActivityLock';
 import ArPreparationGuide from '../../components/ArPreparationGuide';
 import { supabase } from '../../lib/supabase';
 import { getActivityDetails } from '../../services/studentApi';
-import { buildActivityStartConfig } from '../../utils/activityStartConfig';
+import { getSubmissionById } from '../../services/teacherApi';
+import {
+  buildActivityStartConfig,
+  buildTeacherSubmissionViewerActivity,
+} from '../../utils/activityStartConfig';
 import './ActivityStartWarning.css';
 
 // ActivityStart launches the full AR experience.
@@ -25,6 +29,11 @@ const ActivityStart = () => {
       return {};
     }
   }, []);
+
+  const teacherSubmissionId = useMemo(() => {
+    const querySubmissionId = new URLSearchParams(location.search).get('submission');
+    return String(querySubmissionId || location.state?.submissionId || '').trim();
+  }, [location.search, location.state]);
 
   useEffect(() => {
     let alive = true;
@@ -49,6 +58,28 @@ const ActivityStart = () => {
           state: 'error',
           message: 'Your secure sign-in session could not be verified. Please sign in again.',
         });
+        return;
+      }
+
+      if (sessionRole === 'teacher' && teacherSubmissionId) {
+        const result = await getSubmissionById(teacherSubmissionId);
+        if (!alive) return;
+
+        const submission = result.data;
+        const ownsActivity = String(submission?.activity?.teacher_id || '') === String(authenticatedUser.id);
+        const matchesActivity = String(submission?.activity?.id || submission?.activity_id || '') === String(id);
+
+        if (!result.success || !submission || !ownsActivity || !matchesActivity) {
+          setStatus({
+            state: 'error',
+            message: result.error || 'This submission is unavailable or does not belong to your activity.',
+          });
+          return;
+        }
+
+        setStudentId(String(submission.student_id || ''));
+        setActivity(buildTeacherSubmissionViewerActivity(submission));
+        setStatus({ state: 'ready', message: '' });
         return;
       }
 
@@ -99,7 +130,7 @@ const ActivityStart = () => {
     return () => {
       alive = false;
     };
-  }, [id, userInfo.id, userInfo.role]);
+  }, [id, teacherSubmissionId, userInfo.id, userInfo.role]);
 
   const arConfig = useMemo(
     () => buildActivityStartConfig({ activity, routeState: location.state }),
@@ -111,8 +142,8 @@ const ActivityStart = () => {
       navigate(-1);
       return;
     }
-    navigate(`/activity/${id}`, { replace: true });
-  }, [id, navigate]);
+    navigate(teacherSubmissionId ? '/reviews' : `/activity/${id}`, { replace: true });
+  }, [id, navigate, teacherSubmissionId]);
 
   if (status.state === 'loading') {
     return (
@@ -138,9 +169,9 @@ const ActivityStart = () => {
             <button
               type="button"
               className="ar-safety-button ar-safety-button--primary"
-              onClick={() => navigate('/activities', { replace: true })}
+              onClick={() => navigate(teacherSubmissionId ? '/reviews' : '/activities', { replace: true })}
             >
-              Return to Activities
+              {teacherSubmissionId ? 'Return to Reviews' : 'Return to Activities'}
             </button>
           </div>
         </section>
@@ -211,6 +242,8 @@ const ActivityStart = () => {
       viewMode={arConfig.viewMode ? 'view' : 'edit'}
       artworkUrl={arConfig.artworkUrl}
       arInstructions={arConfig.arInstructions}
+      colorRequirements={arConfig.colorRequirements}
+      allowedColors={arConfig.allowedColors}
       initialPaintState={arConfig.initialPaintState}
       initialSceneState={arConfig.initialSceneState}
       initialPuzzleState={arConfig.initialPuzzleState}

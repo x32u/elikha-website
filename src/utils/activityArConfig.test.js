@@ -1,8 +1,10 @@
 import {
   AR_OBJECT_LIBRARY,
+  encodeActivityDescription,
   getArModelLibrary,
   getArRenderableModelLibrary,
   replaceR2ArModelLibrary,
+  parseActivityDescription,
 } from './activityArConfig';
 
 describe('AR model format handling', () => {
@@ -60,5 +62,27 @@ describe('AR model format handling', () => {
       sensitivity: 'base',
     })));
     expect(labels.indexOf('Apple')).toBeLessThan(labels.indexOf('Zebra'));
+  });
+
+  test('keeps teacher-confirmed expected colors in the activity payload', () => {
+    const parsed = parseActivityDescription(encodeActivityDescription('Color practice', {
+      colorRequirements: [{ targetType: 'object', targetId: 'cube', targetLabel: 'Cube', colorHex: '#FF0000' }],
+    }));
+    expect(parsed.colorRequirements).toEqual([
+      expect.objectContaining({ targetId: 'cube', colorHex: '#FF0000', colorName: 'red' }),
+    ]);
+  });
+
+  test('round-trips a custom ordered activity palette and rejects off-palette targets', () => {
+    const parsed = parseActivityDescription(encodeActivityDescription('Custom colors', {
+      allowedColors: [{ hex: '#12ab34', name: 'Leaf' }, { hex: '#445566' }],
+      colorRequirements: [
+        { targetType: 'object', targetId: 'cube', colorHex: '#12AB34' },
+        { targetType: 'object', targetId: 'sphere', colorHex: '#FF0000' },
+      ],
+    }));
+    expect(parsed.allowedColors).toEqual([{ hex: '#12AB34', name: 'leaf' }, { hex: '#445566', name: undefined }]);
+    expect(parsed.colorRequirements).toHaveLength(1);
+    expect(parsed.colorRequirements[0].colorHex).toBe('#12AB34');
   });
 });

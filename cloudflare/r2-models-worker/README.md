@@ -37,8 +37,8 @@ role.
 - `.blend` is accepted as a source/archive file, but browsers cannot render it
   directly. Convert it to `.glb` before selecting it for an AR activity.
 - Maximum file size defaults to 50 MiB (`MAX_MODEL_FILE_BYTES=52428800`).
-- Application capacity defaults to 1 GiB
-  (`MODEL_STORAGE_CAPACITY_BYTES=1073741824`). This is an E-Likha limit, not the
+- Application capacity defaults to 10 GB
+  (`MODEL_STORAGE_CAPACITY_BYTES=10000000000`). This is an E-Likha limit, not the
   Cloudflare account's total R2 quota.
 - Capacity counts model objects under `models/`; small records under `metadata/`
   are excluded. When the limit would be exceeded, the Worker returns HTTP `507`
@@ -81,7 +81,7 @@ run deliberately when reseeding that bucket.
 1. Add every exact deployed web origin to `ALLOWED_ORIGINS` in `wrangler.jsonc`.
    Do not use a wildcard because mutation routes accept bearer credentials.
 2. Confirm `SUPABASE_URL`, the R2 bucket name, the 50 MiB file limit, and the
-   1 GiB application capacity.
+   10 GB application capacity.
 3. Store the public Supabase client key as a Worker secret without placing its
    value on the command line:
 

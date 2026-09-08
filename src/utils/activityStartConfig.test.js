@@ -1,7 +1,10 @@
 import {
   buildActivityStartConfig,
+  buildTeacherSubmissionViewerActivity,
   resolveActivitySubmissionState,
 } from './activityStartConfig';
+import { encodeActivityDescription } from './activityArConfig';
+import { encodeArSubmissionDescription } from './arSubmission';
 
 describe('activity start configuration', () => {
   test('hydrates a direct activity route from authoritative server data', () => {
@@ -114,5 +117,44 @@ describe('activity start configuration', () => {
     expect(config.initialPaintState).toEqual([{ color: '#000000' }]);
     expect(config.allowedObjectIds).toEqual(['sphere']);
   });
-});
 
+  test('hydrates a teacher review viewer from the saved activity and submission payloads', () => {
+    const activity = {
+      id: 'activity-1',
+      teacher_id: 'teacher-1',
+      description: encodeActivityDescription('Build a model', {
+        instructions: 'Color the cube red.',
+        allowedObjectIds: ['cube'],
+        puzzlePieces: 3,
+      }),
+    };
+    const submission = {
+      id: 'submission-1',
+      activity_id: 'activity-1',
+      student_id: 'student-1',
+      status: 'reviewed',
+      reviewed_at: '2026-09-08T01:00:00Z',
+      artwork_url: 'data:image/webp;base64,teacher-view',
+      description: encodeArSubmissionDescription(
+        [{ color: '#ff0000' }],
+        'Submitted from AR',
+        [{ id: 'cube-1' }],
+        [{ id: 'piece-1', snapped: true }]
+      ),
+      activity,
+    };
+
+    const viewerActivity = buildTeacherSubmissionViewerActivity(submission);
+    const config = buildActivityStartConfig({ activity: viewerActivity });
+
+    expect(config.viewMode).toBe(true);
+    expect(config.readOnlyReason).toBe('reviewed');
+    expect(config.artworkUrl).toBe('data:image/webp;base64,teacher-view');
+    expect(config.arInstructions).toBe('Color the cube red.');
+    expect(config.allowedObjectIds).toEqual(['cube']);
+    expect(config.puzzlePieces).toBe(3);
+    expect(config.initialPaintState).toEqual([{ color: '#ff0000' }]);
+    expect(config.initialSceneState).toEqual([{ id: 'cube-1' }]);
+    expect(config.initialPuzzleState).toEqual([{ id: 'piece-1', snapped: true }]);
+  });
+});

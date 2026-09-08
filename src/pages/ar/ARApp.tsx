@@ -25,6 +25,8 @@ import { requestStudentColorSuggestion } from '../../services/aiGradingApi';
 import { saveUserSettings } from '../../services/userSettingsApi';
 import { encodeArSubmissionDescription } from '../../utils/arSubmission';
 import { resolveArObjectDefinitions } from '../../utils/activityArConfig';
+import { evaluateColorRequirements } from '../../utils/activityColorRequirements';
+import { resolveActivityColorPalette } from '../../utils/arColorPalette';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { buildColorSelectionAnnouncement } from './utils/voiceGuidance';
 import { canUseArInteractions } from './utils/runtimeReadiness';
@@ -42,6 +44,11 @@ type ARAppProps = {
   viewMode?: 'edit' | 'view';
   artworkUrl?: string;
   arInstructions?: string;
+  colorRequirements?: Array<{
+    targetType: 'object' | 'model'; targetId: string; targetLabel: string;
+    colorHex: string; colorName: string;
+  }>;
+  allowedColors?: Array<{ hex: string; name?: string }>;
   initialPaintState?: SerializedPaintDecal[];
   initialSceneState?: SerializedSceneObject[];
   initialPuzzleState?: SerializedPuzzlePiece[];
@@ -151,6 +158,8 @@ function ARApp({
   viewMode = 'edit',
   artworkUrl,
   arInstructions = '',
+  colorRequirements = [],
+  allowedColors = [],
   initialPaintState = EMPTY_PAINT_STATE,
   initialSceneState = EMPTY_SCENE_STATE,
   initialPuzzleState = EMPTY_PUZZLE_STATE,
@@ -163,19 +172,51 @@ function ARApp({
   sandboxMode = false,
   sandboxDifficulty,
 }: ARAppProps) {
+  const activityPalette = useMemo(() => resolveActivityColorPalette(allowedColors), [allowedColors]);
   const videoRef = useRef<HTMLVideoElement>(null);
   const sceneCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const vrCompositeCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const isViewMode = viewMode === 'view';
   const { settings: userSettings, userId } = useUserSettings();
   const normalizedInstructions = typeof arInstructions === 'string' ? arInstructions.trim() : '';
+  const interactionStartedAtRef = useRef<number | null>(null);
+  const activeElapsedMsRef = useRef(0);
+  const activeClockStartedAtRef = useRef<number | null>(null);
+  const puzzleStartedAtRef = useRef<number | null>(null);
+  const puzzleCompletedAtRef = useRef<number | null>(null);
+  const puzzleConnectionsRef = useRef(0);
+  const puzzleIncorrectAttemptsRef = useRef(0);
+  const markInteraction = useCallback((puzzle = false) => {
+    const now = Date.now();
+    if (!interactionStartedAtRef.current) {
+      interactionStartedAtRef.current = now;
+      if (!document.hidden) activeClockStartedAtRef.current = now;
+    }
+    if (puzzle && !puzzleStartedAtRef.current) puzzleStartedAtRef.current = now;
+  }, []);
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!interactionStartedAtRef.current) return;
+      const now = Date.now();
+      if (document.hidden && activeClockStartedAtRef.current) {
+        activeElapsedMsRef.current += now - activeClockStartedAtRef.current;
+        activeClockStartedAtRef.current = null;
+      } else if (!document.hidden && !activeClockStartedAtRef.current) {
+        activeClockStartedAtRef.current = now;
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
   const [instructionsConfirmed, setInstructionsConfirmed] = useState(!normalizedInstructions || isViewMode);
   const [cameraPermissionGranted, setCameraPermissionGranted] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [cameraStoppedNotice, setCameraStoppedNotice] = useState(false);
   const [modelLoadError, setModelLoadError] = useState('');
   const canRunAr = (isViewMode || instructionsConfirmed) && cameraPermissionGranted;
-  const cameraFacingMode = mobileMode ? 'environment' : 'user';
+  // AR relies on the learner-facing camera for hand/face tracking. VR uses the
+  // outward-facing camera so the phone can sit naturally inside a headset.
+  const cameraFacingMode = vrMode ? 'environment' : 'user';
   const mirrorCameraX = cameraFacingMode === 'user';
   const faceDetection = useSingleFaceDetection(videoRef, canRunAr);
 
@@ -199,7 +240,13 @@ function ARApp({
     modelLoadError,
   });
 
-  const [paintColor, setPaintColor] = useState(new THREE.Color('#ff4444'));
+  const [paintColor, setPaintColor] = useState(() => new THREE.Color(activityPalette[0].hex));
+  useEffect(() => {
+    const currentHex = `#${paintColor.getHexString()}`.toUpperCase();
+    if (!activityPalette.some((color) => color.hex === currentHex)) {
+      setPaintColor(new THREE.Color(activityPalette[0].hex));
+    }
+  }, [activityPalette, paintColor]);
   const structuredPractice = sandboxMode && Boolean(sandboxDifficulty);
   const practiceDifficultyLabel = sandboxDifficulty
     ? `${sandboxDifficulty.charAt(0).toUpperCase()}${sandboxDifficulty.slice(1)}`
@@ -563,29 +610,43 @@ function ARApp({
 
   const handlePaintStateChange = useCallback((nextPaintState: SerializedPaintDecal[]) => {
     if (!arraysEqualByValue(paintStateRef.current, nextPaintState)) {
+      markInteraction(false);
       const coalesceMs = activeTool === 'paint' || activeTool === 'eraser' ? 800 : 0;
       pushUndoSnapshot(`paint:${activeTool}`, coalesceMs);
     }
     paintStateRef.current = nextPaintState;
-  }, [activeTool, pushUndoSnapshot]);
+  }, [activeTool, markInteraction, pushUndoSnapshot]);
 
   const handleSceneStateChange = useCallback((nextSceneState: SerializedSceneObject[]) => {
     if (!arraysEqualByValue(sceneStateRef.current, nextSceneState)) {
+      markInteraction(false);
       pushUndoSnapshot(activeTool === 'remove' ? 'scene:remove' : 'scene:change', activeTool === 'remove' ? 0 : 800);
     }
     sceneStateRef.current = nextSceneState;
-  }, [activeTool, pushUndoSnapshot]);
+  }, [activeTool, markInteraction, pushUndoSnapshot]);
 
   const handlePuzzleStateChange = useCallback((nextPuzzleState: SerializedPuzzlePiece[]) => {
     if (!arraysEqualByValue(puzzleStateRef.current, nextPuzzleState)) {
+      if (nextPuzzleState.some((piece) => piece.spawned || piece.locked)) markInteraction(true);
+      const previousLocked = puzzleStateRef.current.filter((piece) => piece.locked).length;
+      const nextLocked = nextPuzzleState.filter((piece) => piece.locked).length;
+      if (nextLocked > previousLocked) puzzleConnectionsRef.current += nextLocked - previousLocked;
+      if (nextPuzzleState.length > 0 && nextLocked === nextPuzzleState.length && !puzzleCompletedAtRef.current) {
+        puzzleCompletedAtRef.current = Date.now();
+      }
       pushUndoSnapshot(activeTool === 'remove' ? 'puzzle:remove' : 'puzzle:change', activeTool === 'remove' ? 0 : 800);
     }
     puzzleStateRef.current = nextPuzzleState;
     setPuzzleToolbarState(nextPuzzleState);
-  }, [activeTool, pushUndoSnapshot]);
+  }, [activeTool, markInteraction, pushUndoSnapshot]);
+  const handlePuzzleAttempt = useCallback((result: 'connected' | 'missed') => {
+    markInteraction(true);
+    if (result === 'missed') puzzleIncorrectAttemptsRef.current += 1;
+  }, [markInteraction]);
 
   const handleModelStateChange = useCallback((nextModelState: SerializedBaseModelTransform[]) => {
     if (!arraysEqualByValue(modelStateRef.current, nextModelState)) {
+      if (modelStateRef.current.length > 0) markInteraction(false);
       pushUndoSnapshot('model:change', 800);
     }
     modelStateRef.current = nextModelState;
@@ -596,14 +657,15 @@ function ARApp({
       const locked = nextSelectedState.editingLocked === true;
       return current.locked === locked ? current : { ...current, locked };
     });
-  }, [pushUndoSnapshot]);
+  }, [markInteraction, pushUndoSnapshot]);
 
   const handleGroupStateChange = useCallback((nextGroupState: SerializedArGroupTransform) => {
     if (JSON.stringify(groupStateRef.current || null) !== JSON.stringify(nextGroupState || null)) {
+      markInteraction(false);
       pushUndoSnapshot('group:change', 800);
     }
     groupStateRef.current = nextGroupState;
-  }, [pushUndoSnapshot]);
+  }, [markInteraction, pushUndoSnapshot]);
 
   useEffect(() => {
     if (isViewMode) return undefined;
@@ -1072,7 +1134,46 @@ function ARApp({
         sceneStateRef.current,
         puzzleStateRef.current,
         modelStateRef.current,
-        groupStateRef.current
+        groupStateRef.current,
+        (() => {
+          const submittedAt = Date.now();
+          const activeElapsedMs = activeElapsedMsRef.current + (
+            activeClockStartedAtRef.current ? submittedAt - activeClockStartedAtRef.current : 0
+          );
+          const color = evaluateColorRequirements({
+            requirements: colorRequirements,
+            sceneState: sceneStateRef.current,
+            paintState: paintStateRef.current,
+            allowedColors: activityPalette,
+          });
+          const puzzle = puzzleStateRef.current;
+          const locked = puzzle.filter((piece) => piece.locked).length;
+          const puzzleAttempts = puzzleConnectionsRef.current + puzzleIncorrectAttemptsRef.current;
+          return {
+            version: 1,
+            startedAt: interactionStartedAtRef.current
+              ? new Date(interactionStartedAtRef.current).toISOString()
+              : null,
+            completedAt: new Date(submittedAt).toISOString(),
+            activeDurationSeconds: interactionStartedAtRef.current
+              ? Math.max(1, Math.round(activeElapsedMs / 1000))
+              : null,
+            coloring: color,
+            puzzle: {
+              totalPieces: puzzle.length,
+              connectedPieces: locked,
+              connectionEvents: puzzleConnectionsRef.current,
+              incorrectAttempts: puzzleIncorrectAttemptsRef.current,
+              completed: puzzle.length > 0 && locked === puzzle.length,
+              completionSeconds: puzzleStartedAtRef.current && puzzleCompletedAtRef.current
+                ? Math.max(1, Math.round((puzzleCompletedAtRef.current - puzzleStartedAtRef.current) / 1000))
+                : null,
+              accuracyPercent: puzzleAttempts > 0
+                ? Number(((puzzleConnectionsRef.current / puzzleAttempts) * 100).toFixed(1))
+                : (puzzle.length ? Number(((locked / puzzle.length) * 100).toFixed(1)) : null),
+            },
+          };
+        })()
       );
 
       const result = await submitActivity(studentId, activityId, {
@@ -1113,7 +1214,7 @@ function ARApp({
       });
       announce('Submission failed. Please try again.');
     }
-  }, [activityId, announce, arInteractionAllowed, captureSubmissionImage, isViewMode, modelLoadError, sandboxMode, stopCameraAndExit, stopCameraTracks, studentId]);
+  }, [activityId, activityPalette, announce, arInteractionAllowed, captureSubmissionImage, colorRequirements, isViewMode, modelLoadError, sandboxMode, stopCameraAndExit, stopCameraTracks, studentId]);
 
   useEffect(() => {
     if (!arInteractionAllowed) {
@@ -1234,6 +1335,7 @@ function ARApp({
       <CameraFeed
         videoRef={videoRef}
         facingMode={cameraFacingMode}
+        requireExactFacingMode={mobileMode}
         onReady={handleCameraReady}
         onError={handleCameraError}
         enabled={cameraPermissionGranted}
@@ -1263,6 +1365,7 @@ function ARApp({
         onSceneStateChange={handleSceneStateChange}
         initialPuzzleState={hydratedArState.puzzle}
         onPuzzleStateChange={handlePuzzleStateChange}
+        onPuzzleAttempt={handlePuzzleAttempt}
         puzzlePieces={practiceAllowsPuzzle ? puzzlePieces : 0}
         initialModelState={hydratedArState.model}
         onModelStateChange={handleModelStateChange}
@@ -1547,6 +1650,7 @@ function ARApp({
         vrMode ? (
           <>
             <ControlPanel
+              allowedColors={activityPalette}
               paintColor={paintColor}
               onPaintColorChange={handlePaintColorChange}
               activeTool={activeTool}
@@ -1579,6 +1683,7 @@ function ARApp({
               vrEye="left"
             />
             <ControlPanel
+              allowedColors={activityPalette}
               paintColor={paintColor}
               onPaintColorChange={handlePaintColorChange}
               activeTool={activeTool}
@@ -1613,6 +1718,7 @@ function ARApp({
           </>
         ) : (
           <ControlPanel
+            allowedColors={activityPalette}
             paintColor={paintColor}
             onPaintColorChange={handlePaintColorChange}
             activeTool={activeTool}
@@ -1699,29 +1805,14 @@ function ARApp({
         </div>
       )}
 
-      {canRunAr && sandboxMode && (
+      {!cameraStoppedNotice && (
         <button
           type="button"
-          onClick={handleSubmitAndExit}
-          style={{
-            position: 'absolute',
-            left: compactUi ? 12 : 20,
-            bottom: compactUi ? 12 : 20,
-            zIndex: 1150,
-            minHeight: 42,
-            padding: '0 16px',
-            border: '1px solid rgba(255,255,255,0.5)',
-            borderRadius: 999,
-            background: 'rgba(18, 24, 38, 0.82)',
-            color: '#fff',
-            cursor: 'pointer',
-            fontSize: 13,
-            fontWeight: 800,
-            backdropFilter: 'blur(10px)',
-            boxShadow: '0 10px 24px rgba(0,0,0,0.28)',
-          }}
+          className="ar-exit-button"
+          onClick={stopCameraAndExit}
+          aria-label={`Exit ${vrMode ? 'VR' : 'AR'} mode without submitting`}
         >
-          Exit Sandbox
+          ← Exit
         </button>
       )}
 

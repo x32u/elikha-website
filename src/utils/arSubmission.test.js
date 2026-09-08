@@ -66,4 +66,12 @@ describe('AR submission state', () => {
 
     expect(decoded.sceneState).toEqual(legacySceneState);
   });
+
+  it('round-trips optional learning analytics without breaking old payloads', () => {
+    const analytics = { activeDurationSeconds: 42, coloring: { accuracyPercent: 100 } };
+    const decoded = parseArSubmissionDescription(
+      encodeArSubmissionDescription([], 'Submitted', [], [], [], null, analytics)
+    );
+    expect(decoded.analytics).toEqual(analytics);
+  });
 });

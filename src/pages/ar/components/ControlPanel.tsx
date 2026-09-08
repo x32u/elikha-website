@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import paintbrushIcon from '../../../assets/ar-icons/paintbrush.svg';
 import bucketIcon from '../../../assets/ar-icons/paint-bucket.svg';
 import eraserIcon from '../../../assets/ar-icons/eraser.svg';
-import { AR_PRESET_COLORS } from '../utils/colorPalette';
+import { resolveActivityColorPalette } from '../../../utils/arColorPalette';
 
 export type PaintTool = 'move' | 'grabAll' | 'paint' | 'bucket' | 'eraser' | 'remove';
 
@@ -38,6 +38,7 @@ interface ControlPanelProps {
   compact?: boolean;
   vrMode?: boolean;
   vrEye?: 'left' | 'right';
+  allowedColors?: Array<{ hex: string; name?: string }>;
 }
 
 const ALL_TOOLS: PaintTool[] = ['move', 'grabAll', 'paint', 'bucket', 'eraser', 'remove'];
@@ -73,14 +74,19 @@ export function ControlPanel({
   compact = false,
   vrMode = false,
   vrEye,
+  allowedColors = [],
 }: ControlPanelProps) {
   const [isLandscape, setIsLandscape] = useState(
     typeof window !== 'undefined' ? window.innerWidth > window.innerHeight : true
   );
+  const panelRef = useRef<HTMLDivElement>(null);
+  const preferredCompactScale = vrMode ? 0.68 : 0.72;
+  const [fitScale, setFitScale] = useState(compact ? preferredCompactScale : 1);
   const currentColorHex = `#${paintColor.getHexString()}`;
   const enabledTools = new Set(allowedTools);
   const showColors = enabledTools.has('paint') || enabledTools.has('bucket');
   const showBrushSize = enabledTools.has('paint') || enabledTools.has('eraser');
+  const availableColors = resolveActivityColorPalette(allowedColors);
 
   useEffect(() => {
     const onResize = () => {
@@ -90,12 +96,61 @@ export function ControlPanel({
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  useLayoutEffect(() => {
+    if (!compact) {
+      setFitScale(1);
+      return undefined;
+    }
+
+    let animationFrame = 0;
+    const fitPanelToViewport = () => {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(() => {
+        const panel = panelRef.current;
+        if (!panel) return;
+
+        const viewportWidth = window.visualViewport?.width || window.innerWidth;
+        const viewportHeight = window.visualViewport?.height || window.innerHeight;
+        const availableWidth = vrMode
+          ? Math.max(1, viewportWidth / 2 - 12)
+          : Math.max(1, viewportWidth - 16);
+        const availableHeight = Math.max(1, viewportHeight - 16);
+        const naturalWidth = Math.max(1, panel.scrollWidth);
+        const naturalHeight = Math.max(1, panel.scrollHeight);
+        const nextScale = Math.min(
+          preferredCompactScale,
+          availableWidth / naturalWidth,
+          availableHeight / naturalHeight
+        );
+
+        setFitScale((current) => Math.abs(current - nextScale) < 0.005 ? current : nextScale);
+      });
+    };
+
+    fitPanelToViewport();
+    const observer = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(fitPanelToViewport);
+    if (panelRef.current) observer?.observe(panelRef.current);
+    window.addEventListener('resize', fitPanelToViewport);
+    window.visualViewport?.addEventListener('resize', fitPanelToViewport);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      observer?.disconnect();
+      window.removeEventListener('resize', fitPanelToViewport);
+      window.visualViewport?.removeEventListener('resize', fitPanelToViewport);
+    };
+  }, [compact, preferredCompactScale, vrMode]);
+
   return (
     <div
+      ref={panelRef}
+      data-fit-scale={fitScale.toFixed(3)}
       className={`control-panel ${isLandscape ? 'landscape' : 'portrait'} ${compact ? 'compact' : ''} ${vrMode ? 'vr' : ''} ${vrEye ? `eye-${vrEye}` : ''}`}
       style={{
         position: 'absolute',
-        top: vrMode ? 'auto' : compact ? 8 : 20,
+        top: vrMode || compact ? 'auto' : 20,
         right: vrMode ? 'auto' : compact ? 8 : 20,
         bottom: vrMode ? 6 : compact ? 8 : 'auto',
         left: vrMode
@@ -105,24 +160,35 @@ export function ControlPanel({
               ? '25vw'
               : '50%'
           : 'auto',
-        transform: vrMode ? 'translateX(-50%)' : 'none',
-        background: 'transparent',
+        transform: vrMode
+          ? `translateX(-50%) scale(${fitScale})`
+          : compact
+            ? `scale(${fitScale})`
+            : 'none',
+        transformOrigin: vrMode ? 'bottom center' : 'bottom right',
+        background: compact && !vrMode ? 'rgba(255, 255, 255, 0.22)' : 'transparent',
+        border: compact && !vrMode ? '1px solid rgba(255, 255, 255, 0.32)' : 'none',
         borderRadius: 16,
-        padding: compact ? 6 : 12,
+        padding: compact ? 4 : 12,
         color: 'white',
         fontFamily: 'system-ui, sans-serif',
         fontSize: compact ? 11 : 14,
         zIndex: 1000,
-        backdropFilter: 'none',
-        maxWidth: vrMode ? 'calc(50vw - 12px)' : compact ? 220 : 320,
-        width: vrMode ? 'min(44vw, 360px)' : compact ? 'min(220px, 50vw)' : 'auto',
-        maxHeight: vrMode ? '48vh' : compact ? '66vh' : 'none',
-        overflow: compact ? 'auto' : 'visible',
+        maxWidth: vrMode ? 'calc(50vw - 12px)' : compact ? 'min(360px, calc(100vw - 16px))' : 320,
+        width: vrMode ? 'min(44vw, 360px)' : compact ? 'min(360px, calc(100vw - 16px))' : 'auto',
+        maxHeight: 'none',
+        overflow: 'visible',
         display: 'flex',
         flexDirection: 'column',
-        gap: compact ? 4 : 10,
+        gap: compact ? 2 : 10,
         alignItems: 'flex-start',
+        boxShadow: compact && !vrMode ? '0 10px 24px rgba(0, 0, 0, 0.18)' : 'none',
+        backdropFilter: compact && !vrMode ? 'blur(8px)' : 'none',
+        WebkitBackdropFilter: compact && !vrMode ? 'blur(8px)' : 'none',
       }}
+    >
+      <div
+        className="control-panel-content"
       >
         {(onToggleVoiceGuide || onRepeatVoiceGuide) && (
           <div className="control-row voice-guide-row" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -412,16 +478,16 @@ export function ControlPanel({
                 opacity: activeTool === 'paint' || activeTool === 'bucket' ? 1 : 0.55,
               }}
             >
-              {AR_PRESET_COLORS.map(({ hex, name }) => (
+              {availableColors.map(({ hex, name }) => (
                 <button
                   type="button"
                   key={hex}
                   data-gesture-target="true"
                   disabled={activeTool !== 'paint' && activeTool !== 'bucket'}
-                  onClick={() => onPaintColorChange(new THREE.Color(hex), name)}
+                  onClick={() => onPaintColorChange(new THREE.Color(hex), name || hex)}
                   className="color-swatch"
-                  aria-label={`Select ${name}`}
-                  title={name}
+                  aria-label={`Select ${name || hex}`}
+                  title={name || hex}
                   style={{
                     background: hex,
                     border:
@@ -465,6 +531,7 @@ export function ControlPanel({
             </div>
           </>
         )}
+      </div>
       </div>
     </div>
   );

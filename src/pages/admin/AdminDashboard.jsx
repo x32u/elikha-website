@@ -40,10 +40,10 @@ const formatStorage = (bytes) => {
 
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   const unitIndex = Math.min(
-    Math.floor(Math.log(value) / Math.log(1024)),
+    Math.floor(Math.log(value) / Math.log(1000)),
     units.length - 1
   );
-  const amount = value / (1024 ** unitIndex);
+  const amount = value / (1000 ** unitIndex);
   const maximumFractionDigits = amount >= 100 || unitIndex === 0 ? 0 : amount >= 10 ? 1 : 2;
 
   return `${amount.toLocaleString(undefined, { maximumFractionDigits })} ${units[unitIndex]}`;

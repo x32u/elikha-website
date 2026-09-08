@@ -1,3 +1,6 @@
+import { sanitizeColorRequirements } from './activityColorRequirements';
+import { sanitizeActivityColorPalette } from './arColorPalette';
+
 const ACTIVITY_AR_TAG = 'activity_ar_v1';
 const CUSTOM_AR_MODEL_KEY = 'elikha_custom_ar_models_v1';
 const CUSTOM_AR_MODEL_DB_NAME = 'elikha_custom_ar_models_db_v1';
@@ -756,6 +759,8 @@ export const encodeActivityDescription = (
     modelId = DEFAULT_MODEL_ID,
     modelIds,
     puzzlePieces = DEFAULT_PUZZLE_PIECES,
+    allowedColors,
+    colorRequirements = [],
   } = {}
 ) => {
   try {
@@ -763,6 +768,9 @@ export const encodeActivityDescription = (
     const modelDefs = sanitizedModelIds.map((id) => getArModelDefinition(id)).filter(Boolean);
     const modelDef = modelDefs[0] || getArModelDefinition(modelId);
     const payloadModelUrl = isDataUrl(modelDef?.modelUrl) ? '' : (modelDef?.modelUrl || '');
+    const safeAllowedColors = allowedColors === undefined
+      ? sanitizeActivityColorPalette(undefined, { fallback: true })
+      : sanitizeActivityColorPalette(allowedColors);
     return JSON.stringify({
       tag: ACTIVITY_AR_TAG,
       summary: typeof summary === 'string' ? summary : '',
@@ -779,6 +787,8 @@ export const encodeActivityDescription = (
       modelUrl: payloadModelUrl,
       modelFileType: modelDef?.fileType || inferFileTypeFromPath(payloadModelUrl),
       puzzlePieces: sanitizePuzzlePieces(puzzlePieces),
+      allowedColors: safeAllowedColors,
+      colorRequirements: sanitizeColorRequirements(colorRequirements, safeAllowedColors),
     });
   } catch (error) {
     console.error('Failed to encode activity AR payload:', error);
@@ -805,6 +815,8 @@ const getDefaultParsePayload = (summary = '', isPayload = false) => {
     modelUrl: defaultModel?.modelUrl || '',
     modelFileType: defaultModel?.fileType || inferFileTypeFromPath(defaultModel?.modelUrl),
     puzzlePieces: DEFAULT_PUZZLE_PIECES,
+    allowedColors: [],
+    colorRequirements: [],
     isPayload,
   };
 };
@@ -866,6 +878,8 @@ export const parseActivityDescription = (description) => {
       ? modelDef.modelUrl || ''
       : sourceModelUrl;
 
+    const hasAllowedColors = Array.isArray(parsed.allowedColors);
+    const allowedColors = sanitizeActivityColorPalette(parsed.allowedColors);
     return {
       summary: typeof parsed.summary === 'string' ? parsed.summary : '',
       instructions: typeof parsed.instructions === 'string' ? parsed.instructions : '',
@@ -876,6 +890,8 @@ export const parseActivityDescription = (description) => {
       modelUrl: resolvedModelUrl,
       modelFileType: rawModelFileType || modelDef?.modelFileType || modelDef?.fileType || inferFileTypeFromPath(resolvedModelUrl),
       puzzlePieces: sanitizePuzzlePieces(parsed.puzzlePieces),
+      allowedColors,
+      colorRequirements: sanitizeColorRequirements(parsed.colorRequirements, hasAllowedColors ? allowedColors : undefined),
       isPayload: true,
     };
   } catch {

@@ -58,4 +58,44 @@ describe('ControlPanel selected 3D model locking', () => {
 
     expect(onToggleModelLock).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps every phone tool rendered without a scroll/collapse control', async () => {
+    await act(async () => {
+      root.render(
+        <ControlPanel
+          paintColor={new THREE.Color('#ff0000')}
+          onPaintColorChange={jest.fn()}
+          activeTool="paint"
+          onToolChange={jest.fn()}
+          brushLevel={5}
+          onBrushLevelChange={jest.fn()}
+          compact
+        />
+      );
+    });
+
+    expect(container.textContent).toContain('Paint');
+    expect(container.querySelector('.compact-toolbox-toggle')).toBeNull();
+    expect(container.querySelector('.control-panel-content').hidden).toBe(false);
+    expect(container.querySelector('.control-panel').getAttribute('data-fit-scale')).toBe('0.720');
+  });
+
+  it('renders only the activity palette in its saved order', async () => {
+    await act(async () => {
+      root.render(
+        <ControlPanel
+          paintColor={new THREE.Color('#123456')}
+          onPaintColorChange={jest.fn()}
+          activeTool="paint"
+          onToolChange={jest.fn()}
+          brushLevel={5}
+          onBrushLevelChange={jest.fn()}
+          allowedColors={[{ hex: '#123456', name: 'Ocean' }, { hex: '#ABCDEF', name: 'Sky' }]}
+        />
+      );
+    });
+    const swatches = [...container.querySelectorAll('.color-swatch')];
+    expect(swatches).toHaveLength(2);
+    expect(swatches.map((item) => item.getAttribute('aria-label'))).toEqual(['Select ocean', 'Select sky']);
+  });
 });

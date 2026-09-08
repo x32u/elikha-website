@@ -1,4 +1,4 @@
-import { AR_COLOR_PALETTE, filterToArPalette, matchArPaletteColor } from './arColorPalette';
+import { AR_COLOR_PALETTE, filterToArPalette, matchArPaletteColor, sanitizeActivityColorPalette } from './arColorPalette';
 import { AR_PRESET_COLORS } from '../pages/ar/utils/colorPalette';
 
 const paletteKey = (colors) => colors
@@ -23,9 +23,9 @@ describe('matchArPaletteColor', () => {
       .toEqual({ name: 'Red', hex: '#FF0000' });
   });
 
-  test('matches by name when the hex is wrong', () => {
-    expect(matchArPaletteColor({ name: 'blue violet', hex: '#111111' }))
-      .toEqual({ name: 'Blue Violet', hex: '#2563EB' });
+  test('matches custom palettes by name when the hex is wrong', () => {
+    expect(matchArPaletteColor({ name: 'ocean', hex: '#111111' }, [{ name: 'ocean', hex: '#1255AA' }]))
+      .toEqual({ name: 'Ocean', hex: '#1255AA' });
   });
 
   test('rejects colors that are not in the AR picker', () => {
@@ -38,20 +38,20 @@ describe('matchArPaletteColor', () => {
 describe('filterToArPalette', () => {
   test('drops off-palette colors and canonicalizes the rest', () => {
     expect(filterToArPalette([
-      { name: 'Electric Blue', hex: '#2563eb' },
+      { name: 'blue', hex: '#0000ff' },
       { name: 'red', hex: '#FF0000' },
       { name: 'neon pink', hex: '#FF1493' },
     ])).toEqual([
-      { name: 'Blue Violet', hex: '#2563EB' },
+      { name: 'Blue', hex: '#0000FF' },
       { name: 'Red', hex: '#FF0000' },
     ]);
   });
 
   test('removes duplicates that resolve to the same palette color', () => {
     expect(filterToArPalette([
-      { name: 'blue violet', hex: '#111111' },
-      { name: 'BLUE VIOLET', hex: '#2563EB' },
-    ])).toEqual([{ name: 'Blue Violet', hex: '#2563EB' }]);
+      { name: 'violet', hex: '#111111' },
+      { name: 'VIOLET', hex: '#7B2CFF' },
+    ])).toEqual([{ name: 'Violet', hex: '#7B2CFF' }]);
   });
 
   test('returns an empty list when nothing is usable in AR', () => {
@@ -69,5 +69,15 @@ describe('filterToArPalette', () => {
       { name: 'green', hex: '#00A651' },
       { name: 'yellow', hex: '#FFFF00' },
     ])).toHaveLength(3);
+  });
+});
+
+describe('sanitizeActivityColorPalette', () => {
+  test('normalizes hex, removes duplicates, and limits activities to ten colors', () => {
+    const colors = Array.from({ length: 12 }, (_, index) => ({ hex: `#0000${index.toString(16).padStart(2, '0')}` }));
+    colors.unshift({ hex: '#abc', name: '  Custom   Shade ' }, { hex: '#AABBCC' });
+    const result = sanitizeActivityColorPalette(colors);
+    expect(result).toHaveLength(10);
+    expect(result[0]).toEqual({ hex: '#AABBCC', name: 'custom shade' });
   });
 });

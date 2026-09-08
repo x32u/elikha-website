@@ -335,6 +335,8 @@ const Profile = () => {
                       modelFileType: activity.model_file_type || undefined,
                       modelConfigs: activity.model_configs || [],
                       puzzlePieces: activity.puzzle_pieces || 0,
+                      colorRequirements: activity.color_requirements || [],
+                      allowedColors: activity.allowed_colors || [],
                     },
                   })
                 }
@@ -354,6 +356,8 @@ const Profile = () => {
                         modelFileType: activity.model_file_type || undefined,
                         modelConfigs: activity.model_configs || [],
                         puzzlePieces: activity.puzzle_pieces || 0,
+                        colorRequirements: activity.color_requirements || [],
+                        allowedColors: activity.allowed_colors || [],
                       },
                     });
                   }

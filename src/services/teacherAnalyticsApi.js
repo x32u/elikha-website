@@ -3,6 +3,7 @@ import {
   aggregateAnalyticsReport,
   createReportDateRange,
 } from '../utils/reportAnalytics';
+import { buildStudentInsights } from '../utils/studentInsights';
 
 const PAGE_SIZE = 750;
 const IN_FILTER_CHUNK_SIZE = 150;
@@ -180,7 +181,7 @@ export const fetchTeacherAnalytics = async ({ teacherId, days = 30, classId = ''
       ? [classId]
       : classes.map((klass) => klass.id);
 
-    const [assignments, submissions, enrollments] = await Promise.all([
+    const [assignments, submissions, enrollments, observations] = await Promise.all([
       fetchRowsForIds(activityIds, (chunk) => supabase
         .from('activity_assignments')
         .select('id, activity_id, student_id, status, assigned_at')
@@ -188,7 +189,7 @@ export const fetchTeacherAnalytics = async ({ teacherId, days = 30, classId = ''
         .order('id', { ascending: true })),
       fetchRowsForIds(activityIds, (chunk) => supabase
         .from('submissions')
-        .select('id, activity_id, student_id, assignment_id, status, submitted_at, reviewed_at, score')
+        .select('id, activity_id, student_id, assignment_id, status, submitted_at, reviewed_at, score, description')
         .in('activity_id', chunk)
         .order('id', { ascending: true })),
       fetchRowsForIds(relevantClassIds, (chunk) => supabase
@@ -196,7 +197,18 @@ export const fetchTeacherAnalytics = async ({ teacherId, days = 30, classId = ''
         .select('id, class_id, student_id, student_name, student_email, enrolled_at')
         .in('class_id', chunk)
         .order('id', { ascending: true })),
+      fetchRowsForIds(activityIds, (chunk) => supabase
+        .from('rubric_observations')
+        .select('id, learner_id, activity_id, teacher_confirmed_at, observation_date')
+        .in('activity_id', chunk)
+        .not('teacher_confirmed_at', 'is', null)
+        .order('id', { ascending: true })),
     ]);
+    const criteria = await fetchRowsForIds(observations.map((item) => item.id), (chunk) => supabase
+      .from('rubric_criterion_observations')
+      .select('observation_id, criterion_index, criterion_title_snapshot, selected_rating')
+      .in('observation_id', chunk)
+      .order('observation_id', { ascending: true }));
 
     const studentUsers = Array.from(new Map(enrollments.map((enrollment) => [
       enrollment.student_id,
@@ -255,6 +267,7 @@ export const fetchTeacherAnalytics = async ({ teacherId, days = 30, classId = ''
         events: report.events,
         activityPerformance,
         studentAttention: buildStudentAttention(report.outcomes),
+        studentInsights: buildStudentInsights({ report, outcomes: report.outcomes, submissions, observations, criteria, studentUsers }),
         submissionTrend: buildSubmissionTrend(report.outcomes, range, safeDays),
         classes,
         dataQuality: report.dataQuality,

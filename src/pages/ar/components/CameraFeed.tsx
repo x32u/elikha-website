@@ -5,6 +5,7 @@ interface CameraFeedProps {
   onReady?: () => void;
   onError?: (message: string) => void;
   facingMode?: 'user' | 'environment';
+  requireExactFacingMode?: boolean;
   enabled?: boolean;
 }
 
@@ -13,7 +14,14 @@ export interface CameraFeedHandle {
 }
 
 export const CameraFeed = forwardRef<CameraFeedHandle, CameraFeedProps>(
-  ({ videoRef, onReady, onError, facingMode = 'environment', enabled = false }, ref) => {
+  ({
+    videoRef,
+    onReady,
+    onError,
+    facingMode = 'environment',
+    requireExactFacingMode = false,
+    enabled = false,
+  }, ref) => {
     useImperativeHandle(ref, () => ({
       video: videoRef.current,
     }));
@@ -30,13 +38,17 @@ export const CameraFeed = forwardRef<CameraFeedHandle, CameraFeedProps>(
           try {
             stream = await navigator.mediaDevices.getUserMedia({
               video: {
-                facingMode,
+                // Mobile AR and VR intentionally use different lenses. An
+                // exact constraint prevents WebView from picking the opposite
+                // camera while desktop browsers keep their broader fallback.
+                facingMode: requireExactFacingMode ? { exact: facingMode } : facingMode,
                 width: { ideal: 1280 },
                 height: { ideal: 720 },
               },
               audio: false,
             });
           } catch (primaryError) {
+            if (requireExactFacingMode) throw primaryError;
             console.warn('Preferred camera constraints failed, retrying with default camera:', primaryError);
             stream = await navigator.mediaDevices.getUserMedia({
               video: true,
@@ -63,8 +75,10 @@ export const CameraFeed = forwardRef<CameraFeedHandle, CameraFeedProps>(
         } catch (error) {
           console.error('Failed to access camera:', error);
           const message = error instanceof DOMException && error.name === 'NotAllowedError'
-            ? 'Camera permission was not allowed. Allow camera access in Chrome to continue this activity.'
-            : 'Unable to start the camera. Check that it is connected and not being used by another app.';
+            ? 'Camera permission was not allowed. Allow camera access to continue this activity.'
+            : error instanceof DOMException && error.name === 'OverconstrainedError'
+              ? `The required ${facingMode === 'user' ? 'front' : 'back'} camera is unavailable on this device.`
+              : 'Unable to start the camera. Check that it is connected and not being used by another app.';
           onError?.(message);
         }
       };
@@ -78,7 +92,7 @@ export const CameraFeed = forwardRef<CameraFeedHandle, CameraFeedProps>(
           stream.getTracks().forEach((track) => track.stop());
         }
       };
-    }, [enabled, facingMode, onError, onReady, videoRef]);
+    }, [enabled, facingMode, onError, onReady, requireExactFacingMode, videoRef]);
 
     return (
       <video

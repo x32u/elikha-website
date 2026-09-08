@@ -14,20 +14,49 @@ import { useUserSettings } from '../../hooks/useUserSettings';
 import { saveUserSettings } from '../../services/userSettingsApi';
 import './ArSandbox.css';
 
+const postToMobileShell = (payload) => {
+  const message = JSON.stringify(payload);
+  if (window.ElikhaMobile?.postMessage) {
+    window.ElikhaMobile.postMessage(message);
+    return true;
+  }
+  if (window.webkit?.messageHandlers?.ElikhaMobile?.postMessage) {
+    window.webkit.messageHandlers.ElikhaMobile.postMessage(message);
+    return true;
+  }
+  return false;
+};
+
 const ArSandbox = () => {
+  const mobileLaunch = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      autoStart: params.get('mobile') === '1' && params.get('autostart') === '1',
+      difficulty: params.get('difficulty') || DEFAULT_PRACTICE_LEVEL_ID,
+      modelId: params.get('model') || '',
+    };
+  }, []);
   const { settings: userSettings, userId } = useUserSettings();
   const models = useMemo(() => getArRenderableModelLibrary(), []);
   const [selectedModelId, setSelectedModelId] = useState(
-    models.find((model) => model.id === DEFAULT_MODEL_ID)?.id || models[0]?.id || ''
+    models.find((model) => model.id === mobileLaunch.modelId)?.id ||
+      models.find((model) => model.id === DEFAULT_MODEL_ID)?.id || models[0]?.id || ''
   );
-  const [difficultyId, setDifficultyId] = useState(DEFAULT_PRACTICE_LEVEL_ID);
+  const [difficultyId, setDifficultyId] = useState(getPracticeLevel(mobileLaunch.difficulty).id);
   const [sessionId, setSessionId] = useState(0);
-  const [isRunning, setIsRunning] = useState(false);
+  const [isRunning, setIsRunning] = useState(mobileLaunch.autoStart);
 
   const selectedModel = models.find((model) => model.id === selectedModelId) || models[0];
   const selectedLevel = getPracticeLevel(difficultyId);
   const voiceGuideEnabled = userSettings.voiceInstructions !== false;
-  const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
+  // A phone can be wider than 768px after the native shell locks it to
+  // landscape. Pointer capability remains stable across rotation, so keep the
+  // compact controls and exact front-camera requirement on touch devices too.
+  const isMobile = typeof window !== 'undefined' && (
+    new URLSearchParams(window.location.search).get('mobile') === '1' ||
+    window.matchMedia('(max-width: 768px)').matches ||
+    window.matchMedia('(pointer: coarse)').matches
+  );
 
   const toggleVoiceGuide = () => {
     void saveUserSettings(userId, {
@@ -43,6 +72,9 @@ const ArSandbox = () => {
   };
 
   const exitSandbox = () => {
+    if (mobileLaunch.autoStart && postToMobileShell({ type: 'exit', source: 'sandbox' })) {
+      return;
+    }
     setIsRunning(false);
     if (document.fullscreenElement) {
       document.exitFullscreen?.().catch(() => {});

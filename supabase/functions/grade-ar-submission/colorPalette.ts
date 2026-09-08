@@ -5,12 +5,6 @@ export const AR_COLOR_PALETTE = Object.freeze([
   { name: 'green', hex: '#00A651' },
   { name: 'orange', hex: '#FF8C00' },
   { name: 'violet', hex: '#7B2CFF' },
-  { name: 'red orange', hex: '#FF4500' },
-  { name: 'yellow orange', hex: '#FFC300' },
-  { name: 'yellow green', hex: '#B6E600' },
-  { name: 'blue green', hex: '#00B8A9' },
-  { name: 'blue violet', hex: '#2563EB' },
-  { name: 'red violet', hex: '#C026D3' },
   { name: 'brown', hex: '#8B5A2B' },
   { name: 'skin tone', hex: '#F2C29B' },
   { name: 'white', hex: '#FFFFFF' },
@@ -30,9 +24,23 @@ const toDisplayName = (value: string) => value.replace(/(^|\s)\S/g, (letter) => 
  * Converts model output into the exact colors available in the AR palette.
  * Unknown names/hex values are discarded rather than shown to a learner.
  */
-export const normalizeArColorSuggestions = (value: unknown): ColorSuggestionItem[] => {
+export const resolveActivityColorPalette = (value: unknown): ColorSuggestionItem[] => {
+  const seen = new Set<string>();
+  const normalized = (Array.isArray(value) ? value : []).map((rawItem) => {
+    if (!rawItem || typeof rawItem !== 'object' || Array.isArray(rawItem)) return null;
+    const item = rawItem as Record<string, unknown>;
+    const hex = String(item.hex ?? '').trim().toUpperCase();
+    if (!/^#[0-9A-F]{6}$/.test(hex) || seen.has(hex)) return null;
+    seen.add(hex);
+    return { hex, name: normalizeName(item.name) || hex };
+  }).filter((item): item is ColorSuggestionItem => Boolean(item)).slice(0, 10);
+  return normalized.length ? normalized : AR_COLOR_PALETTE.map((item) => ({ ...item }));
+};
+
+export const normalizeArColorSuggestions = (value: unknown, palette: unknown = AR_COLOR_PALETTE): ColorSuggestionItem[] => {
   const rawItems = Array.isArray(value) ? value : [];
   const seen = new Set<string>();
+  const available = resolveActivityColorPalette(palette);
 
   return rawItems
     .map((rawItem) => {
@@ -40,12 +48,12 @@ export const normalizeArColorSuggestions = (value: unknown): ColorSuggestionItem
       const item = rawItem as Record<string, unknown>;
       const rawHex = String(item.hex ?? '').trim().toUpperCase();
       const rawName = normalizeName(item.name);
-      const match = AR_COLOR_PALETTE.find((color) => (
+      const match = available.find((color) => (
         (rawHex && color.hex === rawHex) || (rawName && color.name === rawName)
       ));
       if (!match || seen.has(match.hex)) return null;
       seen.add(match.hex);
-      return { name: toDisplayName(match.name), hex: match.hex };
+      return { name: match.name.startsWith('#') ? match.name : toDisplayName(match.name), hex: match.hex };
     })
     .filter((item): item is ColorSuggestionItem => Boolean(item))
     .slice(0, 3);

@@ -161,7 +161,7 @@ function App() {
           path="/activity/:id/start" 
           element={
             <ProtectedRoute>
-              <RoleProtectedRoute allowedRoles={['student']}>
+              <RoleProtectedRoute allowedRoles={['student', 'teacher']}>
                 <ActivityStart />
               </RoleProtectedRoute>
             </ProtectedRoute>

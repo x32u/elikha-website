@@ -38,10 +38,10 @@ const inferFileName = (model) => {
 
 const formatStorage = (bytes) => {
   const value = Number(bytes) || 0;
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`;
-  if (value < 1024 ** 3) return `${(value / (1024 ** 2)).toFixed(1)} MB`;
-  return `${(value / (1024 ** 3)).toFixed(2)} GB`;
+  if (value < 1000) return `${value} B`;
+  if (value < 1000 ** 2) return `${(value / 1000).toFixed(1)} KB`;
+  if (value < 1000 ** 3) return `${(value / (1000 ** 2)).toFixed(1)} MB`;
+  return `${(value / (1000 ** 3)).toFixed(2)} GB`;
 };
 
 const ModelPageShell = ({ role, onNavigate, homePageKey, isSuperAdmin, children }) => {

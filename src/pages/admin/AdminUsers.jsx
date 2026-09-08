@@ -28,6 +28,8 @@ const ROLE_OPTIONS = [
   { value: 'superadmin', label: 'Super Admin' },
 ];
 
+const ADMIN_ONLY_ROLES = new Set(['admin', 'superadmin']);
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const roleLabel = (value) => {
@@ -39,7 +41,7 @@ function AdminUsers({ onNavigate, role }) {
   const isSuperAdmin = role === 'SuperAdmin';
   const editableRoleOptions = isSuperAdmin
     ? ROLE_OPTIONS
-    : ROLE_OPTIONS.filter((option) => option.value !== 'superadmin');
+    : ROLE_OPTIONS.filter((option) => !ADMIN_ONLY_ROLES.has(option.value));
   const homePageKey = isSuperAdmin ? 'sa-dashboard' : 'homepage';
 
   const [query, setQuery] = React.useState('');
@@ -192,7 +194,7 @@ function AdminUsers({ onNavigate, role }) {
   });
 
   const openEdit = (user) => {
-    if (!isSuperAdmin && String(user?.role || '').toLowerCase() === 'superadmin') return;
+    if (!isSuperAdmin && ADMIN_ONLY_ROLES.has(String(user?.role || '').toLowerCase())) return;
     setEditing(user);
     setEditDraft({
       id: user.id,
@@ -306,6 +308,11 @@ function AdminUsers({ onNavigate, role }) {
 
   const saveEdit = async () => {
     if (!editDraft) return;
+
+    if (!isSuperAdmin && ADMIN_ONLY_ROLES.has(String(editDraft.role || '').toLowerCase())) {
+      setSaveError('Only a super administrator can assign or manage administrator roles.');
+      return;
+    }
 
     const name = editDraft.name.trim();
     const email = editDraft.email.trim();
@@ -677,9 +684,9 @@ function AdminUsers({ onNavigate, role }) {
                       className="um-action"
                       type="button"
                       onClick={() => openEdit(user)}
-                      disabled={!isSuperAdmin && String(user.role || '').toLowerCase() === 'superadmin'}
-                      title={!isSuperAdmin && String(user.role || '').toLowerCase() === 'superadmin'
-                        ? 'Only a super administrator can edit this account.'
+                      disabled={!isSuperAdmin && ADMIN_ONLY_ROLES.has(String(user.role || '').toLowerCase())}
+                      title={!isSuperAdmin && ADMIN_ONLY_ROLES.has(String(user.role || '').toLowerCase())
+                        ? 'Only a super administrator can edit administrator accounts.'
                         : 'Edit user'}
                     >
                       Edit

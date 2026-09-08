@@ -6,7 +6,8 @@ export const encodeArSubmissionDescription = (
   sceneState = [],
   puzzleState = [],
   modelState = [],
-  groupState = null
+  groupState = null,
+  analytics = null
 ) => {
   try {
     return JSON.stringify({
@@ -17,6 +18,7 @@ export const encodeArSubmissionDescription = (
       puzzleState: Array.isArray(puzzleState) ? puzzleState : [],
       modelState: Array.isArray(modelState) ? modelState : [],
       groupState: groupState && typeof groupState === 'object' ? groupState : null,
+      analytics: analytics && typeof analytics === 'object' ? analytics : null,
     });
   } catch (error) {
     console.error('Failed to encode AR submission payload:', error);
@@ -37,6 +39,7 @@ export const parseArSubmissionDescription = (description) => {
       puzzleState: Array.isArray(parsed.puzzleState) ? parsed.puzzleState : [],
       modelState: Array.isArray(parsed.modelState) ? parsed.modelState : [],
       groupState: parsed.groupState && typeof parsed.groupState === 'object' ? parsed.groupState : null,
+      analytics: parsed.analytics && typeof parsed.analytics === 'object' ? parsed.analytics : null,
     };
   } catch {
     return null;

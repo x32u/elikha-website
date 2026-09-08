@@ -97,6 +97,7 @@ const Reviews = () => {
             modelState: parsedArSubmission?.modelState || [],
             groupState: parsedArSubmission?.groupState || null,
             allowedObjectIds: parsedActivity.allowedObjectIds || [],
+            allowedColors: parsedActivity.allowedColors || [],
             modelUrl: parsedActivity.modelUrl || undefined,
             modelFileType: parsedActivity.modelFileType || undefined,
             modelConfigs: parsedActivity.models || [],
@@ -468,9 +469,10 @@ const Reviews = () => {
                       <button
                         className="view-ar-btn"
                         onClick={() =>
-                          navigate(`/activity/${submission.activityId}/start`, {
+                          navigate(`/activity/${submission.activityId}/start?submission=${encodeURIComponent(submission.id)}`, {
                             state: {
                               mode: 'view',
+                              submissionId: submission.id,
                               artworkUrl: submission.artwork,
                               paintState: submission.paintState || [],
                               sceneState: submission.sceneState || [],
@@ -478,6 +480,7 @@ const Reviews = () => {
                               modelState: submission.modelState || [],
                               groupState: submission.groupState || null,
                               allowedObjectIds: submission.allowedObjectIds || [],
+                              allowedColors: submission.allowedColors || [],
                               modelUrl: submission.modelUrl || undefined,
                               modelFileType: submission.modelFileType || undefined,
                               modelConfigs: submission.modelConfigs || [],
@@ -732,9 +735,10 @@ const Reviews = () => {
                 <button
                   className="btn-cancel"
                   onClick={() =>
-                    navigate(`/activity/${selectedSubmission.activityId}/start`, {
+                    navigate(`/activity/${selectedSubmission.activityId}/start?submission=${encodeURIComponent(selectedSubmission.id)}`, {
                       state: {
                         mode: 'view',
+                        submissionId: selectedSubmission.id,
                         artworkUrl: selectedSubmission.artwork,
                         paintState: selectedSubmission.paintState || [],
                         sceneState: selectedSubmission.sceneState || [],
@@ -742,6 +746,7 @@ const Reviews = () => {
                         modelState: selectedSubmission.modelState || [],
                         groupState: selectedSubmission.groupState || null,
                         allowedObjectIds: selectedSubmission.allowedObjectIds || [],
+                        allowedColors: selectedSubmission.allowedColors || [],
                         modelUrl: selectedSubmission.modelUrl || undefined,
                         modelFileType: selectedSubmission.modelFileType || undefined,
                         modelConfigs: selectedSubmission.modelConfigs || [],

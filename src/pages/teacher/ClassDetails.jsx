@@ -29,6 +29,9 @@ import {
   getActivityRubricOptions,
 } from '../../services/rubricApi';
 import './ClassDetails.css';
+import ActivityColorRequirements from '../../components/ActivityColorRequirements';
+import ActivityColorPalettePicker from '../../components/ActivityColorPalettePicker';
+import { sanitizeColorRequirements } from '../../utils/activityColorRequirements';
 
 const MAX_MODEL_QUANTITY = 12;
 
@@ -68,6 +71,8 @@ const ClassDetails = () => {
   const [activityModelIds, setActivityModelIds] = useState([DEFAULT_MODEL_ID]);
   const [activityPuzzlePieces, setActivityPuzzlePieces] = useState(DEFAULT_PUZZLE_PIECES);
   const [activityRubricId, setActivityRubricId] = useState('');
+  const [activityAllowedColors, setActivityAllowedColors] = useState([]);
+  const [activityColorRequirements, setActivityColorRequirements] = useState([]);
   const [editingActivityId, setEditingActivityId] = useState(null);
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -80,6 +85,8 @@ const ClassDetails = () => {
   const [editModelIds, setEditModelIds] = useState([DEFAULT_MODEL_ID]);
   const [editPuzzlePieces, setEditPuzzlePieces] = useState(DEFAULT_PUZZLE_PIECES);
   const [editRubricId, setEditRubricId] = useState('');
+  const [editAllowedColors, setEditAllowedColors] = useState([]);
+  const [editColorRequirements, setEditColorRequirements] = useState([]);
   const [originalEditRubricId, setOriginalEditRubricId] = useState('');
   const [editRubricLocked, setEditRubricLocked] = useState(false);
   const [editRubricHasSubmissions, setEditRubricHasSubmissions] = useState(false);
@@ -159,6 +166,8 @@ const ClassDetails = () => {
     setActivityModelIds([DEFAULT_MODEL_ID]);
     setActivityPuzzlePieces(DEFAULT_PUZZLE_PIECES);
     setActivityRubricId('');
+    setActivityAllowedColors([]);
+    setActivityColorRequirements([]);
   };
 
   const handleAddActivity = async () => {
@@ -171,6 +180,8 @@ const ClassDetails = () => {
           allowedObjectIds: activityAllowedObjects,
           modelIds: activityModelIds,
           puzzlePieces: activityPuzzlePieces,
+          allowedColors: activityAllowedColors,
+          colorRequirements: activityColorRequirements,
         });
         const uploadedThumbnailUrl = await uploadActivityThumbnail({
           imageUrl: activityThumbnailUrl,
@@ -292,6 +303,8 @@ const ClassDetails = () => {
         : [parsedDescription.modelId || DEFAULT_MODEL_ID]
     );
     setEditPuzzlePieces(parsedDescription.puzzlePieces || DEFAULT_PUZZLE_PIECES);
+    setEditAllowedColors(parsedDescription.allowedColors || []);
+    setEditColorRequirements(parsedDescription.colorRequirements || []);
     setEditRubricId('');
     setOriginalEditRubricId('');
     setEditRubricLocked(false);
@@ -330,6 +343,8 @@ const ClassDetails = () => {
     setEditModelIds([DEFAULT_MODEL_ID]);
     setEditPuzzlePieces(DEFAULT_PUZZLE_PIECES);
     setEditRubricId('');
+    setEditAllowedColors([]);
+    setEditColorRequirements([]);
     setOriginalEditRubricId('');
     setEditRubricLocked(false);
     setEditRubricHasSubmissions(false);
@@ -346,6 +361,8 @@ const ClassDetails = () => {
         allowedObjectIds: editAllowedObjects,
         modelIds: editModelIds,
         puzzlePieces: editPuzzlePieces,
+        allowedColors: editAllowedColors,
+        colorRequirements: editColorRequirements,
       });
       const userInfo = JSON.parse(sessionStorage.getItem('userInfo') || '{}');
       const uploadedThumbnailUrl = await uploadActivityThumbnail({
@@ -555,6 +572,22 @@ const ClassDetails = () => {
                     className="form-textarea"
                     rows="4"
                   />
+                  <ActivityColorPalettePicker
+                    value={activityAllowedColors}
+                    onChange={(allowedColors) => {
+                      setActivityAllowedColors(allowedColors);
+                      setActivityColorRequirements((current) => sanitizeColorRequirements(current, allowedColors));
+                    }}
+                  />
+                  <ActivityColorRequirements
+                    instructions={activityInstructions}
+                    allowedObjectIds={activityAllowedObjects}
+                    modelIds={activityModelIds}
+                    modelOptions={modelOptions}
+                    allowedColors={activityAllowedColors}
+                    value={activityColorRequirements}
+                    onChange={setActivityColorRequirements}
+                  />
                   <input
                     type="date"
                     placeholder="Due date"
@@ -757,6 +790,22 @@ const ClassDetails = () => {
                             onChange={(e) => setEditInstructions(e.target.value)}
                             className="form-textarea"
                             rows="4"
+                          />
+                          <ActivityColorPalettePicker
+                            value={editAllowedColors}
+                            onChange={(allowedColors) => {
+                              setEditAllowedColors(allowedColors);
+                              setEditColorRequirements((current) => sanitizeColorRequirements(current, allowedColors));
+                            }}
+                          />
+                          <ActivityColorRequirements
+                            instructions={editInstructions}
+                            allowedObjectIds={editAllowedObjects}
+                            modelIds={editModelIds}
+                            modelOptions={modelOptions}
+                            allowedColors={editAllowedColors}
+                            value={editColorRequirements}
+                            onChange={setEditColorRequirements}
                           />
                           <input
                             type="date"
