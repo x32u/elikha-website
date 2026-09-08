@@ -158,6 +158,16 @@ describe('private-school rubric builder', () => {
       'Completes the puzzle with growing independence',
     ]);
 
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(activityType, 'scene');
+      activityType.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(container.querySelector('.criterion-input').value)
+      .toBe('Selects objects that fit the activity instructions');
+    confirmSpy.mockRestore();
+
     const addButton = Array.from(container.querySelectorAll('button'))
       .find((button) => button.textContent.trim() === '+ Add criterion');
     await act(async () => {

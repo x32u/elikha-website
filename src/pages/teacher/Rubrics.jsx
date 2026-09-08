@@ -117,8 +117,6 @@ export default function Rubrics() {
   const updateLevel = (criterionIndex, levelIndex, description) => setCriteria((items) => items.map((item, itemIndex) => itemIndex === criterionIndex ? { ...item, levels: item.levels.map((level, index) => index === levelIndex ? { ...level, description } : level) } : item));
   const addCriterion = () => setCriteria((items) => [...items, makeCriterion()]);
   const chooseActivityType = (nextType) => {
-    const hasTeacherCriteria = criteria.some((criterion) => String(criterion.name || '').trim());
-    if (hasTeacherCriteria && nextType !== activityType && !window.confirm('Load the suggested criteria for this activity type? This will replace the criteria currently in the builder.')) return;
     setActivityType(nextType);
     setCriteria(buildStarterCriteria(nextType));
   };
