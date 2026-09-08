@@ -19,6 +19,30 @@ const ACTIVITY_TYPE_LABELS = {
   puzzle: 'Puzzle assembly',
 };
 
+const STARTER_CRITERIA = Object.freeze({
+  general: Object.freeze([]),
+  paint: Object.freeze([
+    'Follows the activity’s color instructions',
+    'Applies color carefully to the intended areas',
+    'Completes the requested coloring details',
+  ]),
+  scene: Object.freeze([
+    'Selects objects that fit the activity instructions',
+    'Arranges objects in the requested positions',
+    'Creates a complete and recognizable scene',
+  ]),
+  puzzle: Object.freeze([
+    'Matches each puzzle piece to its correct location',
+    'Positions and connects the puzzle pieces accurately',
+    'Completes the puzzle with growing independence',
+  ]),
+});
+
+const buildStarterCriteria = (activityType) => {
+  const names = STARTER_CRITERIA[activityType] || [];
+  return names.length ? names.map((name) => makeCriterion(name)) : [makeCriterion()];
+};
+
 const copyForPrivateRubric = (criterion = {}) => ({
   name: String(criterion.name || ''),
   levels: makeRubricLevels().map((defaultLevel) => {
@@ -92,6 +116,12 @@ export default function Rubrics() {
   const updateCriterion = (index, patch) => setCriteria((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
   const updateLevel = (criterionIndex, levelIndex, description) => setCriteria((items) => items.map((item, itemIndex) => itemIndex === criterionIndex ? { ...item, levels: item.levels.map((level, index) => index === levelIndex ? { ...level, description } : level) } : item));
   const addCriterion = () => setCriteria((items) => [...items, makeCriterion()]);
+  const chooseActivityType = (nextType) => {
+    const hasTeacherCriteria = criteria.some((criterion) => String(criterion.name || '').trim());
+    if (hasTeacherCriteria && nextType !== activityType && !window.confirm('Load the suggested criteria for this activity type? This will replace the criteria currently in the builder.')) return;
+    setActivityType(nextType);
+    setCriteria(buildStarterCriteria(nextType));
+  };
   const duplicate = (rubric) => {
     setTitle(`${rubric.title} (copy)`);
     const savedType = rubric?.metadata?.activityType;
@@ -134,7 +164,7 @@ export default function Rubrics() {
       const attachment = await assignRubricToActivity(selectedActivityId, result.data.id);
       if (!attachment.success) alert(`Rubric saved, but attachment failed: ${attachment.error}`);
     }
-    setTitle(''); setCriteria([makeCriterion()]); setSelectedActivityId(''); await load();
+    setTitle(''); setCriteria(buildStarterCriteria(activityType)); setSelectedActivityId(''); await load();
   };
   const remove = async (id) => { if (window.confirm('Delete this unused rubric? Rubrics already attached to activities are protected to preserve grading history.')) { const result = await deleteRubric(id); if (!result.success) alert(result.error); else load(); } };
   const attachExisting = async (event) => {
@@ -158,8 +188,8 @@ export default function Rubrics() {
     <header><span className="rubric-mode-badge">Private-school rubric</span><h1>Flexible Rubrics</h1><p>Write the skills that matter for each activity. The saved criteria and level descriptions guide the AI draft and the teacher’s final review.</p></header>
     <section className="rubric-form-card simple-rubric-form"><h2>Create rubric</h2>
       <form onSubmit={save}>
-        <div className="rubric-top-fields"><label>Activity type <small>(optional organizer)</small><select value={activityType} onChange={(event) => setActivityType(event.target.value)}>{Object.entries(ACTIVITY_TYPE_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Rubric name<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Cactus Coloring" /></label></div>
-        <h3>Rubric criteria</h3><p className="rubric-tip">Describe exactly what the teacher should be able to observe in the submitted work. You may keep the suggested level descriptions or tailor them to the skill.</p>
+        <div className="rubric-top-fields"><label>Activity type <small>(loads an editable starter)</small><select value={activityType} onChange={(event) => chooseActivityType(event.target.value)}>{Object.entries(ACTIVITY_TYPE_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Rubric name<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Cactus Coloring" /></label></div>
+        <h3>Rubric criteria</h3><p className="rubric-tip">Choose an activity type to preload suggested criteria, then edit, remove, or add anything you need. The suggestions never use fixed curriculum codes.</p>
         <div className="rubric-table-wrap"><table className="rubric-level-table"><thead><tr>
           <th scope="col">Observable skill / criterion</th>
           {RUBRIC_RATINGS.map((rating) => <th scope="col" key={rating.code}><span>{rating.label}</span><small>{rating.defaultDescription}</small></th>)}

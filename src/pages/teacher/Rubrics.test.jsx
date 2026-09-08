@@ -139,10 +139,24 @@ describe('private-school rubric builder', () => {
     expect(headers[3]).toContain('Consistent');
   });
 
-  it('adds free-form rows without tying them to the activity organizer', async () => {
+  it('preloads editable criteria for the selected activity type', async () => {
     await act(async () => {
       root.render(<MemoryRouter><Rubrics /></MemoryRouter>);
     });
+
+    const activityType = container.querySelector('.rubric-top-fields select');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(activityType, 'puzzle');
+      activityType.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    const starterCriteria = Array.from(container.querySelectorAll('.criterion-input'));
+    expect(starterCriteria).toHaveLength(3);
+    expect(starterCriteria.map((field) => field.value)).toEqual([
+      'Matches each puzzle piece to its correct location',
+      'Positions and connects the puzzle pieces accurately',
+      'Completes the puzzle with growing independence',
+    ]);
 
     const addButton = Array.from(container.querySelectorAll('button'))
       .find((button) => button.textContent.trim() === '+ Add criterion');
@@ -150,8 +164,8 @@ describe('private-school rubric builder', () => {
       addButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
-    expect(container.querySelectorAll('.criterion-input')).toHaveLength(2);
-    expect(container.querySelectorAll('.rubric-level-table tbody textarea')).toHaveLength(8);
+    expect(container.querySelectorAll('.criterion-input')).toHaveLength(4);
+    expect(container.querySelectorAll('.rubric-level-table tbody textarea')).toHaveLength(16);
   });
 
   it('saves only free-form text and the compatible three-level contract', async () => {
