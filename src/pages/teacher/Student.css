@@ -3,17 +3,20 @@
   width: 100%;
   min-height: 100vh;
   background-color: #f7fafc;
+  padding-left: 120px;
+  box-sizing: border-box;
 }
 
 .student-page {
-  max-width: 1200px;
+  width: min(100%, 1440px);
+  max-width: none;
   margin: 0 auto;
-  padding: 32px 24px;
-  padding-top: 24px;
+  padding: 32px clamp(20px, 3vw, 40px) 72px;
+  box-sizing: border-box;
 }
 
 /* ===== Students List View ===== */
-.students-header { margin-bottom:32px; display:flex; justify-content:space-between; align-items:flex-end; gap:16px; }
+.students-header { margin-bottom:24px; display:flex; justify-content:space-between; align-items:center; gap:16px; }
 .section-export{position:relative}.export-grades-btn{border:1px solid #5267df;border-radius:8px;background:#5267df;color:#fff;padding:10px 14px;font:600 14px 'Lexend',sans-serif;cursor:pointer}.export-grades-btn span{margin-left:6px}.section-export-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:5;display:grid;min-width:165px;overflow:hidden;border:1px solid #d5dcf2;border-radius:8px;background:#fff;box-shadow:0 10px 24px rgba(30,49,96,.16)}.section-export-menu button{border:0;background:#fff;color:#243b75;padding:10px 14px;text-align:left;font:600 13px 'Lexend',sans-serif;cursor:pointer}.section-export-menu button:hover{background:#eef0ff}.export-grades-btn:disabled,.section-export-menu button:disabled{opacity:.6;cursor:not-allowed}@media(max-width:600px){.students-header{align-items:flex-start;flex-direction:column}}
 
 .students-title {
@@ -187,8 +190,8 @@
 /* ===== Students Grid ===== */
 .students-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 20px;
 }
 
 .student-card {
@@ -198,7 +201,7 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   border: 1px solid #e8edf2;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -698,6 +701,7 @@
 
 /* ===== Responsive Design ===== */
 @media (max-width: 768px) {
+  .student-page-container { padding-left: 0; }
   .student-page {
     padding: 20px 16px;
     padding-top: 100px;
@@ -772,6 +776,11 @@
   }
 }
 
+.student-card:focus-visible {
+  outline: 3px solid rgba(49, 86, 224, 0.28);
+  outline-offset: 3px;
+}
+
 /* Student search/filter layout */
 .student-search-container { min-width: 0; margin-bottom: 14px; }
 .student-search-input-wrapper { position: relative; display: flex; align-items: center; min-height: 44px; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; }
@@ -783,8 +792,15 @@
 .student-clear-search-btn { display: grid; flex: 0 0 auto; width: 32px; height: 32px; margin-right: 6px; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #667085; cursor: pointer; font-size: 0; }
 .student-clear-search-btn:hover { background: #eef0ff; color: #3148c8; }
 .student-clear-search-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
-.student-filters-container { display: grid; grid-template-columns: repeat(3, minmax(160px, 220px)); justify-content: start; gap: 14px; margin-bottom: 28px; }
+.student-filters-container { display: grid; grid-template-columns: repeat(3, minmax(180px, 240px)) auto; align-items: end; justify-content: start; gap: 14px; margin-bottom: 28px; }
 .student-filters-container .filter-group { min-width: 0; }
+
+.student-search-input-wrapper,
+.student-filters-container .filter-select { min-height: 46px; }
+
+@supports (content-visibility: auto) {
+  .student-card { content-visibility: auto; contain-intrinsic-size: 430px; }
+}
 
 @media (max-width: 850px) {
   .student-filters-container { grid-template-columns: repeat(2, minmax(160px, 1fr)); }

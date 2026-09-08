@@ -2,6 +2,17 @@ import { buildStudentInsights } from './studentInsights';
 import { encodeArSubmissionDescription } from './arSubmission';
 
 describe('student insights', () => {
+  it('keeps a resolved profile name when an outcome only has the generic fallback', () => {
+    const cards = buildStudentInsights({
+      studentUsers: [{ id: 's1', name: 'jcxxme', email: 'jcxxme@gmail.com' }],
+      outcomes: [{ studentId: 's1', studentName: 'Student', activityId: 'a1', activityTitle: 'Color Practice' }],
+    });
+
+    expect(cards[0].rankings).toEqual([
+      expect.objectContaining({ student_name: 'jcxxme' }),
+    ]);
+  });
+
   it('uses telemetry and confirmed rubric evidence for category highlights', () => {
     const description = encodeArSubmissionDescription([], 'Submitted', [], [], [], null, {
       activeDurationSeconds: 120,
@@ -50,11 +61,15 @@ describe('student insights', () => {
       ],
       outcomes: [
         { studentId: 's1', studentName: 'Nico', activityId: 'a1', activityTitle: 'Activity 1' },
+        { studentId: 's1', studentName: 'Nico', activityId: 'a2', activityTitle: 'Activity 2' },
         { studentId: 's2', studentName: 'Sophia', activityId: 'a1', activityTitle: 'Activity 1' },
+        { studentId: 's2', studentName: 'Sophia', activityId: 'a2', activityTitle: 'Activity 2' },
       ],
       submissions: [
         { student_id: 's1', activity_id: 'a1', status: 'reviewed', score: 5, reviewed_at: '2026-09-01' },
+        { student_id: 's1', activity_id: 'a2', status: 'reviewed', score: 5, reviewed_at: '2026-09-02' },
         { student_id: 's2', activity_id: 'a1', status: 'reviewed', score: 3, reviewed_at: '2026-09-01' },
+        { student_id: 's2', activity_id: 'a2', status: 'reviewed', score: 3, reviewed_at: '2026-09-02' },
       ],
     });
 
@@ -66,5 +81,31 @@ describe('student insights', () => {
       expect.objectContaining({ rank: null, student_name: 'Alex', value: 'Not enough data', qualified: false }),
     ]);
     expect(cards).toHaveLength(6);
+  });
+
+  it('requires two distinct activities before ranking overall performance', () => {
+    const cards = buildStudentInsights({
+      studentUsers: [
+        { id: 's1', name: 'Nico' },
+        { id: 's2', name: 'Sophia' },
+      ],
+      outcomes: [
+        { studentId: 's1', studentName: 'Nico', activityId: 'a1', activityTitle: 'Activity 1' },
+        { studentId: 's1', studentName: 'Nico', activityId: 'a2', activityTitle: 'Activity 2' },
+        { studentId: 's2', studentName: 'Sophia', activityId: 'a1', activityTitle: 'Activity 1' },
+      ],
+      submissions: [
+        { student_id: 's1', activity_id: 'a1', status: 'reviewed', score: 2, reviewed_at: '2026-09-01' },
+        { student_id: 's1', activity_id: 'a2', status: 'reviewed', score: 2, reviewed_at: '2026-09-02' },
+        { student_id: 's2', activity_id: 'a1', status: 'reviewed', score: 5, reviewed_at: '2026-09-01' },
+      ],
+    });
+
+    const overall = cards.find((item) => item.key === 'overall');
+    expect(overall).toMatchObject({ student_name: 'Nico', value: '40%', evidence: 2 });
+    expect(overall.rankings).toEqual([
+      expect.objectContaining({ rank: 1, student_name: 'Nico', value: '40%', evidence: 2, qualified: true }),
+      expect.objectContaining({ rank: null, student_name: 'Sophia', value: 'Not enough data', qualified: false }),
+    ]);
   });
 });

@@ -569,7 +569,7 @@ const Student = () => {
 
         {loading ? (
           <div style={{ padding: '40px', textAlign: 'center', color: '#6B5A4D' }}>
-            Loading students...
+            Loading students…
           </div>
         ) : (
           <>
@@ -584,7 +584,11 @@ const Student = () => {
               </svg>
               <input
                 type="text"
-                placeholder="Search by name or student ID..."
+                id="student-search"
+                name="studentSearch"
+                autoComplete="off"
+                aria-label="Search students"
+                placeholder="Search by name or student ID…"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="student-search-input"
@@ -607,8 +611,10 @@ const Student = () => {
           <div className="student-filters-container">
             {/* Grade Filter */}
             <div className="filter-group">
-              <label className="filter-label">Grade:</label>
+              <label className="filter-label" htmlFor="student-grade-filter">Grade</label>
               <select
+                id="student-grade-filter"
+                name="studentGradeFilter"
                 value={selectedGrade}
                 onChange={(e) => setSelectedGrade(e.target.value)}
                 className="filter-select"
@@ -623,8 +629,10 @@ const Student = () => {
 
             {/* Section Filter */}
             <div className="filter-group">
-              <label className="filter-label">Section:</label>
+              <label className="filter-label" htmlFor="student-section-filter">Section</label>
               <select
+                id="student-section-filter"
+                name="studentSectionFilter"
                 value={selectedSection}
                 onChange={(e) => setSelectedSection(e.target.value)}
                 className="filter-select"
@@ -639,8 +647,10 @@ const Student = () => {
 
             {/* Sort By */}
             <div className="filter-group">
-              <label className="filter-label">Sort by:</label>
+              <label className="filter-label" htmlFor="student-sort">Sort by</label>
               <select
+                id="student-sort"
+                name="studentSort"
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
                 className="filter-select"
@@ -655,6 +665,7 @@ const Student = () => {
             {/* Reset Filters */}
             {(searchTerm || selectedGrade !== 'all' || selectedSection !== 'all' || sortBy !== 'name') && (
               <button
+                type="button"
                 className="reset-filters-btn"
                 onClick={() => {
                   setSearchTerm('');
@@ -680,13 +691,21 @@ const Student = () => {
                 key={student.id}
                 className="student-card"
                 onClick={() => setSelectedStudent(student)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setSelectedStudent(student);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                aria-label={`View ${student.name}`}
               >
                 <div className="student-card-avatar">{student.avatar}</div>
                 <div className="student-card-header">
                   <h3 className="student-card-name">{student.name}</h3>
                   <p className="student-card-grade">{student.grade}</p>
                   <p className="student-card-section">Section {student.section}</p>
-                  <p className="student-card-id">{student.id}</p>
                 </div>
                 <div className="student-card-stats">
                   <div className="card-stat">
@@ -708,7 +727,7 @@ const Student = () => {
                     </div>
                   )}
                 </div>
-                <button className="view-btn">View Details →</button>
+                <span className="view-btn" aria-hidden="true">View Details <span>→</span></span>
               </div>
             ))
           )}

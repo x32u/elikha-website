@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import Navbar from '../../components/Navbar';
 import { fetchTeacherAnalytics } from '../../services/teacherAnalyticsApi';
 import {
@@ -48,6 +49,28 @@ const asNumber = (value, fallback = 0) => {
 
 const formatCount = (value) => Math.max(0, asNumber(value)).toLocaleString('en-PH');
 
+const insightEvidenceNoun = (insight, count = asNumber(insight?.evidence)) => {
+  const labels = {
+    fastest: ['qualified finish', 'qualified finishes'],
+    coloring: ['coloring activity', 'coloring activities'],
+    puzzle: ['puzzle activity', 'puzzle activities'],
+    consistent: ['reviewed activity', 'reviewed activities'],
+    improved: ['reviewed activity', 'reviewed activities'],
+    overall: ['performance activity', 'performance activities'],
+  };
+  const nouns = labels[insight?.key] || ['activity record', 'activity records'];
+  return nouns[count === 1 ? 0 : 1];
+};
+
+const insightEvidenceLabel = (insight) => {
+  const count = Math.max(0, asNumber(insight?.evidence));
+  return `${formatCount(count)} ${insightEvidenceNoun(insight, count)}`;
+};
+
+const insightExplanationLabel = (insight) => (
+  insight?.explanation_source === 'ai' ? 'AI explanation' : 'Calculated explanation'
+);
+
 const formatRate = (value) => {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return 'N/A';
   return `${Number(value).toLocaleString('en-PH', { maximumFractionDigits: 1 })}%`;
@@ -57,6 +80,65 @@ const formatScore = (value) => {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return 'Not rated';
   return `${Number(value).toLocaleString('en-PH', { minimumFractionDigits: 1, maximumFractionDigits: 2 })}/5`;
 };
+
+const ReportMetricIcon = ({ name }) => {
+  const paths = {
+    students: (
+      <>
+        <circle cx="9" cy="8" r="3" />
+        <path d="M3.5 18c.7-3 2.5-4.6 5.5-4.6s4.8 1.6 5.5 4.6M15 6.5a2.5 2.5 0 0 1 0 5M16 13.5c2.4.4 3.8 1.9 4.3 4.5" />
+      </>
+    ),
+    activities: (
+      <>
+        <rect x="5" y="4" width="14" height="16" rx="2" />
+        <path d="M9 4.5V3h6v1.5M9 9h6M9 13h6M9 17h4" />
+      </>
+    ),
+    completion: (
+      <>
+        <circle cx="12" cy="12" r="8" />
+        <path d="m8.5 12 2.2 2.2 4.8-5" />
+      </>
+    ),
+    review: (
+      <>
+        <circle cx="12" cy="12" r="8" />
+        <path d="M12 7.5V12l3 2" />
+      </>
+    ),
+    missing: (
+      <>
+        <path d="M12 3.5 21 20H3L12 3.5Z" />
+        <path d="M12 9v5M12 17.3v.2" />
+      </>
+    ),
+    rating: (
+      <path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z" />
+    ),
+  };
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <g fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        {paths[name] || paths.activities}
+      </g>
+    </svg>
+  );
+};
+
+const ReportMetricCard = ({ label, value, detail, icon, tone = 'neutral' }) => (
+  <article className="teacher-reports-kpi" data-tone={tone}>
+    <div className="teacher-reports-kpi-heading">
+      <span className="teacher-reports-kpi-icon">
+        <ReportMetricIcon name={icon} />
+      </span>
+      <span>{label}</span>
+    </div>
+    <strong>{value}</strong>
+    <small>{detail}</small>
+  </article>
+);
 
 const formatDate = (value) => {
   if (!value) return 'No due date';
@@ -119,25 +201,62 @@ const InsightRing = ({ insight }) => {
 };
 
 const InsightLeaderboardModal = ({ insight, onClose }) => {
+  const reduceMotion = useReducedMotion();
   if (!insight) return null;
   const rankings = Array.isArray(insight.rankings) ? insight.rankings : [];
   const qualifyingCount = rankings.filter((item) => item.qualified).length;
   return (
-    <div className="teacher-insight-modal" role="presentation" onMouseDown={(event) => {
+    <motion.div
+      className="teacher-insight-modal"
+      role="presentation"
+      initial={reduceMotion ? false : { opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={reduceMotion ? undefined : { opacity: 0 }}
+      transition={{ duration: 0.16 }}
+      onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}>
-      <section className="teacher-insight-dialog" role="dialog" aria-modal="true" aria-labelledby="teacher-insight-dialog-title">
+      <motion.section
+        className="teacher-insight-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="teacher-insight-dialog-title"
+        initial={reduceMotion ? false : { opacity: 0, y: 14, scale: 0.985 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={reduceMotion ? undefined : { opacity: 0, y: 8, scale: 0.99 }}
+        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+      >
         <header>
           <div>
             <span>Complete class ranking</span>
             <h2 id="teacher-insight-dialog-title">{insight.title}</h2>
-            <p>{insight.ai_explanation || insight.detail}</p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close student ranking">×</button>
         </header>
         <div className="teacher-insight-dialog__summary">
-          <strong>{formatCount(rankings.length)} students</strong>
-          <span>{formatCount(qualifyingCount)} with enough evidence to rank</span>
+          <div>
+            <span>Leader</span>
+            <strong>{insight.student_name || 'Not enough data yet'}</strong>
+          </div>
+          <div>
+            <span>Result</span>
+            <strong>{insight.value || '—'}</strong>
+          </div>
+          <div>
+            <span>Ranked students</span>
+            <strong>{formatCount(qualifyingCount)} of {formatCount(rankings.length)}</strong>
+          </div>
+        </div>
+        <div className="teacher-insight-dialog__explanation">
+          <div>
+            <strong>Why this result</strong>
+            <small>
+              {insight.explanation_source === 'ai'
+                ? 'AI-generated from activity data'
+                : 'Calculated from activity data'}
+            </small>
+          </div>
+          <p>{insight.ai_explanation || insight.detail}</p>
         </div>
         <div className="teacher-insight-leaderboard" role="region" aria-label={`${insight.title} student ranking`} tabIndex={0}>
           <table>
@@ -150,28 +269,20 @@ const InsightLeaderboardModal = ({ insight, onClose }) => {
               ) : rankings.map((item) => (
                 <tr className={item.qualified ? '' : 'is-unranked'} key={item.student_id}>
                   <td>{item.rank ? `#${item.rank}` : '—'}</td>
-                  <th scope="row">{item.student_name || 'Student'}</th>
+                  <th scope="row">
+                    <span>{item.student_name || 'Student'}</span>
+                    {item.student_email && <small>{item.student_email}</small>}
+                  </th>
                   <td>{item.value}</td>
-                  <td>{item.qualified ? `${formatCount(item.evidence)} record${asNumber(item.evidence) === 1 ? '' : 's'}` : 'Awaiting evidence'}</td>
+                  <td>{item.qualified ? `${formatCount(item.evidence)} ${insightEvidenceNoun(insight, asNumber(item.evidence))}` : 'Awaiting activity evidence'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        {Array.isArray(insight.evidenceItems) && insight.evidenceItems.length > 0 && (
-          <div className="teacher-insight-dialog__evidence">
-            <strong>Top learner evidence</strong>
-            {insight.evidenceItems.map((item) => (
-              <p key={`${item.label}-${item.activity}-${item.date}`}>
-                <b>{item.label}:</b> {item.activity} · {Number(item.stars).toFixed(1)}/5 stars · {item.source} · {formatDate(item.date)}
-              </p>
-            ))}
-            <p><b>Calculation:</b> {insight.calculation}</p>
-          </div>
-        )}
         <footer><button type="button" onClick={onClose}>Done</button></footer>
-      </section>
-    </div>
+      </motion.section>
+    </motion.div>
   );
 };
 
@@ -204,6 +315,7 @@ const downloadCsv = (csv, fileName) => {
 
 const Reports = () => {
   const requestSequence = useRef(0);
+  const reduceMotion = useReducedMotion();
   const userInfo = useMemo(() => {
     try {
       return JSON.parse(sessionStorage.getItem('userInfo') || '{}');
@@ -325,6 +437,7 @@ const Reports = () => {
       duplicateSubmissions: 'duplicate submissions resolved',
       orphanSubmissions: 'submissions without assignments excluded',
       assignmentsMissingActivity: 'assignments with missing activities excluded',
+      excludedUnenrolledStudents: 'unenrolled student accounts excluded',
     };
     return Object.entries(labels)
       .map(([key, label]) => ({ key, label, value: Math.max(0, asNumber(report.dataQuality[key])) }))
@@ -491,37 +604,47 @@ const Reports = () => {
 
         {!loading && report && (
           <>
-            {activeSection === 'overview' && <><section className="teacher-reports-kpis" aria-label="Report summary">
-              <article className="teacher-reports-kpi">
-                <span>Students</span>
-                <strong>{formatCount(summary.totalStudents)}</strong>
-                <small>In the selected class scope</small>
-              </article>
-              <article className="teacher-reports-kpi">
-                <span>Activities</span>
-                <strong>{formatCount(summary.totalActivities)}</strong>
-                <small>{formatCount(summary.assigned)} assignments</small>
-              </article>
-              <article className="teacher-reports-kpi teacher-reports-kpi--blue">
-                <span>Completion rate</span>
-                <strong>{formatRate(summary.completionRate)}</strong>
-                <small>{formatCount(summary.submitted)} of {formatCount(summary.assigned)} submitted</small>
-              </article>
-              <article className="teacher-reports-kpi teacher-reports-kpi--purple">
-                <span>Pending review</span>
-                <strong>{formatCount(summary.pendingReview)}</strong>
-                <small>{formatRate(summary.reviewRate)} of submissions reviewed</small>
-              </article>
-              <article className="teacher-reports-kpi teacher-reports-kpi--red">
-                <span>Missing work</span>
-                <strong>{formatCount(summary.missing)}</strong>
-                <small>{formatCount(summary.lateSubmissions)} late submissions</small>
-              </article>
-              <article className="teacher-reports-kpi teacher-reports-kpi--green">
-                <span>Average rating</span>
-                <strong>{formatScore(summary.averageScore)}</strong>
-                <small>{formatRate(summary.onTimeRate)} submitted on time</small>
-              </article>
+            {activeSection === 'overview' && <><section className="teacher-reports-kpis" aria-label="Class pulse summary">
+              <ReportMetricCard
+                label="Students"
+                value={formatCount(summary.totalStudents)}
+                detail="In the selected class scope"
+                icon="students"
+              />
+              <ReportMetricCard
+                label="Activities"
+                value={formatCount(summary.totalActivities)}
+                detail={`${formatCount(summary.assigned)} assignments`}
+                icon="activities"
+              />
+              <ReportMetricCard
+                label="Completion rate"
+                value={formatRate(summary.completionRate)}
+                detail={`${formatCount(summary.submitted)} of ${formatCount(summary.assigned)} submitted`}
+                icon="completion"
+                tone="blue"
+              />
+              <ReportMetricCard
+                label="Pending review"
+                value={formatCount(summary.pendingReview)}
+                detail={`${formatRate(summary.reviewRate)} of submissions reviewed`}
+                icon="review"
+                tone="purple"
+              />
+              <ReportMetricCard
+                label="Missing work"
+                value={formatCount(summary.missing)}
+                detail={`${formatCount(summary.lateSubmissions)} late submissions`}
+                icon="missing"
+                tone="red"
+              />
+              <ReportMetricCard
+                label="Average rating"
+                value={formatScore(summary.averageScore)}
+                detail={`${formatRate(summary.onTimeRate)} submitted on time`}
+                icon="rating"
+                tone="green"
+              />
             </section>
 
             <section className="teacher-reports-overview">
@@ -605,34 +728,57 @@ const Reports = () => {
                 <div className="teacher-reports-section-heading">
                   <div>
                     <h2 id="teacher-reports-insights-title">Student insights</h2>
-                    <p>Evidence-based highlights. AI can structure instructions, while rankings use saved AR events and teacher-confirmed results.</p>
+                    <p>Highlights calculated from completed activities and teacher-confirmed results, with an AI explanation when available.</p>
                   </div>
                 </div>
-                <div className="teacher-reports-insight-grid">
-                  {report.studentInsights.map((insight) => (
-                    <button
-                      type="button"
-                      className={`teacher-reports-insight-card teacher-reports-insight-card--${insight.key}`}
-                      key={insight.key}
-                      onClick={() => setSelectedInsight(insight)}
-                      aria-label={`View the complete ${insight.title} student ranking`}
-                    >
-                      <div className="teacher-reports-insight-card__visual">
-                        <InsightRing insight={insight} />
-                      </div>
-                      <div className="teacher-reports-insight-card__body">
-                        <span>{insight.title}</span>
-                        {insight.student_id ? <h3>{insight.student_name}</h3> : <h3>Not enough data yet</h3>}
-                        <em className={`teacher-reports-insight-source is-${insight.explanation_source || 'evidence'}`}>
-                          {insight.explanation_source === 'ai' ? 'Groq AI explanation' : 'Evidence explanation'}
-                        </em>
-                        <p>{insight.ai_explanation || insight.detail}</p>
-                        <small>{formatCount(insight.evidence)} qualifying {insight.key === 'improved' ? 'reviewed activities' : `record${asNumber(insight.evidence) === 1 ? '' : 's'}`}</small>
-                        <b className="teacher-reports-insight-card__action">View all students →</b>
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                <motion.div
+                  className="teacher-reports-insight-grid"
+                  initial={reduceMotion ? false : 'hidden'}
+                  animate="visible"
+                  variants={{
+                    hidden: {},
+                    visible: { transition: { staggerChildren: 0.045 } },
+                  }}
+                >
+                  {report.studentInsights.map((insight) => {
+                    const explanation = insight.ai_explanation || insight.detail;
+                    return (
+                      <motion.button
+                        type="button"
+                        className={`teacher-reports-insight-card teacher-reports-insight-card--${insight.key}`}
+                        key={insight.key}
+                        onClick={() => setSelectedInsight(insight)}
+                        aria-label={`View the complete ${insight.title} student ranking`}
+                        variants={{
+                          hidden: { opacity: 0, y: 10 },
+                          visible: { opacity: 1, y: 0 },
+                        }}
+                        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                        whileHover={reduceMotion ? undefined : { y: -3 }}
+                        whileTap={reduceMotion ? undefined : { scale: 0.992 }}
+                      >
+                        <div className="teacher-reports-insight-card__visual">
+                          <InsightRing insight={insight} />
+                        </div>
+                        <div className="teacher-reports-insight-card__body">
+                          <span>{insight.title}</span>
+                          {insight.student_id ? <h3>{insight.student_name}</h3> : <h3>Not enough data yet</h3>}
+                          <em className={`teacher-reports-insight-source is-${insight.explanation_source || 'evidence'}`}>
+                            {insightExplanationLabel(insight)}
+                          </em>
+                          <div className="teacher-reports-insight-explanation">
+                            <strong>Why this result</strong>
+                            <p title={explanation}>{explanation}</p>
+                          </div>
+                          <div className="teacher-reports-insight-card__footer">
+                            <small>{insightEvidenceLabel(insight)}</small>
+                            <b className="teacher-reports-insight-card__action">View ranking</b>
+                          </div>
+                        </div>
+                      </motion.button>
+                    );
+                  })}
+                </motion.div>
                 <aside className="teacher-reports-quality">
                   <strong>Fair-use safeguard</strong>
                   <p>Insights are category-specific, show their evidence count, and never replace the teacher’s final assessment.</p>
@@ -748,7 +894,11 @@ const Reports = () => {
           </>
         )}
       </main>
-      <InsightLeaderboardModal insight={selectedInsight} onClose={() => setSelectedInsight(null)} />
+      <AnimatePresence>
+        {selectedInsight && (
+          <InsightLeaderboardModal insight={selectedInsight} onClose={() => setSelectedInsight(null)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

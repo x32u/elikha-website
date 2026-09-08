@@ -8,7 +8,10 @@ const formatDateTime = (value) => {
   if (!value) return 'N/A';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'N/A';
-  return date.toLocaleString();
+  return new Intl.DateTimeFormat('en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date);
 };
 
 const formatGestureType = (value) => {
@@ -155,12 +158,12 @@ const GestureAlerts = () => {
       <main className="gesture-alerts-content">
         <header className="gesture-alerts-header">
           <div>
-            <p className="gesture-alerts-eyebrow">Classroom monitoring</p>
             <h1>Behavior Alerts</h1>
             <p>Review activity-lock and AR gesture reports from student sessions.</p>
           </div>
           <div className="gesture-alerts-count" aria-label={`${alerts.length} total alerts`}>
-            <strong>{alerts.length}</strong>
+            <span className="gesture-alerts-count-dot" aria-hidden="true" />
+            <strong>{new Intl.NumberFormat('en-US').format(alerts.length)}</strong>
             <span>Total alerts</span>
           </div>
         </header>
@@ -171,15 +174,17 @@ const GestureAlerts = () => {
               <span>Search</span>
               <input
                 type="text"
+                name="alertSearch"
+                autoComplete="off"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Student, email, class, activity..."
+                placeholder="Student, email, class, activity…"
               />
             </label>
 
             <label>
               <span>Class</span>
-              <select value={classFilter} onChange={(event) => setClassFilter(event.target.value)}>
+              <select name="alertClass" value={classFilter} onChange={(event) => setClassFilter(event.target.value)}>
                 {uniqueClasses.map((className) => (
                   <option key={className} value={className}>
                     {className === 'all' ? 'All classes' : className}
@@ -190,7 +195,7 @@ const GestureAlerts = () => {
 
             <label>
               <span>Activity</span>
-              <select value={activityFilter} onChange={(event) => setActivityFilter(event.target.value)}>
+              <select name="alertActivity" value={activityFilter} onChange={(event) => setActivityFilter(event.target.value)}>
                 {uniqueActivities.map((activityTitle) => (
                   <option key={activityTitle} value={activityTitle}>
                     {activityTitle === 'all' ? 'All activities' : activityTitle}
@@ -201,7 +206,7 @@ const GestureAlerts = () => {
 
             <label>
               <span>Sort</span>
-              <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+              <select name="alertSort" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
                 <option value="newest">Newest first</option>
                 <option value="oldest">Oldest first</option>
                 <option value="student">Student A-Z</option>
@@ -216,7 +221,7 @@ const GestureAlerts = () => {
           </section>
         )}
 
-        {loading && <div className="gesture-alerts-empty">Loading alerts...</div>}
+        {loading && <div className="gesture-alerts-empty">Loading alerts…</div>}
 
         {!loading && error && (
           <div className="gesture-alerts-error">

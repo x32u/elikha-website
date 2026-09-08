@@ -205,7 +205,7 @@ function App() {
           path="/notifications" 
           element={
             <ProtectedRoute>
-              <RoleProtectedRoute allowedRoles={['student', 'teacher', 'parent']}>
+              <RoleProtectedRoute allowedRoles={['student', 'teacher', 'parent', 'admin', 'superadmin']}>
                 <Notifications />
               </RoleProtectedRoute>
             </ProtectedRoute>

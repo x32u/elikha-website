@@ -230,6 +230,51 @@
   color: #ffffff;
 }
 
+/* The desktop bell shares the real page-header row instead of creating an
+   empty strip above every teacher screen. */
+@media (min-width: 769px) {
+  body:has(.teacher-nav) :is(
+    .page-header,
+    .classes-header,
+    .rubrics-content > header,
+    .students-header,
+    .reviews-header,
+    .gesture-alerts-header,
+    .class-details-header,
+    .teacher-reports-header,
+    .m3d-header,
+    .activities-header,
+    .activity-details-header,
+    .settings-page-header,
+    .notifications-header
+  ) {
+    padding-right: 72px;
+    box-sizing: border-box;
+  }
+}
+
+/* Mobile keeps a small top-app-bar lane for the fixed bell. */
+@media (max-width: 768px) {
+  body:has(.teacher-nav) .teacher-homepage > .page-shell,
+  body:has(.teacher-nav) .teacher-classes > .classes-shell,
+  body:has(.teacher-nav) .teacher-page > .teacher-content,
+  body:has(.teacher-nav) .rubrics-page > .rubrics-content,
+  body:has(.teacher-nav) .student-page-container > .student-page,
+  body:has(.teacher-nav) .gesture-alerts-page > .gesture-alerts-content,
+  body:has(.teacher-nav) .teacher-class-details > .class-details-shell,
+  body:has(.teacher-nav) .page-container > .page-content,
+  body:has(.teacher-nav) .teacher-reports-page > .teacher-reports-content,
+  body:has(.teacher-nav) .teacher-models-page > .teacher-models-main,
+  body:has(.teacher-nav) .activities-page-container > .activities-page,
+  body:has(.teacher-nav) .activity-details-container > .activity-details-page,
+  body:has(.teacher-nav) .settings-page-container > .settings-page,
+  body:has(.teacher-nav) .notifications-layout > .notifications-main {
+    margin-top: 0;
+    border-top: 52px solid transparent;
+    box-sizing: border-box;
+  }
+}
+
 @media (max-width: 768px) {
   .navbar {
     left: 0;

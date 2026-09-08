@@ -58,7 +58,7 @@ const ModelPageShell = ({ role, onNavigate, homePageKey, isSuperAdmin, children 
     <AdminShell
       active="models"
       onNavigate={onNavigate}
-      className="page-models"
+      className={`page-models ${isSuperAdmin ? 'page-superadmin page-superadmin-models' : 'page-admin page-admin-models'}`}
       homePageKey={homePageKey}
       showAudit={isSuperAdmin}
       auditPageKey="audit"
@@ -156,7 +156,7 @@ function AdminModels({ onNavigate, role }) {
 
     const maxBytes = 50 * 1024 * 1024;
     if (file.size > maxBytes) {
-      return { valid: false, error: 'File is too large. Maximum supported size is 50MB.' };
+      return { valid: false, error: 'File is too large. Maximum supported size is 50 MB.' };
     }
 
     return { valid: true, extension };
@@ -360,7 +360,9 @@ function AdminModels({ onNavigate, role }) {
           <input
             className="m3d-search-input"
             type="text"
-            placeholder="Search 3D Models"
+            name="modelSearch"
+            autoComplete="off"
+            placeholder="Search 3D models…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -376,7 +378,9 @@ function AdminModels({ onNavigate, role }) {
           <input
             className="m3d-input"
             type="text"
-            placeholder="Try: mask, bottle, fruit, animal..."
+            name="externalModelSearch"
+            autoComplete="off"
+            placeholder="Try mask, bottle, fruit, or animal…"
             value={apiQuery}
             onChange={(event) => setApiQuery(event.target.value)}
             onKeyDown={(event) => {
@@ -387,7 +391,7 @@ function AdminModels({ onNavigate, role }) {
             }}
           />
           <button className="m3d-btn primary" type="button" onClick={runApiSearch} disabled={apiLoading}>
-            {apiLoading ? 'Searching...' : 'Search'}
+            {apiLoading ? 'Searching…' : 'Search'}
           </button>
         </div>
         {apiError ? <div className="m3d-danger-note">{apiError}</div> : null}
@@ -396,7 +400,7 @@ function AdminModels({ onNavigate, role }) {
             {apiResults.map((entry) => (
               <article className="m3d-source-card" key={entry.id}>
                 <div className="m3d-source-thumb">
-                  {entry.thumbnailUrl ? <img src={entry.thumbnailUrl} alt={entry.name} loading="lazy" /> : <span>No preview</span>}
+                  {entry.thumbnailUrl ? <img src={entry.thumbnailUrl} alt={entry.name} loading="lazy" width="86" height="64" /> : <span>No preview</span>}
                 </div>
                 <div className="m3d-source-body">
                   <div className="m3d-source-name">{entry.name}</div>
@@ -523,7 +527,7 @@ function AdminModels({ onNavigate, role }) {
                 <div className={`m3d-file-meta ${draft.file ? '' : 'muted'}`}>
                   {draft.file ? draft.file.name : 'No file selected'}
                 </div>
-                <div className="m3d-file-meta muted">Max file size: 50MB</div>
+                <div className="m3d-file-meta muted">Max file size: 50 MB</div>
                 <div className="m3d-file-meta muted">Blender files are stored as source files and must be converted to .glb before use in AR.</div>
               </label>
             </div>
@@ -533,7 +537,7 @@ function AdminModels({ onNavigate, role }) {
                 Cancel
               </button>
               <button className="m3d-btn primary" type="button" onClick={saveAdd} disabled={busy}>
-                {busy ? 'Saving...' : 'Add Model'}
+                {busy ? 'Saving…' : 'Add Model'}
               </button>
             </div>
           </div>
@@ -583,7 +587,7 @@ function AdminModels({ onNavigate, role }) {
                 <div className={`m3d-file-meta ${draft.file ? '' : 'muted'}`}>
                   {draft.file ? `New: ${draft.file.name}` : 'No replacement selected'}
                 </div>
-                <div className="m3d-file-meta muted">Max file size: 50MB</div>
+                <div className="m3d-file-meta muted">Max file size: 50 MB</div>
               </label>
             </div>
 
@@ -592,7 +596,7 @@ function AdminModels({ onNavigate, role }) {
                 Cancel
               </button>
               <button className="m3d-btn primary" type="button" onClick={saveEdit} disabled={busy}>
-                {busy ? 'Saving...' : 'Save'}
+                {busy ? 'Saving…' : 'Save'}
               </button>
             </div>
           </div>

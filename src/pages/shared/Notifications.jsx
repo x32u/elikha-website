@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
+import AdminShell from '../admin/components/AdminShell';
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   getNotificationPreferences,
@@ -180,6 +181,8 @@ const Notifications = () => {
   const role = String(userInfo.role || '').toLowerCase().replace(/[_\s-]/g, '');
   const isTeacher = role === 'teacher';
   const isParent = role === 'parent';
+  const isAdmin = role === 'admin';
+  const isSuperAdmin = role === 'superadmin';
 
   const [notifications, setNotifications] = useState([]);
   const [filter, setFilter] = useState('all');
@@ -379,10 +382,7 @@ const Notifications = () => {
     ? 'parent-notifications'
     : 'student-notifications';
 
-  return (
-    <div className={`notifications-layout ${layoutClass}`}>
-      <Navbar />
-      <main className="notifications-main">
+  const notificationContent = (
         <div className="notifications-content">
           <header className="notifications-header">
             <div>
@@ -614,7 +614,40 @@ const Notifications = () => {
             </section>
           )}
         </div>
-      </main>
+  );
+
+  if (isAdmin || isSuperAdmin) {
+    const basePath = isSuperAdmin ? '/superadmin' : '/admin';
+    const routeMap = {
+      homepage: basePath,
+      'sa-dashboard': basePath,
+      users: `${basePath}/users`,
+      classes: `${basePath}/classes`,
+      models: `${basePath}/models`,
+      reports: `${basePath}/reports`,
+      settings: `${basePath}/settings`,
+      audit: `${basePath}/audit`,
+    };
+    return (
+      <AdminShell
+        active="notifications"
+        onNavigate={(key) => routeMap[key] && navigate(routeMap[key])}
+        className="page-admin-notifications"
+        homePageKey={isSuperAdmin ? 'sa-dashboard' : 'homepage'}
+        settingsPageKey="settings"
+        showAudit={isSuperAdmin}
+        auditPageKey="audit"
+        showClasses={!isSuperAdmin}
+      >
+        {notificationContent}
+      </AdminShell>
+    );
+  }
+
+  return (
+    <div className={`notifications-layout ${layoutClass}`}>
+      <Navbar />
+      <main className="notifications-main">{notificationContent}</main>
     </div>
   );
 };

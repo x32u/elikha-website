@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import CreateActivityModal from '../../components/CreateActivityModal';
@@ -45,7 +46,6 @@ const ClassDetails = () => {
   const [students, setStudents] = useState([]);
   const [activities, setActivities] = useState([]);
   const [rubrics, setRubrics] = useState([]);
-  const [minimizedActivityIds, setMinimizedActivityIds] = useState(() => new Set());
   const [enrollEmail, setEnrollEmail] = useState('');
   const [enrollBusy, setEnrollBusy] = useState(false);
   const [enrollError, setEnrollError] = useState('');
@@ -56,6 +56,7 @@ const ClassDetails = () => {
   const [editClassError, setEditClassError] = useState('');
   const [savingClassName, setSavingClassName] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
+  const [viewingActivity, setViewingActivity] = useState(null);
   const [editingActivityId, setEditingActivityId] = useState(null);
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -78,6 +79,11 @@ const ClassDetails = () => {
   const [modelOptions, setModelOptions] = useState(() => getArRenderableModelLibrary());
   const [savingEdit, setSavingEdit] = useState(false);
   const editRubricRequestRef = useRef(0);
+  const editDialogRef = useRef(null);
+  const editActivityOpenerRef = useRef(null);
+  const viewDialogRef = useRef(null);
+  const viewActivityOpenerRef = useRef(null);
+  const savingEditRef = useRef(false);
 
   const loadClassData = useCallback(async () => {
     setLoading(true);
@@ -98,7 +104,6 @@ const ClassDetails = () => {
       const activitiesResult = await getClassActivities(classId);
       if (activitiesResult.success) {
         setActivities(activitiesResult.data);
-        setMinimizedActivityIds(new Set(activitiesResult.data.map((activity) => activity.id)));
       }
 
       const userInfo = JSON.parse(sessionStorage.getItem('userInfo') || '{}');
@@ -246,6 +251,7 @@ const ClassDetails = () => {
   };
 
   const handleEditClick = async (activity) => {
+    editActivityOpenerRef.current = document.activeElement;
     const requestId = editRubricRequestRef.current + 1;
     editRubricRequestRef.current = requestId;
     const parsedDescription = parseActivityDescription(activity.description);
@@ -292,6 +298,7 @@ const ClassDetails = () => {
   };
 
   const handleCancelEdit = () => {
+    if (savingEditRef.current) return;
     editRubricRequestRef.current += 1;
     setEditingActivityId(null);
     setEditName('');
@@ -314,8 +321,63 @@ const ClassDetails = () => {
     setLoadingEditRubric(false);
   };
 
+  useEffect(() => {
+    if (!editingActivityId) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const dialog = editDialogRef.current;
+    window.requestAnimationFrame(() => dialog?.querySelector('[name="activityName"]')?.focus());
+
+    const handleDialogKeyDown = (event) => {
+      if (event.key === 'Escape' && !savingEditRef.current) {
+        event.preventDefault();
+        handleCancelEdit();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialog) return;
+      const focusable = [...dialog.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )];
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleDialogKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleDialogKeyDown);
+      editActivityOpenerRef.current?.focus?.();
+    };
+  }, [editingActivityId]);
+
+  useEffect(() => {
+    if (!viewingActivity) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.requestAnimationFrame(() => viewDialogRef.current?.querySelector('button')?.focus());
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setViewingActivity(null);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', closeOnEscape);
+      viewActivityOpenerRef.current?.focus?.();
+    };
+  }, [viewingActivity]);
+
   const handleSaveEdit = async () => {
     if (!editingActivityId || !editName.trim()) return;
+    savingEditRef.current = true;
     setSavingEdit(true);
     try {
       const encodedDescription = encodeActivityDescription(editDescription, {
@@ -346,6 +408,7 @@ const ClassDetails = () => {
       });
 
       if (result.success) {
+        savingEditRef.current = false;
         handleCancelEdit();
         await loadClassData();
       } else {
@@ -356,6 +419,7 @@ const ClassDetails = () => {
       setEditThumbnailError(error.message || 'Error updating activity.');
       console.error('Error updating activity:', error);
     } finally {
+      savingEditRef.current = false;
       setSavingEdit(false);
     }
   };
@@ -398,6 +462,16 @@ const ClassDetails = () => {
   }
 
   const classLabel = formatClassLabel(classData);
+  const viewedActivityConfig = viewingActivity
+    ? parseActivityDescription(viewingActivity.description)
+    : null;
+  const viewedModels = viewedActivityConfig
+    ? (viewedActivityConfig.modelIds?.length
+      ? viewedActivityConfig.modelIds
+      : [viewedActivityConfig.modelId].filter(Boolean))
+      .map((modelId) => modelOptions.find((model) => model.id === modelId))
+      .filter(Boolean)
+    : [];
 
   return (
     <div className="page-container">
@@ -536,46 +610,205 @@ const ClassDetails = () => {
                 preselectedClassId={classId}
               />
 
+              {viewingActivity && viewedActivityConfig && createPortal(
+                <div
+                  className="activity-view-modal-backdrop"
+                  onMouseDown={(event) => {
+                    if (event.target === event.currentTarget) setViewingActivity(null);
+                  }}
+                >
+                  <section
+                    ref={viewDialogRef}
+                    className="activity-view-modal"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="activity-view-title"
+                  >
+                    <header className="activity-view-modal__header">
+                      <div>
+                        <span>Activity overview</span>
+                        <h2 id="activity-view-title">{viewingActivity.title}</h2>
+                      </div>
+                      <button type="button" onClick={() => setViewingActivity(null)} aria-label="Close activity overview">×</button>
+                    </header>
+
+                    <div className="activity-view-modal__body">
+                      {viewingActivity.image_url && (
+                        <img
+                          className="activity-view-modal__thumbnail"
+                          src={viewingActivity.image_url}
+                          alt={`${viewingActivity.title} thumbnail`}
+                        />
+                      )}
+
+                      <dl className="activity-view-modal__facts">
+                        <div><dt>Class</dt><dd>{classLabel}</dd></div>
+                        <div>
+                          <dt>Due date</dt>
+                          <dd>{viewingActivity.due_date && !Number.isNaN(new Date(viewingActivity.due_date).getTime())
+                            ? new Date(viewingActivity.due_date).toLocaleDateString(undefined, { dateStyle: 'medium' })
+                            : 'No due date'}</dd>
+                        </div>
+                        <div><dt>Puzzle</dt><dd>{viewedActivityConfig.puzzlePieces > 0 ? `${viewedActivityConfig.puzzlePieces} pieces` : 'Off'}</dd></div>
+                      </dl>
+
+                      <section className="activity-view-modal__section">
+                        <h3>Description</h3>
+                        <p>{viewedActivityConfig.summary || 'No description provided.'}</p>
+                      </section>
+                      <section className="activity-view-modal__section">
+                        <h3>Instructions</h3>
+                        <p>{viewedActivityConfig.instructions || 'No additional instructions provided.'}</p>
+                      </section>
+
+                      <div className="activity-view-modal__grid">
+                        <section className="activity-view-modal__section">
+                          <h3>Base 3D models</h3>
+                          <div className="activity-view-modal__chips">
+                            {viewedModels.length
+                              ? viewedModels.map((model, index) => <span key={`${model.id}-${index}`}>{model.label}</span>)
+                              : <p>No base models selected.</p>}
+                          </div>
+                        </section>
+                        <section className="activity-view-modal__section">
+                          <h3>AR object kit</h3>
+                          <div className="activity-view-modal__chips">
+                            {viewedActivityConfig.allowedObjectIds.map((objectId) => {
+                              const objectDef = AR_OBJECT_LIBRARY.find((item) => item.id === objectId);
+                              return objectDef ? <span key={objectId}>{objectDef.icon} {objectDef.label}</span> : null;
+                            })}
+                          </div>
+                        </section>
+                      </div>
+
+                      <section className="activity-view-modal__section">
+                        <h3>Activity color palette</h3>
+                        {viewedActivityConfig.allowedColors?.length ? (
+                          <div className="activity-view-modal__colors">
+                            {viewedActivityConfig.allowedColors.map((color) => (
+                              <span key={color.hex} title={color.name || color.hex}>
+                                <i style={{ backgroundColor: color.hex }} />
+                                {color.name || color.hex}
+                              </span>
+                            ))}
+                          </div>
+                        ) : <p>Uses the default AR color palette.</p>}
+                      </section>
+
+                      {viewedActivityConfig.colorRequirements?.length > 0 && (
+                        <section className="activity-view-modal__section">
+                          <h3>Expected colors</h3>
+                          <div className="activity-view-modal__targets">
+                            {viewedActivityConfig.colorRequirements.map((requirement, index) => (
+                              <div key={`${requirement.targetId}-${requirement.colorHex}-${index}`}>
+                                <strong>{requirement.targetLabel || requirement.targetId}</strong>
+                                <span><i style={{ backgroundColor: requirement.colorHex }} />{requirement.colorName || requirement.colorHex}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </section>
+                      )}
+                    </div>
+
+                    <footer className="activity-view-modal__footer">
+                      <button type="button" className="btn-cancel" onClick={() => setViewingActivity(null)}>Close</button>
+                      <button
+                        type="button"
+                        className="btn-submit"
+                        onClick={() => {
+                          const activity = viewingActivity;
+                          setViewingActivity(null);
+                          handleEditClick(activity);
+                        }}
+                      >
+                        Edit activity
+                      </button>
+                    </footer>
+                  </section>
+                </div>,
+                document.body
+              )}
+
               <div className="activities-list">
                 {activities.length === 0 ? (
                   <p className="no-activities">No activities yet. Create one to get started!</p>
                 ) : (
                   activities.map((activity) => {
-                    const isMinimized = minimizedActivityIds.has(activity.id);
-                    const toggleActivitySize = () => {
-                      setMinimizedActivityIds((current) => {
-                        const next = new Set(current);
-                        if (next.has(activity.id)) next.delete(activity.id);
-                        else next.add(activity.id);
-                        return next;
-                      });
-                    };
-
                     return (
-                    <div key={activity.id} className={`activity-item ${isMinimized ? 'is-minimized' : ''}`}>
-                      {editingActivityId === activity.id ? (
-                        <div className="activity-form activity-edit-form">
-                          <input
-                            type="text"
-                            placeholder="Activity name"
-                            value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
-                            className="form-input"
-                          />
-                          <textarea
-                            placeholder="Activity description (optional)"
-                            value={editDescription}
-                            onChange={(e) => setEditDescription(e.target.value)}
-                            className="form-textarea"
-                            rows="3"
-                          />
-                          <textarea
-                            placeholder="Teacher instructions shown before AR starts"
-                            value={editInstructions}
-                            onChange={(e) => setEditInstructions(e.target.value)}
-                            className="form-textarea"
-                            rows="4"
-                          />
+                    <div key={activity.id} className="activity-item is-minimized">
+                      {editingActivityId === activity.id && createPortal(
+                        <div
+                          className="activity-edit-modal-backdrop"
+                          onMouseDown={(event) => {
+                            if (event.target === event.currentTarget) handleCancelEdit();
+                          }}
+                        >
+                          <section
+                            ref={editDialogRef}
+                            className="activity-edit-modal"
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="activity-edit-title"
+                          >
+                            <header className="activity-edit-modal-header">
+                              <div>
+                                <h2 id="activity-edit-title">Edit Activity</h2>
+                                <p>Update what learners see and use in AR.</p>
+                              </div>
+                              <button
+                                type="button"
+                                className="activity-edit-modal-close"
+                                onClick={handleCancelEdit}
+                                disabled={savingEdit}
+                                aria-label="Close activity editor"
+                              >
+                                <span aria-hidden="true">×</span>
+                              </button>
+                            </header>
+                            <form
+                              className="activity-form activity-edit-form"
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                handleSaveEdit();
+                              }}
+                            >
+                          <label className="activity-edit-field">
+                            <span className="form-label">Activity Name</span>
+                            <input
+                              type="text"
+                              name="activityName"
+                              autoComplete="off"
+                              placeholder="Enter an activity name…"
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              className="form-input"
+                              required
+                            />
+                          </label>
+                          <label className="activity-edit-field">
+                            <span className="form-label">Description</span>
+                            <textarea
+                              name="activityDescription"
+                              autoComplete="off"
+                              placeholder="Describe the activity…"
+                              value={editDescription}
+                              onChange={(e) => setEditDescription(e.target.value)}
+                              className="form-textarea"
+                              rows="3"
+                            />
+                          </label>
+                          <label className="activity-edit-field">
+                            <span className="form-label">Instructions</span>
+                            <textarea
+                              name="activityInstructions"
+                              autoComplete="off"
+                              placeholder="Write the steps learners should follow…"
+                              value={editInstructions}
+                              onChange={(e) => setEditInstructions(e.target.value)}
+                              className="form-textarea"
+                              rows="4"
+                            />
+                          </label>
                           <ActivityColorPalettePicker
                             value={editAllowedColors}
                             onChange={(allowedColors) => {
@@ -592,17 +825,22 @@ const ClassDetails = () => {
                             value={editColorRequirements}
                             onChange={setEditColorRequirements}
                           />
-                          <input
-                            type="date"
-                            placeholder="Due date"
-                            value={editDueDate}
-                            onChange={(e) => setEditDueDate(e.target.value)}
-                            className="form-input"
-                          />
+                          <label className="activity-edit-field">
+                            <span className="form-label">Due Date</span>
+                            <input
+                              type="date"
+                              name="activityDueDate"
+                              autoComplete="off"
+                              value={editDueDate}
+                              onChange={(e) => setEditDueDate(e.target.value)}
+                              className="form-input"
+                            />
+                          </label>
                           <label className="activity-rubric-field">
                             <span className="form-label">Rubric (optional)</span>
                             <select
                               className="form-input"
+                              name="activityRubric"
                               value={editRubricId}
                               onChange={(event) => {
                                 setEditRubricId(event.target.value);
@@ -611,7 +849,7 @@ const ClassDetails = () => {
                               disabled={loadingEditRubric || editRubricLocked}
                             >
                               <option value="">
-                                {loadingEditRubric ? 'Loading rubric...' : 'No rubric'}
+                                {loadingEditRubric ? 'Loading rubric…' : 'No rubric'}
                               </option>
                               {rubrics.map((rubric) => (
                                 <option key={rubric.id} value={rubric.id}>
@@ -640,6 +878,8 @@ const ClassDetails = () => {
                                 src={editThumbnailUrl}
                                 alt="Activity thumbnail preview"
                                 className="activity-thumbnail-preview"
+                                width="640"
+                                height="360"
                               />
                             )}
                             <div className="activity-thumbnail-actions">
@@ -711,9 +951,11 @@ const ClassDetails = () => {
                             />
                           </div>
                           <div className="form-group">
-                            <label className="form-label">Puzzle Pieces</label>
+                            <label className="form-label" htmlFor="edit-activity-puzzle-pieces">Puzzle Pieces</label>
                             <select
+                              id="edit-activity-puzzle-pieces"
                               className="form-input"
+                              name="activityPuzzlePieces"
                               value={editPuzzlePieces}
                               onChange={(e) => setEditPuzzlePieces(Number(e.target.value))}
                             >
@@ -725,19 +967,22 @@ const ClassDetails = () => {
                             </select>
                           </div>
                           <div className="form-actions">
-                            <button className="btn-cancel" onClick={handleCancelEdit}>
+                            <button type="button" className="btn-cancel" onClick={handleCancelEdit} disabled={savingEdit}>
                               Cancel
                             </button>
                             <button
+                              type="submit"
                               className="btn-submit"
-                              onClick={handleSaveEdit}
                               disabled={savingEdit || loadingEditRubric || Boolean(editRubricMessage && !originalEditRubricId)}
                             >
-                              {savingEdit ? 'Saving...' : 'Save'}
+                              {savingEdit ? 'Saving…' : 'Save Changes'}
                             </button>
                           </div>
-                        </div>
-                      ) : (
+                            </form>
+                          </section>
+                        </div>,
+                        document.body
+                      )}
                         <>
                           <div className="activity-content">
                             {(() => {
@@ -816,12 +1061,6 @@ const ClassDetails = () => {
                                 })()}
                               </div>
                             )}
-                            {!isMinimized && (
-                              <button type="button" className="btn-edit activity-edit-button" onClick={() => handleEditClick(activity)}>
-                                <span aria-hidden="true">✎</span>
-                                Edit
-                              </button>
-                            )}
                                 </>
                               );
                             })()}
@@ -829,23 +1068,20 @@ const ClassDetails = () => {
                           <div className="activity-action">
                             <button
                               type="button"
-                              className="btn-toggle-activity"
-                              onClick={toggleActivitySize}
-                              aria-expanded={!isMinimized}
-                              aria-label={isMinimized ? 'Expand activity' : 'Collapse activity'}
-                              title={isMinimized ? 'Expand activity' : 'Collapse activity'}
+                              className="btn-view-activity"
+                              onClick={(event) => {
+                                viewActivityOpenerRef.current = event.currentTarget;
+                                setViewingActivity(activity);
+                              }}
                             >
-                              <svg className="activity-toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
-                                <path d="m6 9 6 6 6-6" />
-                              </svg>
+                              View activity
                             </button>
-                            {!isMinimized && <button type="button" className="btn-edit" onClick={() => handleEditClick(activity)}>
+                            <button type="button" className="btn-edit" onClick={() => handleEditClick(activity)}>
                               <span aria-hidden="true">✎</span>
                               Edit
-                            </button>}
+                            </button>
                           </div>
                         </>
-                      )}
                     </div>
                     );
                   })

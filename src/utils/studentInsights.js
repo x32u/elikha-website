@@ -1,4 +1,5 @@
 import { parseArSubmissionDescription } from './arSubmission';
+import { isGenericStudentName } from './studentIdentity';
 
 const ratingValue = (value) => ({ CO: 1, C: 1, DV: 0.67, D: 0.67, BG: 0.33, B: 0.33 }[String(value || '').toUpperCase()] ?? null);
 const average = (items) => items.length ? items.reduce((sum, value) => sum + value, 0) / items.length : null;
@@ -12,10 +13,14 @@ const criterionCategory = (title) => {
 };
 
 export const buildStudentInsights = ({ outcomes = [], submissions = [], observations = [], criteria = [], studentUsers = [] } = {}) => {
-  const names = new Map([
-    ...studentUsers.map((item) => [item.id, item.name || 'Student']),
-    ...outcomes.map((item) => [item.studentId, item.studentName || 'Student']),
-  ]);
+  const names = new Map(studentUsers.map((item) => [item.id, item.name || 'Student']));
+  const emails = new Map(studentUsers.map((item) => [item.id, item.email || '']));
+  outcomes.forEach((item) => {
+    const currentName = names.get(item.studentId);
+    if (!names.has(item.studentId) || (isGenericStudentName(currentName) && !isGenericStudentName(item.studentName))) {
+      names.set(item.studentId, item.studentName || 'Student');
+    }
+  });
   const activityTitles = new Map(outcomes.map((item) => [item.activityId, item.activityTitle || 'Untitled activity']));
   const confirmed = new Map(observations.filter((item) => item.teacher_confirmed_at).map((item) => [item.id, item]));
   const criteriaByStudent = new Map();
@@ -41,7 +46,8 @@ export const buildStudentInsights = ({ outcomes = [], submissions = [], observat
     students.set(student.id, {
       studentId: student.id,
       studentName: student.name || names.get(student.id) || 'Student',
-      durations: [], color: [], puzzle: [], scores: [], activityRecords: [],
+      studentEmail: student.email || emails.get(student.id) || '',
+      durations: [], color: [], puzzle: [], scores: [], activityRecords: [], overallActivityIds: new Set(),
     });
   });
   outcomes.forEach((outcome) => {
@@ -49,7 +55,8 @@ export const buildStudentInsights = ({ outcomes = [], submissions = [], observat
     students.set(outcome.studentId, {
       studentId: outcome.studentId,
       studentName: outcome.studentName || names.get(outcome.studentId) || 'Student',
-      durations: [], color: [], puzzle: [], scores: [], activityRecords: [],
+      studentEmail: emails.get(outcome.studentId) || '',
+      durations: [], color: [], puzzle: [], scores: [], activityRecords: [], overallActivityIds: new Set(),
     });
   });
   submissions.forEach((submission) => {
@@ -58,7 +65,7 @@ export const buildStudentInsights = ({ outcomes = [], submissions = [], observat
     const parsed = parseArSubmissionDescription(submission.description);
     const analytics = parsed?.analytics || {};
     const current = students.get(studentId) || {
-      studentId, studentName: names.get(studentId) || 'Student', durations: [], color: [], puzzle: [], scores: [], activityRecords: [],
+      studentId, studentName: names.get(studentId) || 'Student', studentEmail: emails.get(studentId) || '', durations: [], color: [], puzzle: [], scores: [], activityRecords: [], overallActivityIds: new Set(),
     };
     const hasScore = submission.score !== null && submission.score !== undefined && String(submission.score).trim() !== '';
     const numericScore = hasScore ? Number(submission.score) : null;
@@ -68,10 +75,16 @@ export const buildStudentInsights = ({ outcomes = [], submissions = [], observat
       quality: Number.isFinite(numericScore) ? Math.max(0, Math.min(1, numericScore / 5)) : null,
     });
     const color = Number(analytics?.coloring?.accuracyPercent);
-    if (Number.isFinite(color)) current.color.push(color / 100);
+    if (Number.isFinite(color)) {
+      current.color.push(color / 100);
+      if (submission.activity_id) current.overallActivityIds.add(submission.activity_id);
+    }
     const puzzleAccuracy = Number(analytics?.puzzle?.accuracyPercent);
     const puzzleSeconds = Number(analytics?.puzzle?.completionSeconds);
-    if (Number.isFinite(puzzleAccuracy)) current.puzzle.push({ accuracy: puzzleAccuracy / 100, seconds: puzzleSeconds > 0 ? puzzleSeconds : null });
+    if (Number.isFinite(puzzleAccuracy)) {
+      current.puzzle.push({ accuracy: puzzleAccuracy / 100, seconds: puzzleSeconds > 0 ? puzzleSeconds : null });
+      if (submission.activity_id) current.overallActivityIds.add(submission.activity_id);
+    }
     const reviewed = Boolean(submission.reviewed_at || ['reviewed', 'graded', 'completed'].includes(String(submission.status || '').toLowerCase()));
     if (reviewed && Number.isFinite(numericScore)) current.activityRecords.push({
       activityId: submission.activity_id,
@@ -80,16 +93,20 @@ export const buildStudentInsights = ({ outcomes = [], submissions = [], observat
       at: submission.reviewed_at || submission.submitted_at,
       source: 'Teacher rating',
     });
+    if (reviewed && Number.isFinite(numericScore) && submission.activity_id) current.overallActivityIds.add(submission.activity_id);
     students.set(studentId, current);
   });
 
   criteriaByStudent.forEach((_, studentId) => {
     if (!students.has(studentId)) students.set(studentId, {
-      studentId, studentName: names.get(studentId) || 'Student', durations: [], color: [], puzzle: [], scores: [], activityRecords: [],
+      studentId, studentName: names.get(studentId) || 'Student', studentEmail: emails.get(studentId) || '', durations: [], color: [], puzzle: [], scores: [], activityRecords: [], overallActivityIds: new Set(),
     });
   });
   students.forEach((student) => {
     student.criteria = criteriaByStudent.get(student.studentId) || [];
+    student.criteria.forEach((item) => {
+      if (item.activityId) student.overallActivityIds.add(item.activityId);
+    });
     const criteriaByActivity = new Map();
     student.criteria.forEach((item) => {
       const list = criteriaByActivity.get(item.activityId) || [];
@@ -127,6 +144,7 @@ export const buildStudentInsights = ({ outcomes = [], submissions = [], observat
     const mean = average(sortedScores.map((item) => item.value));
     const variance = mean != null && sortedScores.length >= 2
       ? average(sortedScores.map((item) => (item.value - mean) ** 2)) : null;
+    const overallActivityCount = student.overallActivityIds.size;
     const overallScore = average([
       mean,
       average(colorEvidence),
@@ -144,8 +162,8 @@ export const buildStudentInsights = ({ outcomes = [], submissions = [], observat
       improvementStars,
       improvementEvidence: sortedActivityRecords.length >= 2 ? [sortedActivityRecords[0], sortedActivityRecords.at(-1)] : [],
       consistency: variance == null ? null : 1 - Math.sqrt(variance),
-      overallScore,
-      overallEvidence: sortedActivityRecords.length + colorEvidence.length + student.puzzle.length + puzzleRubric.length,
+      overallScore: overallActivityCount >= 2 ? overallScore : null,
+      overallEvidence: overallActivityCount,
     };
   });
 
@@ -175,6 +193,7 @@ export const buildStudentInsights = ({ outcomes = [], submissions = [], observat
         rank: index + 1,
         student_id: row.studentId,
         student_name: row.studentName,
+        student_email: row.studentEmail,
         value: formatRankingValue(key, row[field]),
         score: row[field],
         evidence: evidenceCount(row),
@@ -184,6 +203,7 @@ export const buildStudentInsights = ({ outcomes = [], submissions = [], observat
         rank: null,
         student_id: row.studentId,
         student_name: row.studentName,
+        student_email: row.studentEmail,
         value: 'Not enough data',
         score: null,
         evidence: 0,

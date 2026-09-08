@@ -1,6 +1,6 @@
 .settings-page-container {
   min-height: 100vh;
-  padding-left: 90px;
+  padding-left: 120px;
   background:
     radial-gradient(circle at 8% 10%, rgba(255, 188, 110, 0.22) 0, rgba(255, 188, 110, 0) 230px),
     radial-gradient(circle at 90% 8%, rgba(106, 146, 255, 0.22) 0, rgba(106, 146, 255, 0) 230px),
@@ -10,25 +10,59 @@
 }
 
 .settings-page {
-  max-width: 1020px;
+  width: min(100%, 1180px);
+  max-width: none;
   margin: 0 auto;
   padding: 24px clamp(14px, 3.4vw, 30px) 110px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 22px;
+}
+
+.settings-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.settings-page-header p {
+  margin: 6px 0 0;
+  color: #5f739b;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-role-badge {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border: 1px solid #cad9ff;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .78);
+  color: #3156e0;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .settings-page-title {
   font-size: clamp(30px, 3.6vw, 42px);
   font-weight: 900;
   color: #13213f;
-  margin: 0 0 12px 0;
+  margin: 0;
 }
 
 .settings-panel {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.settings-status,
+.settings-profile-card,
+.requirements-card,
+.restrictions-card,
+.settings-actions {
+  grid-column: 1 / -1;
 }
 
 .settings-card {
@@ -68,6 +102,7 @@
   font-weight: 900;
   color: #13213f;
   margin: 0 0 10px;
+  font-size: 18px;
 }
 
 .settings-card-toggle {
@@ -260,7 +295,15 @@
   background: #eef3ff;
   cursor: pointer;
   padding: 3px;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.toggle:focus-visible,
+.settings-select:focus-visible,
+.settings-btn:focus-visible,
+.settings-button:focus-visible {
+  outline: 3px solid rgba(49, 86, 224, 0.3);
+  outline-offset: 3px;
 }
 
 .toggle:disabled {
@@ -318,7 +361,7 @@
   font-size: 16px;
   font-weight: 800;
   cursor: pointer;
-  transition: all 0.25s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
   font-family: 'Nunito', 'Plus Jakarta Sans', sans-serif;
 }
 
@@ -365,6 +408,15 @@
 
   .settings-page {
     padding: 16px 14px 84px;
+  }
+
+  .settings-page-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .settings-panel {
+    grid-template-columns: 1fr;
   }
 
   .settings-row {

@@ -1,7 +1,7 @@
 import React from "react";
 import "../styles/AdminShell.css";
-import { supabase } from "../../../lib/supabase";
-import { resolveAvatarUrl } from "../../../services/avatarApi";
+import "../styles/AdminUnified.css";
+import NotificationBell from "../../../components/NotificationBell";
 
 function Icon({ children }) {
   return (
@@ -22,99 +22,17 @@ function Sidebar({
 }) {
   const shouldShowClasses = showClasses ?? homePageKey !== "sa-dashboard";
 
-  const [profile, setProfile] = React.useState(() => {
-    try {
-      return {
-        name: window.localStorage.getItem("elikha_profile_name") || "Admin",
-        avatar: window.localStorage.getItem("elikha_profile_avatar") || "",
-      };
-    } catch {
-      return { name: "Admin", avatar: "" };
-    }
-  });
-
-  React.useEffect(() => {
-    const refresh = () => {
-      try {
-        setProfile({
-          name: window.localStorage.getItem("elikha_profile_name") || "Admin",
-          avatar: window.localStorage.getItem("elikha_profile_avatar") || "",
-        });
-      } catch {
-        // ignore
-      }
-    };
-
-    window.addEventListener("storage", refresh);
-    window.addEventListener("elikha-profile-updated", refresh);
-    return () => {
-      window.removeEventListener("storage", refresh);
-      window.removeEventListener("elikha-profile-updated", refresh);
-    };
-  }, []);
-
-  // Resolve the current user's avatar from the database so it shows on any
-  // device, not just the browser that uploaded it. Re-runs when a profile
-  // update is signalled.
-  React.useEffect(() => {
-    let cancelled = false;
-    const loadAvatar = async () => {
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const userId = sessionData?.session?.user?.id;
-        if (!userId) return;
-        const { data, error } = await supabase
-          .from("users")
-          .select("avatar_url")
-          .eq("id", userId)
-          .single();
-        if (cancelled || error) return;
-        const signed = await resolveAvatarUrl(data?.avatar_url || "");
-        if (!cancelled && signed) {
-          setProfile((prev) => ({ ...prev, avatar: signed }));
-        }
-      } catch {
-        // fall back to whatever localStorage/initials provide
-      }
-    };
-    loadAvatar();
-    window.addEventListener("elikha-profile-updated", loadAvatar);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("elikha-profile-updated", loadAvatar);
-    };
-  }, []);
-
   return (
     <aside className="dash-sidebar">
       <div className="dash-brand">
-        <div className="dash-brand-left">
-          <button
-            className="dash-brand-home"
-            type="button"
-            onClick={() => onNavigate?.(homePageKey)}
-            aria-label="Go to dashboard"
-            title="Dashboard"
-          >
-            <img className="dash-logo" src="/logo.jpg" alt="e-likha" />
-          </button>
-        </div>
         <button
-          className="dash-profile"
+          className="dash-brand-home"
           type="button"
-          onClick={() => onNavigate?.(settingsPageKey)}
-          aria-label="Open settings"
-          title="Settings"
+          onClick={() => onNavigate?.(homePageKey)}
+          aria-label="Go to dashboard"
+          title="Dashboard"
         >
-          {profile.avatar ? (
-            <img
-              className="dash-avatarimg"
-              src={profile.avatar}
-              alt={profile.name ? `${profile.name} avatar` : "Profile"}
-            />
-          ) : (
-            <span className="dash-avatar" aria-hidden="true" />
-          )}
+          <img className="dash-logo" src="/logo.jpg" alt="e-Likha" width="124" height="42" />
         </button>
       </div>
 
@@ -123,6 +41,7 @@ function Sidebar({
           className={`dash-link ${active === homePageKey ? "active" : ""}`}
           type="button"
           onClick={() => onNavigate?.(homePageKey)}
+          aria-current={active === homePageKey ? "page" : undefined}
         >
           <Icon>
             <svg
@@ -147,6 +66,7 @@ function Sidebar({
           className={`dash-link ${active === "users" ? "active" : ""}`}
           type="button"
           onClick={() => onNavigate?.("users")}
+          aria-current={active === "users" ? "page" : undefined}
         >
           <Icon>
             <svg
@@ -177,6 +97,7 @@ function Sidebar({
             className={`dash-link ${active === "classes" ? "active" : ""}`}
             type="button"
             onClick={() => onNavigate?.("classes")}
+            aria-current={active === "classes" ? "page" : undefined}
           >
             <Icon>
               <svg
@@ -208,6 +129,7 @@ function Sidebar({
           className={`dash-link ${active === "models" ? "active" : ""}`}
           type="button"
           onClick={() => onNavigate?.("models")}
+          aria-current={active === "models" ? "page" : undefined}
         >
           <Icon>
             <svg
@@ -243,6 +165,7 @@ function Sidebar({
           className={`dash-link ${active === "reports" ? "active" : ""}`}
           type="button"
           onClick={() => onNavigate?.("reports")}
+          aria-current={active === "reports" ? "page" : undefined}
         >
           <Icon>
             <svg
@@ -280,6 +203,7 @@ function Sidebar({
             className={`dash-link ${active === auditPageKey ? "active" : ""}`}
             type="button"
             onClick={() => onNavigate?.(auditPageKey)}
+            aria-current={active === auditPageKey ? "page" : undefined}
           >
             <Icon>
               <svg
@@ -311,6 +235,7 @@ function Sidebar({
           className={`dash-link ${active === settingsPageKey ? "active" : ""}`}
           type="button"
           onClick={() => onNavigate?.(settingsPageKey)}
+          aria-current={active === settingsPageKey ? "page" : undefined}
         >
           <Icon>
             <svg
@@ -351,6 +276,7 @@ function AdminShell({
   auditPageKey,
   showClasses,
 }) {
+  const resolvedSettingsPageKey = settingsPageKey || "settings";
   const rootClassName = ["dash", className].filter(Boolean).join(" ");
   return (
     <div className={rootClassName}>
@@ -358,12 +284,17 @@ function AdminShell({
         active={active}
         onNavigate={onNavigate}
         homePageKey={homePageKey}
-        settingsPageKey={settingsPageKey}
+        settingsPageKey={resolvedSettingsPageKey}
         showAudit={showAudit}
         auditPageKey={auditPageKey}
         showClasses={showClasses}
       />
-      <main className="dash-main">{children}</main>
+      <main className="dash-main">
+        <div className="dash-utility-header" aria-label="Account utilities">
+          <NotificationBell inline />
+        </div>
+        <div className="dash-content">{children}</div>
+      </main>
     </div>
   );
 }

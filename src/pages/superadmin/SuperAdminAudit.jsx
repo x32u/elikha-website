@@ -1,6 +1,7 @@
 import React from 'react';
 import AdminShell from '../admin/components/AdminShell';
 import './styles/SuperAdminAudit.css';
+import './styles/SuperAdminUnified.css';
 import { fetchSuperAdminAuditEvents } from '../../services/adminApi';
 
 const parseDate = (value) => {

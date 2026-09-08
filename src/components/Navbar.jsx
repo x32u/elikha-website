@@ -1,10 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import elikhaLogo from '../assets/images/elikhalogo-cropped.png';
-import {
-  getUnreadNotificationCount,
-  subscribeToNotifications,
-} from '../services/notificationApi';
+import NotificationBell from './NotificationBell';
 import './Navbar.css';
 
 const Navbar = () => {
@@ -23,32 +20,6 @@ const Navbar = () => {
   const role = String(userInfo.role || '').toLowerCase().replace(/[_\s-]/g, '');
   const isTeacher = role === 'teacher';
   const isParent = role === 'parent';
-  const [unreadCount, setUnreadCount] = useState(0);
-  const unreadRequestRef = useRef(0);
-
-  useEffect(() => {
-    let active = true;
-
-    const refreshUnreadCount = async () => {
-      const requestId = unreadRequestRef.current + 1;
-      unreadRequestRef.current = requestId;
-      const result = await getUnreadNotificationCount(userInfo.id);
-      if (active && requestId === unreadRequestRef.current && result.success) {
-        setUnreadCount(result.count);
-      }
-    };
-
-    refreshUnreadCount();
-    const unsubscribe = subscribeToNotifications(userInfo.id, refreshUnreadCount);
-    window.addEventListener('elikha-notifications-changed', refreshUnreadCount);
-
-    return () => {
-      active = false;
-      unreadRequestRef.current += 1;
-      unsubscribe();
-      window.removeEventListener('elikha-notifications-changed', refreshUnreadCount);
-    };
-  }, [userInfo.id]);
 
   // Teacher navigation items
   const teacherNavItems = [
@@ -250,7 +221,8 @@ const Navbar = () => {
   );
 
   // Use appropriate nav items based on role
-  const navItems = isTeacher ? teacherNavItems : isParent ? parentNavItems : studentNavItems;
+  const navItems = (isTeacher ? teacherNavItems : isParent ? parentNavItems : studentNavItems)
+    .filter((item) => item.key !== 'notifications');
 
   const activeKey = (() => {
     const path = location.pathname;
@@ -271,6 +243,8 @@ const Navbar = () => {
   })();
 
   return (
+    <>
+    <NotificationBell />
     <nav
       className={`navbar ${
         isTeacher ? 'teacher-nav' : isParent ? 'student-nav parent-nav' : 'student-nav'
@@ -288,19 +262,10 @@ const Navbar = () => {
               key={item.key}
               className={`nav-item ${isActive ? 'active' : ''}`}
               onClick={() => navigate(item.path)}
-              aria-label={
-                item.key === 'notifications' && unreadCount
-                  ? `${item.label}, ${unreadCount} unread`
-                  : item.label
-              }
+              aria-label={item.label}
             >
               <div className="nav-icon">
                 {item.icon}
-                {item.key === 'notifications' && unreadCount > 0 && (
-                  <span className="nav-badge" aria-hidden="true">
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </span>
-                )}
               </div>
               <span className="nav-label">{item.label}</span>
             </button>
@@ -308,6 +273,7 @@ const Navbar = () => {
         })}
       </div>
     </nav>
+    </>
   );
 };
 

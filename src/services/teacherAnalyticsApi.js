@@ -4,6 +4,8 @@ import {
   createReportDateRange,
 } from '../utils/reportAnalytics';
 import { buildStudentInsights } from '../utils/studentInsights';
+import { resolveStudentDisplayName } from '../utils/studentIdentity';
+import { scopeAnalyticsToCurrentEnrollments } from '../utils/studentAnalyticsScope';
 
 const PAGE_SIZE = 750;
 const IN_FILTER_CHUNK_SIZE = 150;
@@ -204,25 +206,62 @@ export const fetchTeacherAnalytics = async ({ teacherId, days = 30, classId = ''
         .not('teacher_confirmed_at', 'is', null)
         .order('id', { ascending: true })),
     ]);
-    const criteria = await fetchRowsForIds(observations.map((item) => item.id), (chunk) => supabase
-      .from('rubric_criterion_observations')
-      .select('observation_id, criterion_index, criterion_title_snapshot, selected_rating')
-      .in('observation_id', chunk)
-      .order('observation_id', { ascending: true }));
+    const enrolledStudentIds = unique(enrollments.map((enrollment) => enrollment.student_id));
+    const [criteria, currentStudentProfiles] = await Promise.all([
+      fetchRowsForIds(observations.map((item) => item.id), (chunk) => supabase
+        .from('rubric_criterion_observations')
+        .select('observation_id, criterion_index, criterion_title_snapshot, selected_rating')
+        .in('observation_id', chunk)
+        .order('observation_id', { ascending: true })),
+      fetchRowsForIds(enrolledStudentIds, (chunk) => supabase
+        .from('users')
+        .select('id, name, email, role')
+        .in('id', chunk)
+        .eq('role', 'student')
+        .order('id', { ascending: true }))
+        .catch((error) => {
+          console.warn('Unable to refresh report student names from user profiles:', error);
+          return [];
+        }),
+    ]);
+
+    const currentStudentById = new Map(currentStudentProfiles.map((student) => [student.id, student]));
+    const scopedEvidence = scopeAnalyticsToCurrentEnrollments({
+      activities,
+      enrollments,
+      assignments,
+      submissions,
+      observations,
+      criteria,
+    });
 
     const studentUsers = Array.from(new Map(enrollments.map((enrollment) => [
       enrollment.student_id,
-      {
-        id: enrollment.student_id,
-        name: enrollment.student_name || 'Student',
-        email: enrollment.student_email || '',
-      },
+      (() => {
+        const currentStudent = currentStudentById.get(enrollment.student_id);
+        const email = currentStudent?.email || enrollment.student_email || '';
+        return {
+          id: enrollment.student_id,
+          name: resolveStudentDisplayName({
+            profileName: currentStudent?.name,
+            enrollmentName: enrollment.student_name,
+            email,
+          }),
+          email,
+        };
+      })(),
     ])).values());
 
     const asOf = new Date();
     const range = createReportDateRange(safeDays, asOf);
     const report = aggregateAnalyticsReport(
-      { activities, assignments, submissions, users: studentUsers, classes },
+      {
+        activities,
+        assignments: scopedEvidence.assignments,
+        submissions: scopedEvidence.submissions,
+        users: studentUsers,
+        classes,
+      },
       {
         asOf,
         range,
@@ -254,23 +293,33 @@ export const fetchTeacherAnalytics = async ({ teacherId, days = 30, classId = ''
       ((right.completion_rate ?? -1) - (left.completion_rate ?? -1))
     ));
 
-    const enrolledStudentIds = new Set(enrollments.map((enrollment) => enrollment.student_id).filter(Boolean));
+    const enrolledStudentIdSet = new Set(enrollments.map((enrollment) => enrollment.student_id).filter(Boolean));
 
     return {
       success: true,
       data: {
         summary: {
-          totalStudents: enrolledStudentIds.size,
+          totalStudents: enrolledStudentIdSet.size,
           totalActivities: activities.length,
           ...report.summary,
         },
         events: report.events,
         activityPerformance,
         studentAttention: buildStudentAttention(report.outcomes),
-        studentInsights: buildStudentInsights({ report, outcomes: report.outcomes, submissions, observations, criteria, studentUsers }),
+        studentInsights: buildStudentInsights({
+          report,
+          outcomes: report.outcomes,
+          submissions: scopedEvidence.submissions,
+          observations: scopedEvidence.observations,
+          criteria: scopedEvidence.criteria,
+          studentUsers,
+        }),
         submissionTrend: buildSubmissionTrend(report.outcomes, range, safeDays),
         classes,
-        dataQuality: report.dataQuality,
+        dataQuality: {
+          ...report.dataQuality,
+          excludedUnenrolledStudents: scopedEvidence.excludedStudentIds.size,
+        },
         range: report.range,
       },
     };

@@ -1,0 +1,255 @@
+.app-notification-bell {
+  position: fixed;
+  z-index: 950;
+  top: 18px;
+  right: 24px;
+  font-family: inherit;
+}
+
+.app-notification-bell.is-inline {
+  position: relative;
+  z-index: 1;
+  top: auto;
+  right: auto;
+}
+
+.app-notification-bell__button {
+  position: relative;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #d9e2f5;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #3156e0;
+  box-shadow: 0 10px 26px rgba(31, 55, 125, 0.14);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.app-notification-bell__button:hover {
+  border-color: #afc0ef;
+  background: #f3f6ff;
+  box-shadow: 0 12px 30px rgba(31, 55, 125, 0.2);
+}
+
+.app-notification-bell__button:focus-visible,
+.app-notification-menu button:focus-visible {
+  outline: 3px solid rgba(49, 86, 224, 0.28);
+  outline-offset: 2px;
+}
+
+.app-notification-bell__button svg {
+  width: 23px;
+  height: 23px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.app-notification-bell__badge {
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  display: grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 0 5px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: #e43d5d;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.app-notification-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(380px, calc(100vw - 24px));
+  overflow: hidden;
+  border: 1px solid #dce4f2;
+  border-radius: 18px;
+  background: #fff;
+  color: #14213d;
+  box-shadow: 0 24px 70px rgba(18, 31, 70, 0.22);
+}
+
+.app-notification-menu__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid #e8edf6;
+}
+
+.app-notification-menu__header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.app-notification-menu__header strong {
+  font-size: 16px;
+}
+
+.app-notification-menu__header span {
+  color: #687797;
+  font-size: 12px;
+}
+
+.app-notification-menu__header button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 9px;
+  background: #f2f5fb;
+  color: #55627d;
+  font: inherit;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.app-notification-menu__list {
+  max-height: min(410px, calc(100dvh - 190px));
+  overflow-y: auto;
+}
+
+.app-notification-menu__item {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 9px minmax(0, 1fr);
+  gap: 11px;
+  padding: 14px 18px;
+  border: 0;
+  border-bottom: 1px solid #edf1f7;
+  background: #fff;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-notification-menu__item:hover {
+  background: #f7f9ff;
+}
+
+.app-notification-menu__item.is-unread {
+  background: #f3f6ff;
+}
+
+.app-notification-menu__dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.app-notification-menu__item.is-unread .app-notification-menu__dot {
+  background: #3156e0;
+}
+
+.app-notification-menu__copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.app-notification-menu__copy strong,
+.app-notification-menu__copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-notification-menu__copy strong {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.app-notification-menu__copy span {
+  display: -webkit-box;
+  color: #586783;
+  font-size: 12px;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.app-notification-menu__copy time {
+  color: #8490a7;
+  font-size: 10px;
+}
+
+.app-notification-menu__state {
+  margin: 0;
+  padding: 30px 18px;
+  color: #687797;
+  font-size: 13px;
+  text-align: center;
+}
+
+.app-notification-menu__state.is-error {
+  display: grid;
+  gap: 10px;
+  color: #a02c39;
+}
+
+.app-notification-menu__state button {
+  justify-self: center;
+  border: 0;
+  background: transparent;
+  color: #3156e0;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.app-notification-menu__all {
+  width: 100%;
+  min-height: 46px;
+  border: 0;
+  border-top: 1px solid #e8edf6;
+  background: #fff;
+  color: #2c4ed1;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.app-notification-menu__all:hover {
+  background: #f3f6ff;
+}
+
+@media (max-width: 768px) {
+  .app-notification-bell:not(.is-inline) {
+    top: max(10px, env(safe-area-inset-top));
+    right: 14px;
+  }
+
+  .app-notification-bell__button {
+    width: 42px;
+    height: 42px;
+  }
+
+  .app-notification-menu {
+    position: fixed;
+    top: calc(max(10px, env(safe-area-inset-top)) + 52px);
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-notification-bell__button { transition: none; }
+}

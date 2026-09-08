@@ -1,5 +1,6 @@
 import React from 'react';
 import AdminSettings from '../admin/AdminSettings';
+import './styles/SuperAdminUnified.css';
 
 function SuperAdminSettings({ onNavigate, onLogout }) {
   return <AdminSettings onNavigate={onNavigate} role="SuperAdmin" onLogout={onLogout} />;

@@ -162,7 +162,7 @@ function AdminReports({ onNavigate, role }) {
     <AdminShell
       active="reports"
       onNavigate={onNavigate}
-      className="page-reports"
+      className={`page-reports ${isSuperAdmin ? 'page-superadmin page-superadmin-reports' : 'page-admin page-admin-reports'}`}
       homePageKey={homePageKey}
       showAudit={isSuperAdmin}
       auditPageKey="audit"

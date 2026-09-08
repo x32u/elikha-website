@@ -8,38 +8,39 @@
   --adm-border: #e6e8eb;
   --adm-shadow-xs: 0 2px 8px rgba(2, 30, 8, 0.05);
   --adm-focus-ring: 0 0 0 3px rgba(151, 217, 255, 0.45);
+  --adm-content-max: 1120px;
 }
 
 .dash {
   min-height: 100vh;
   background: var(--adm-bg);
   display: grid;
-  grid-template-columns: 403px 1fr;
+  grid-template-columns: 248px minmax(0, 1fr);
   color: var(--adm-ink);
 }
 
 .dash-sidebar {
-  padding: 19px 42px 24px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 18px 16px 24px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   border-right: 1px solid var(--adm-border);
-  background: #fff;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 8px 0 28px rgba(20, 47, 82, 0.035);
 }
 
 .dash-brand {
   display: flex;
   align-items: center;
-  gap: 16px;
-  min-height: 40px;
-  justify-content: space-between;
-}
-
-.dash-brand-left {
-  display: inline-flex;
-  align-items: center;
   gap: 10px;
-  min-width: 0;
+  min-height: 52px;
+  justify-content: center;
+  padding: 0 6px 14px;
+  border-bottom: 1px solid #edf1f7;
 }
 
 .dash-brand-home {
@@ -47,7 +48,9 @@
   background: transparent;
   padding: 0;
   cursor: pointer;
-  border-radius: 12px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .dash-brand-home:focus-visible {
@@ -56,63 +59,21 @@
 }
 
 .dash-logo {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
+  width: 124px;
+  height: 42px;
+  border-radius: 10px;
   object-fit: contain;
   background: transparent;
   border: 0;
 }
 
-/* Brand text removed by request (logo only). */
-
-.dash-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 20px;
-  background: #f2c7b8;
-  box-shadow: var(--adm-shadow-xs);
-}
-
-.dash-profile {
-  border: 1px solid transparent;
-  background: transparent;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 999px;
-
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  text-align: left;
-  color: var(--adm-ink);
-}
-
-.dash-avatarimg {
-  width: 40px;
-  height: 40px;
-  border-radius: 999px;
-  object-fit: cover;
-  box-shadow: var(--adm-shadow-xs);
-  border: 1px solid var(--adm-border);
-  background: #ffffff;
-}
-
-.dash-profile:hover {
-  background: color-mix(in srgb, var(--adm-accent) 20%, white);
-  border-color: color-mix(in srgb, var(--adm-accent) 55%, #cfeeff);
-}
-
-.dash-profile:focus-visible {
-  outline: none;
-  box-shadow: var(--adm-focus-ring);
-}
+/* Brand text and the duplicate sidebar avatar are intentionally omitted. */
 
 .dash-nav {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 5px;
+  margin-top: 2px;
 }
 
 .dash-link {
@@ -126,8 +87,9 @@
   align-items: center;
   gap: 12px;
 
-  padding: 9px 12px;
-  border-radius: 12px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 10px;
 
   font-size: 14px;
   line-height: 21px;
@@ -167,20 +129,71 @@
 }
 
 .dash-main {
+  position: relative;
+  min-width: 0;
   height: 100vh;
   overflow-y: auto;
   background: var(--adm-bg);
-  /* Default: left-aligned content (no centering). Individual pages can override. */
-  padding: 20px 0 36px 23px;
+  padding: 72px clamp(16px, 2vw, 28px) 44px;
+}
+
+.dash-content {
+  width: min(100%, var(--adm-content-max));
+  min-width: 0;
+  margin-inline: auto;
+}
+
+/* Older admin pages use different fixed widths. Keep those widths where useful,
+   but center every page section on the same shared rail. */
+.dash-content > * {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Page styles historically set their own shell padding. The shared shell now
+   owns that spacing so every Admin and Super Admin route starts on one line. */
+body .dash .dash-main {
+  padding: 72px clamp(16px, 2vw, 28px) 44px;
+}
+
+.dash-utility-header {
+  position: fixed;
+  z-index: 50;
+  top: 18px;
+  left: 248px;
+  right: 0;
+  display: flex;
+  width: min(var(--adm-content-max), calc(100vw - 296px));
+  min-height: 44px;
+  align-items: center;
+  justify-content: flex-end;
+  box-sizing: border-box;
+  margin-inline: auto;
+  padding: 0;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.dash-utility-header > * {
+  pointer-events: auto;
 }
 
 @media (max-width: 1280px) {
   .dash {
-    grid-template-columns: 320px 1fr;
+    grid-template-columns: 224px minmax(0, 1fr);
   }
 
   .dash-sidebar {
-    padding: 16px 24px 20px;
+    padding: 16px 12px 20px;
+  }
+
+  .dash-logo {
+    width: 112px;
+  }
+
+  .dash-utility-header {
+    left: 224px;
+    width: min(var(--adm-content-max), calc(100vw - 272px));
   }
 }
 
@@ -190,6 +203,12 @@
   }
 
   .dash-sidebar {
+    position: sticky;
+    z-index: 30;
+    top: 0;
+    height: auto;
+    overflow: visible;
+    padding: 10px 16px;
     border-bottom: 1px solid var(--adm-border);
     border-right: 0;
     flex-direction: row;
@@ -199,14 +218,65 @@
   }
 
   .dash-nav {
+    min-width: 0;
     flex-direction: row;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .dash-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dash-link {
+    width: auto;
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 
   .dash-main {
     height: auto;
     overflow: visible;
-    padding-left: 16px;
-    padding-right: 16px;
+    padding: 16px;
   }
+
+  .dash-utility-header {
+    position: relative;
+    top: auto;
+    left: auto;
+    right: auto;
+    width: 100%;
+    min-height: 52px;
+    padding: 4px 0;
+  }
+
+  body .dash .dash-main {
+    padding: 16px;
+  }
+
+}
+
+@media (max-width: 640px) {
+  .dash-sidebar {
+    display: grid;
+    grid-template-columns: 1fr auto;
+  }
+
+  .dash-brand {
+    grid-column: 1 / -1;
+    padding-bottom: 8px;
+  }
+
+  .dash-nav {
+    grid-column: 1 / -1;
+  }
+
+  .dash-link {
+    min-height: 40px;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
 }

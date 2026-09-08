@@ -489,7 +489,7 @@ function AdminUsers({ onNavigate, role }) {
     <AdminShell
       active="users"
       onNavigate={onNavigate}
-      className="page-users"
+      className={`page-users ${isSuperAdmin ? 'page-superadmin page-superadmin-users' : 'page-admin page-admin-users'}`}
       homePageKey={homePageKey}
       showAudit={isSuperAdmin}
       auditPageKey="audit"

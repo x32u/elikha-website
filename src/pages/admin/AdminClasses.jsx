@@ -234,7 +234,7 @@ function AdminClasses({ onNavigate }) {
   const previewName = [draft.grade, draft.section].filter(Boolean).join(' - ') || 'New Class Section';
 
   return (
-    <AdminShell active="classes" onNavigate={onNavigate} className="page-admin-classes" homePageKey="homepage">
+    <AdminShell active="classes" onNavigate={onNavigate} className="page-admin page-admin-classes" homePageKey="homepage">
       <header className="ac-header">
         <div>
           <h1 className="ac-title">Classes & Sections</h1>

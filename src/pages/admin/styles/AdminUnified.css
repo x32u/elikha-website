@@ -1,0 +1,347 @@
+/* One visual rail and spacing system for every Admin route. */
+
+.page-admin {
+  --admin-page-bg: #f7fafc;
+  --admin-ink: #14213d;
+  --admin-muted: #61758a;
+  --admin-border: #d9e5f2;
+  --admin-primary: #1800ad;
+  --admin-panel: #ffffff;
+  --admin-shadow: 0 8px 24px rgba(20, 47, 82, 0.055);
+  --adm-content-max: 1120px;
+}
+
+.page-admin .dash-main {
+  background: var(--admin-page-bg);
+}
+
+.page-admin .dash-content {
+  width: min(100%, 1120px);
+  margin-inline: auto;
+}
+
+.page-admin :is(
+  .dash-header,
+  .dash-stats,
+  .dash-h2,
+  .dash-section-head,
+  .dash-storage,
+  .dash-analytics,
+  .dash-tablewrap,
+  .dash-actions,
+  .um-header,
+  .um-searchwrap,
+  .um-filters,
+  .um-tablewrap,
+  .ac-header,
+  .ac-alert,
+  .ac-summary,
+  .ac-table-card,
+  .m3d-header,
+  .m3d-storage-summary,
+  .m3d-page-note,
+  .m3d-searchwrap,
+  .m3d-sourcewrap,
+  .m3d-tablewrap,
+  .rpt-header,
+  .rpt-h2,
+  .rpt-summary-grid,
+  .rpt-grid2,
+  .rpt-tablewrap,
+  .set-container
+) {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.page-admin :is(
+  .dash-title,
+  .um-title,
+  .ac-title,
+  .m3d-title,
+  .rpt-title,
+  .set-title
+) {
+  color: var(--admin-ink);
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1.16;
+  letter-spacing: -0.025em;
+}
+
+.page-admin :is(
+  .dash-subtitle,
+  .um-subtitle,
+  .ac-subtitle,
+  .rpt-subtitle,
+  .set-header p
+) {
+  color: var(--admin-muted);
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Dashboard */
+.page-admin-dashboard .dash-header {
+  padding: 0;
+  margin-bottom: 20px;
+}
+
+.page-admin-dashboard .dash-stats {
+  padding: 0;
+  margin-bottom: 28px;
+  gap: 16px;
+}
+
+.page-admin-dashboard .stat {
+  min-height: 104px;
+  padding: 18px 20px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 14px;
+  border-color: var(--admin-border);
+  box-shadow: var(--admin-shadow);
+}
+
+.page-admin-dashboard .stat-label {
+  align-self: end;
+  color: var(--admin-ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.page-admin-dashboard .stat-value {
+  grid-column: 3;
+  margin: 0;
+  font-size: 30px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.page-admin-dashboard .stat-meta {
+  margin: 4px 0 0;
+  color: var(--admin-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.page-admin-dashboard .dash-h2 {
+  padding: 0;
+  margin: 0 0 12px;
+  color: var(--admin-ink);
+  font-size: 21px;
+  line-height: 1.3;
+}
+
+.page-admin-dashboard .dash-section-head {
+  margin: 0 0 12px;
+  padding: 0 16px;
+}
+
+.page-admin-dashboard .dash-section-head .dash-h2 {
+  margin: 0;
+}
+
+.page-admin-dashboard .dash-storage {
+  width: 100%;
+  max-width: none;
+  margin: 0 0 28px;
+  padding: 22px;
+  border-color: var(--admin-border);
+  box-shadow: var(--admin-shadow);
+}
+
+.page-admin-dashboard :is(.dash-analytics, .dash-tablewrap, .dash-actions) {
+  margin-bottom: 28px;
+}
+
+/* Users */
+.page-admin-users .um-header {
+  padding: 0;
+  margin-bottom: 20px;
+  align-items: center;
+}
+
+.page-admin-users .um-searchwrap {
+  padding: 0;
+  margin-bottom: 12px;
+}
+
+.page-admin-users .um-filters {
+  padding: 0;
+  margin-bottom: 18px;
+}
+
+.page-admin-users .um-tablewrap {
+  border-color: var(--admin-border);
+  box-shadow: var(--admin-shadow);
+}
+
+/* Classes */
+.page-admin-classes .ac-header {
+  padding: 0;
+  margin-bottom: 20px;
+  align-items: center;
+}
+
+.page-admin-classes .ac-alert {
+  margin-top: 0;
+  margin-bottom: 14px;
+}
+
+.page-admin-classes .ac-summary {
+  padding: 0;
+  margin-bottom: 18px;
+  gap: 12px;
+}
+
+.page-admin-classes .ac-stat {
+  min-height: 88px;
+  padding: 16px 18px;
+  border-color: var(--admin-border);
+  border-radius: 14px;
+  box-shadow: var(--admin-shadow);
+}
+
+.page-admin-classes .ac-stat span {
+  color: var(--admin-muted);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.page-admin-classes .ac-stat strong {
+  margin-top: 8px;
+  font-size: 28px;
+}
+
+.page-admin-classes .ac-table-card {
+  padding: 0;
+  overflow-x: auto;
+}
+
+.page-admin-classes .ac-table {
+  border-color: var(--admin-border);
+  border-radius: 14px;
+  box-shadow: var(--admin-shadow);
+}
+
+.page-admin-classes .ac-table th,
+.page-admin-classes .ac-table td {
+  padding: 14px;
+}
+
+/* 3D models */
+.page-admin-models .m3d-header {
+  padding: 0;
+  margin-bottom: 20px;
+}
+
+.page-admin-models .m3d-storage-summary {
+  margin-bottom: 14px;
+  border-color: var(--admin-border);
+  box-shadow: var(--admin-shadow);
+}
+
+.page-admin-models .m3d-searchwrap {
+  padding: 0;
+  margin-bottom: 18px;
+}
+
+.page-admin-models .m3d-sourcewrap {
+  padding: 0;
+  margin-bottom: 20px;
+}
+
+.page-admin-models .m3d-tablewrap {
+  border-color: var(--admin-border);
+  box-shadow: var(--admin-shadow);
+}
+
+/* Analytics */
+.page-admin-reports .rpt-header {
+  padding: 0;
+  margin-bottom: 20px;
+}
+
+.page-admin-reports .rpt-headrow {
+  align-items: center;
+}
+
+.page-admin-reports .rpt-h2 {
+  padding: 0;
+  margin: 0 0 12px;
+  color: var(--admin-ink);
+  font-size: 21px;
+  line-height: 1.3;
+}
+
+.page-admin-reports .rpt-summary-grid {
+  padding: 0;
+  margin-bottom: 24px;
+}
+
+.page-admin-reports .rpt-summary-card {
+  min-height: 70px;
+  border-color: var(--admin-border);
+  box-shadow: var(--admin-shadow);
+}
+
+.page-admin-reports .rpt-grid2 {
+  padding: 0;
+  margin-bottom: 24px;
+}
+
+.page-admin-reports .rpt-card,
+.page-admin-reports .rpt-tablewrap {
+  border-color: var(--admin-border);
+  box-shadow: var(--admin-shadow);
+}
+
+/* Settings */
+.page-admin-settings .set-header {
+  padding: 0;
+  margin-bottom: 20px;
+}
+
+.page-admin-settings .set-grid {
+  gap: 16px;
+}
+
+.page-admin-settings .set-section {
+  border-color: var(--admin-border);
+  box-shadow: var(--admin-shadow);
+}
+
+@media (max-width: 760px) {
+  .page-admin :is(
+    .dash-title,
+    .um-title,
+    .ac-title,
+    .m3d-title,
+    .rpt-title,
+    .set-title
+  ) {
+    font-size: 27px;
+  }
+
+  .page-admin :is(.um-header, .ac-header, .m3d-header, .rpt-headrow) {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .page-admin-users .um-header-actions,
+  .page-admin-reports .rpt-actions {
+    justify-content: flex-start;
+  }
+
+  .page-admin-dashboard .dash-stats,
+  .page-admin-classes .ac-summary {
+    grid-template-columns: 1fr;
+  }
+}

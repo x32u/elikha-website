@@ -328,7 +328,7 @@ const Reviews = () => {
 
         {loading ? (
           <div style={{ padding: '40px', textAlign: 'center', color: '#6B5A4D' }}>
-            Loading submissions...
+            Loading submissions…
           </div>
         ) : (
           <>
@@ -342,7 +342,9 @@ const Reviews = () => {
             </svg>
             <input
               type="text"
-              placeholder="Student name..."
+              name="submissionSearch"
+              autoComplete="off"
+              placeholder="Student name…"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="reviews-search-input"
@@ -364,6 +366,7 @@ const Reviews = () => {
           <label className="reviews-activity-filter">
             <span>Activity</span>
             <select
+              name="activityFilter"
               value={filterActivity}
               onChange={(e) => setFilterActivity(e.target.value)}
               className="reviews-activity-select"
@@ -385,19 +388,22 @@ const Reviews = () => {
           >
             All ({submissions.length})
           </button>
-          <button 
+          <button
+            type="button"
             className={`filter-tab ${filterStatus === 'submitted' ? 'active' : ''}`}
             onClick={() => setFilterStatus('submitted')}
           >
             Submitted ({submissions.filter(s => s.status === 'submitted').length})
           </button>
-          <button 
+          <button
+            type="button"
             className={`filter-tab ${filterStatus === 'late' ? 'active' : ''}`}
             onClick={() => setFilterStatus('late')}
           >
             Late ({submissions.filter(s => s.status === 'late').length})
           </button>
-          <button 
+          <button
+            type="button"
             className={`filter-tab ${filterStatus === 'reviewed' ? 'active' : ''}`}
             onClick={() => setFilterStatus('reviewed')}
           >
@@ -468,6 +474,7 @@ const Reviews = () => {
                   {['submitted', 'late', 'reviewed'].includes(submission.status) && (
                     <div className="submission-actions">
                       <button
+                        type="button"
                         className="view-ar-btn"
                         onClick={() =>
                           navigate(`/activity/${submission.activityId}/start?submission=${encodeURIComponent(submission.id)}`, {

@@ -1,0 +1,330 @@
+/*
+ * One layout language for every Super Admin route.
+ * Individual Admin pages still own their components; this file only normalizes
+ * the shared rail, type hierarchy, spacing, and surface treatment.
+ */
+
+.page-superadmin {
+  --sa-page-bg: #f7fafc;
+  --sa-ink: #14213d;
+  --sa-muted: #61758a;
+  --sa-border: #d9e5f2;
+  --sa-primary: #1800ad;
+  --sa-panel: #ffffff;
+  --sa-shadow: 0 8px 24px rgba(20, 47, 82, 0.055);
+  --adm-content-max: 1120px;
+}
+
+.page-superadmin .dash-main {
+  background: var(--sa-page-bg);
+}
+
+.page-superadmin .dash-content {
+  width: min(100%, 1120px);
+  margin-inline: auto;
+}
+
+/* Every major block now starts and ends on the same 1120px content rail. */
+.page-superadmin :is(
+  .dash-header,
+  .dash-stats,
+  .dash-h2,
+  .dash-section-head,
+  .dash-storage,
+  .dash-analytics,
+  .dash-tablewrap,
+  .dash-actions,
+  .um-header,
+  .um-searchwrap,
+  .um-filters,
+  .um-tablewrap,
+  .m3d-header,
+  .m3d-storage-summary,
+  .m3d-page-note,
+  .m3d-searchwrap,
+  .m3d-sourcewrap,
+  .m3d-tablewrap,
+  .rpt-header,
+  .rpt-h2,
+  .rpt-summary-grid,
+  .rpt-grid2,
+  .rpt-tablewrap,
+  .set-container,
+  .saud-header,
+  .saud-stats,
+  .saud-searchwrap,
+  .saud-filters,
+  .saud-tablewrap
+) {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.page-superadmin :is(
+  .dash-title,
+  .um-title,
+  .m3d-title,
+  .rpt-title,
+  .set-title,
+  .saud-title
+) {
+  color: var(--sa-ink);
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1.16;
+  letter-spacing: -0.025em;
+}
+
+.page-superadmin :is(
+  .dash-subtitle,
+  .um-subtitle,
+  .rpt-subtitle,
+  .set-header p,
+  .saud-subtitle
+) {
+  color: var(--sa-muted);
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Dashboard */
+.page-superadmin-dashboard .dash-header {
+  padding: 0;
+  margin-bottom: 20px;
+}
+
+.page-superadmin-dashboard .dash-stats {
+  padding: 0;
+  margin-bottom: 28px;
+  gap: 16px;
+}
+
+.page-superadmin-dashboard .stat {
+  min-height: 104px;
+  padding: 18px 20px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 14px;
+  border-color: var(--sa-border);
+  box-shadow: var(--sa-shadow);
+}
+
+.page-superadmin-dashboard .stat-label {
+  align-self: end;
+  color: var(--sa-ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.page-superadmin-dashboard .stat-value {
+  grid-column: 3;
+  margin: 0;
+  font-size: 30px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.page-superadmin-dashboard .stat-meta {
+  margin: 4px 0 0;
+  color: var(--sa-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.page-superadmin-dashboard .dash-h2 {
+  padding: 0;
+  margin: 0 0 12px;
+  color: var(--sa-ink);
+  font-size: 21px;
+  line-height: 1.3;
+}
+
+.page-superadmin-dashboard .dash-section-head {
+  margin: 0 0 12px;
+  padding: 0 16px;
+}
+
+.page-superadmin-dashboard .dash-section-head .dash-h2 {
+  margin: 0;
+}
+
+.page-superadmin-dashboard .dash-storage {
+  width: 100%;
+  max-width: none;
+  margin: 0 0 28px;
+  padding: 22px;
+  border-color: var(--sa-border);
+  box-shadow: var(--sa-shadow);
+}
+
+.page-superadmin-dashboard :is(.dash-analytics, .dash-tablewrap, .dash-actions) {
+  margin-bottom: 28px;
+}
+
+/* Users */
+.page-superadmin-users .um-header {
+  padding: 0;
+  margin-bottom: 20px;
+  align-items: center;
+}
+
+.page-superadmin-users .um-searchwrap {
+  padding: 0;
+  margin-bottom: 12px;
+}
+
+.page-superadmin-users .um-filters {
+  padding: 0;
+  margin-bottom: 18px;
+}
+
+.page-superadmin-users .um-tablewrap {
+  border-color: var(--sa-border);
+  box-shadow: var(--sa-shadow);
+}
+
+/* 3D models */
+.page-superadmin-models .m3d-header {
+  padding: 0;
+  margin-bottom: 20px;
+}
+
+.page-superadmin-models .m3d-storage-summary {
+  margin-bottom: 14px;
+  border-color: var(--sa-border);
+  box-shadow: var(--sa-shadow);
+}
+
+.page-superadmin-models .m3d-searchwrap {
+  padding: 0;
+  margin-bottom: 18px;
+}
+
+.page-superadmin-models .m3d-sourcewrap {
+  padding: 0;
+  margin-bottom: 20px;
+}
+
+.page-superadmin-models .m3d-tablewrap {
+  border-color: var(--sa-border);
+  box-shadow: var(--sa-shadow);
+}
+
+/* Reports */
+.page-superadmin-reports .rpt-header {
+  padding: 0;
+  margin-bottom: 20px;
+}
+
+.page-superadmin-reports .rpt-headrow {
+  align-items: center;
+}
+
+.page-superadmin-reports .rpt-h2 {
+  padding: 0;
+  margin: 0 0 12px;
+  color: var(--sa-ink);
+  font-size: 21px;
+  line-height: 1.3;
+}
+
+.page-superadmin-reports .rpt-summary-grid {
+  padding: 0;
+  margin-bottom: 24px;
+}
+
+.page-superadmin-reports .rpt-summary-card {
+  min-height: 70px;
+  border-color: var(--sa-border);
+  box-shadow: var(--sa-shadow);
+}
+
+.page-superadmin-reports .rpt-grid2 {
+  padding: 0;
+  margin-bottom: 24px;
+}
+
+.page-superadmin-reports .rpt-card {
+  border-color: var(--sa-border);
+  box-shadow: var(--sa-shadow);
+}
+
+/* Audit */
+.page-superadmin-audit .saud-header {
+  margin: 0 0 20px;
+}
+
+.page-superadmin-audit .saud-stats {
+  margin: 0 0 14px;
+}
+
+.page-superadmin-audit .saud-stat {
+  min-height: 108px;
+  padding: 18px 20px;
+  border-color: var(--sa-border);
+  box-shadow: var(--sa-shadow);
+}
+
+.page-superadmin-audit .saud-searchwrap {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.page-superadmin-audit .saud-filters {
+  margin-top: 0;
+  margin-bottom: 14px;
+}
+
+.page-superadmin-audit .saud-tablewrap {
+  margin-top: 0;
+  border-color: var(--sa-border);
+  box-shadow: var(--sa-shadow);
+}
+
+/* Settings */
+.page-superadmin-settings .set-header {
+  padding: 0;
+  margin-bottom: 20px;
+}
+
+.page-superadmin-settings .set-grid {
+  gap: 16px;
+}
+
+.page-superadmin-settings .set-section {
+  border-color: var(--sa-border);
+  box-shadow: var(--sa-shadow);
+}
+
+@media (max-width: 760px) {
+  .page-superadmin :is(
+    .dash-title,
+    .um-title,
+    .m3d-title,
+    .rpt-title,
+    .set-title,
+    .saud-title
+  ) {
+    font-size: 27px;
+  }
+
+  .page-superadmin :is(.um-header, .m3d-header, .rpt-headrow) {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .page-superadmin-users .um-header-actions,
+  .page-superadmin-reports .rpt-actions {
+    justify-content: flex-start;
+  }
+
+  .page-superadmin-dashboard .dash-stats,
+  .page-superadmin-audit .saud-stats {
+    grid-template-columns: 1fr;
+  }
+}

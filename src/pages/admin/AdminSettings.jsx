@@ -18,6 +18,7 @@ function Settings({ onNavigate, role, onLogout }) {
   const [allowNotifications, setAllowNotifications] = React.useState(true);
   const [toast, setToast] = React.useState(null);
   const [profileName, setProfileName] = React.useState("Admin");
+  const [savedProfileName, setSavedProfileName] = React.useState("Admin");
   const [profileEmail, setProfileEmail] = React.useState("");
   const [profileUserId, setProfileUserId] = React.useState("");
   const [savingProfile, setSavingProfile] = React.useState(false);
@@ -36,7 +37,9 @@ function Settings({ onNavigate, role, onLogout }) {
     const userInfo = JSON.parse(sessionStorage.getItem("userInfo") || "{}");
     if (userInfo?.id) setProfileUserId(userInfo.id);
     if (typeof userInfo?.name === "string" && userInfo.name.trim()) {
-      setProfileName(userInfo.name.trim());
+      const initialName = userInfo.name.trim();
+      setProfileName(initialName);
+      setSavedProfileName(initialName);
     }
     if (typeof userInfo?.email === "string") {
       setProfileEmail(userInfo.email);
@@ -117,7 +120,12 @@ function Settings({ onNavigate, role, onLogout }) {
   };
 
   const handleSaveProfile = async () => {
-    const name = profileName.trim() || "Admin";
+    const name = profileName.trim();
+
+    if (name.length < 2 || name.length > 60) {
+      showToast("error", "Enter a display name between 2 and 60 characters.");
+      return;
+    }
 
     if (!profileUserId) {
       showToast("error", "Unable to find account profile.");
@@ -149,6 +157,8 @@ function Settings({ onNavigate, role, onLogout }) {
       // ignore
     }
     window.dispatchEvent(new Event("elikha-profile-updated"));
+    setProfileName(name);
+    setSavedProfileName(name);
     showToast("success", "Profile updated.");
   };
 
@@ -171,10 +181,11 @@ function Settings({ onNavigate, role, onLogout }) {
     <AdminShell
       active="settings"
       onNavigate={onNavigate}
-      className="page-settings"
+      className={`page-settings ${isSuperAdmin ? 'page-superadmin page-superadmin-settings' : 'page-admin page-admin-settings'}`}
       homePageKey={homePageKey}
       showAudit={isSuperAdmin}
       auditPageKey="audit"
+      onLogout={onLogout}
     >
       <div className="set-container">
         {toast && (
@@ -184,17 +195,25 @@ function Settings({ onNavigate, role, onLogout }) {
         )}
 
         <header className="set-header">
-          <h1 className="set-title">Settings</h1>
+          <div>
+            <h1 className="set-title">Settings</h1>
+            <p>Manage your account profile and notification preferences.</p>
+          </div>
         </header>
 
-        <h2 className="set-section-title">Profile</h2>
-        <section className="set-block" aria-label="Profile settings">
+        <div className="set-grid">
+        <section className="set-section" aria-labelledby="admin-profile-title">
+          <div className="set-section-heading">
+            <h2 id="admin-profile-title">Profile</h2>
+            <p>Update the name and image shown across e-Likha.</p>
+          </div>
+          <div className="set-block">
           <div className="set-avatar-row">
-            <div className="set-avatar-preview" aria-hidden="true">
+            <div className="set-avatar-preview">
               {avatarUrl ? (
-                <img className="set-avatar-img" src={avatarUrl} alt={`${profileName} profile`} />
+                <img className="set-avatar-img" src={avatarUrl} alt={`${profileName} profile`} width="72" height="72" />
               ) : (
-                <span className="set-avatar-initial">{(profileName || "A").charAt(0).toUpperCase()}</span>
+                <span className="set-avatar-initial" aria-hidden="true">{(profileName || "A").charAt(0).toUpperCase()}</span>
               )}
             </div>
             <div className="set-avatar-controls">
@@ -223,26 +242,57 @@ function Settings({ onNavigate, role, onLogout }) {
             <div className="set-label">Display Name</div>
             <input
               className="set-input"
+              name="displayName"
+              autoComplete="off"
               value={profileName}
               onChange={(e) => setProfileName(e.target.value)}
-              placeholder="Enter your name"
+              placeholder="Enter your name…"
+              minLength="2"
+              maxLength="60"
+              aria-describedby="display-name-help"
+              aria-invalid={profileName.trim().length > 0 && profileName.trim().length < 2}
             />
+            <span className="set-field-help" id="display-name-help">Shown in your account menu and administrative records.</span>
           </label>
           <label className="set-field">
-            <div className="set-label">Email</div>
-            <input className="set-input" value={profileEmail} disabled />
+            <div className="set-label">Email Address</div>
+            <input
+              className="set-input set-input-readonly"
+              name="email"
+              type="email"
+              autoComplete="email"
+              spellCheck="false"
+              value={profileEmail}
+              readOnly
+              aria-describedby="account-email-help"
+            />
+            <span className="set-field-help" id="account-email-help">Used to sign in. Contact the system owner to change this address.</span>
           </label>
+          </div>
+          <div className="set-actions">
+          <button
+            className="set-btn"
+            type="button"
+            onClick={handleSaveProfile}
+            disabled={savingProfile || profileName.trim().length < 2 || profileName.trim().length > 60 || profileName.trim() === savedProfileName}
+          >
+            {savingProfile ? "Saving…" : "Save Profile"}
+          </button>
+          </div>
         </section>
 
-        <div className="set-actions">
-          <button className="set-btn" type="button" onClick={handleSaveProfile} disabled={savingProfile}>
-            {savingProfile ? "Saving..." : "Save Profile"}
-          </button>
-        </div>
-
-        <h2 className="set-section-title">Notification Settings</h2>
-        <div className="set-toggle-row">
-          <div className="set-toggle-label">Allow Notifications</div>
+        <section className="set-section" aria-labelledby="admin-notifications-title">
+          <div className="set-section-heading">
+            <h2 id="admin-notifications-title">Notifications</h2>
+            <p>Control whether this account receives platform updates.</p>
+          </div>
+          <div className="set-toggle-row">
+          <div>
+            <div className="set-toggle-label">Allow Notifications</div>
+            <div className="set-toggle-help">Receive relevant activity and account alerts.</div>
+          </div>
+          <div className="set-toggle-control">
+            <span>{allowNotifications ? "Enabled" : "Muted"}</span>
           <button
             className={`set-switch ${allowNotifications ? "on" : ""}`}
             type="button"
@@ -250,34 +300,35 @@ function Settings({ onNavigate, role, onLogout }) {
             aria-pressed={allowNotifications}
             aria-label="Allow Notifications"
           />
+          </div>
         </div>
 
         <div className="set-actions">
           <button className="set-btn" type="button" onClick={handleSaveAll} disabled={savingSettings}>
-            {savingSettings ? "Saving..." : "Save Changes"}
+            {savingSettings ? "Saving…" : "Save Changes"}
           </button>
+        </div>
+        </section>
         </div>
 
         <div className="set-page-actions">
           <button className="set-logout" type="button" onClick={() => onLogout?.()}>
-            <span className="set-logout-ico" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path
-                  d="M10 7V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-1"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M15 12H3m0 0l3.5-3.5M3 12l3.5 3.5"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </span>
-            <span className="set-logout-text">Log Out</span>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
+              <path
+                d="M10 7V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-1"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+              <path
+                d="M15 12H3m0 0 3.5-3.5M3 12l3.5 3.5"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Log Out
           </button>
         </div>
       </div>

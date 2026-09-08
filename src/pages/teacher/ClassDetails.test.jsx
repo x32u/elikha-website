@@ -106,22 +106,34 @@ describe('Class activity rubric selector', () => {
       container.querySelector('.create-activity-modal__close').dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
-    const expandButton = container.querySelector('[aria-label="Expand activity"]');
+    const viewButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent.trim() === 'View activity'
+    );
+    expect(viewButton).toBeDefined();
     await act(async () => {
-      expandButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      viewButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(document.querySelector('.activity-view-modal')).not.toBeNull();
+    expect(document.querySelector('.activity-view-modal').textContent).toContain('Color the bird');
+    expect(document.querySelector('.activity-view-modal').textContent).toContain('Paint the bird');
+    await act(async () => {
+      document.querySelector('[aria-label="Close activity overview"]')
+        .dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
-    const editButton = container.querySelector('.activity-edit-button');
+    const editButton = container.querySelector('.activity-action .btn-edit');
     expect(editButton).not.toBeNull();
     await act(async () => {
       editButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
-    const editSelect = container.querySelector('.activity-edit-form .activity-rubric-field select');
+    const editSelect = document.querySelector('.activity-edit-form .activity-rubric-field select');
     expect(mockGetActivityRubricManagementState).toHaveBeenCalledWith('activity-1');
+    expect(document.querySelector('[role="dialog"][aria-modal="true"]')).not.toBeNull();
+    expect(document.querySelector('.activity-edit-modal-backdrop')).not.toBeNull();
     expect(editSelect.value).toBe('rubric-1');
     expect(editSelect.disabled).toBe(true);
-    expect(container.textContent).toContain('This rubric is locked because student work depends on it.');
+    expect(document.body.textContent).toContain('This rubric is locked because student work depends on it.');
   });
 
   test('lets the teacher rename the class without recreating it', async () => {

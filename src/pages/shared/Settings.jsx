@@ -45,6 +45,7 @@ const Settings = () => {
 
   const displayName = userInfo.name || userInfo.firstName || userInfo.email?.split('@')[0] || 'User';
   const avatarInitial = displayName.charAt(0).toUpperCase();
+  const accountLabel = String(userInfo.role || '').toLowerCase() === 'teacher' ? 'Teacher account' : 'Learner account';
 
   const dirty = JSON.stringify(settings) !== JSON.stringify(initialSettings);
 
@@ -203,20 +204,26 @@ const Settings = () => {
   return (
     <div className="settings-page-container student-shell">
       <main className="settings-page">
-        <h1 className="settings-page-title">Settings</h1>
+        <header className="settings-page-header">
+          <div>
+            <h1 className="settings-page-title">Settings</h1>
+            <p>Manage your profile, accessibility preferences, and app behavior.</p>
+          </div>
+          <span className="settings-role-badge">{accountLabel}</span>
+        </header>
 
         <section className="settings-panel">
-          {status && <div className={`settings-status ${status.type}`}>{status.text}</div>}
+          {status && <div className={`settings-status ${status.type}`} role="status" aria-live="polite">{status.text}</div>}
 
-          <div className="settings-card">
-            <div className="card-title">Profile Picture</div>
+          <div className="settings-card settings-profile-card">
+            <h2 className="card-title">Profile Picture</h2>
             {avatarError && <div className="settings-status error">{avatarError}</div>}
             <div className="settings-avatar-row">
-              <div className="settings-avatar-preview" aria-hidden="true">
+              <div className="settings-avatar-preview">
                 {avatarUrl ? (
-                  <img className="settings-avatar-img" src={avatarUrl} alt={`${displayName} profile`} />
+                  <img className="settings-avatar-img" src={avatarUrl} alt={`${displayName} profile`} width="72" height="72" />
                 ) : (
-                  <span className="settings-avatar-initial">{avatarInitial}</span>
+                  <span className="settings-avatar-initial" aria-hidden="true">{avatarInitial}</span>
                 )}
               </div>
               <div className="settings-avatar-controls">
@@ -248,7 +255,7 @@ const Settings = () => {
           </div>
 
           <div className="settings-card">
-            <div className="card-title">Audio</div>
+            <h2 className="card-title">Audio</h2>
             <div className="settings-row">
               <div>
                 <p className="settings-label">Background Music</p>
@@ -257,6 +264,7 @@ const Settings = () => {
               <button
                 className={`toggle ${settings.backgroundMusic ? 'active' : ''}`}
                 type="button"
+                aria-label="Background music"
                 aria-pressed={settings.backgroundMusic}
                 disabled={loading}
                 onClick={() => updateSetting('backgroundMusic', !settings.backgroundMusic)}
@@ -272,6 +280,7 @@ const Settings = () => {
               <button
                 className={`toggle ${settings.soundEffects ? 'active' : ''}`}
                 type="button"
+                aria-label="Sound effects"
                 aria-pressed={settings.soundEffects}
                 disabled={loading}
                 onClick={() => updateSetting('soundEffects', !settings.soundEffects)}
@@ -300,7 +309,7 @@ const Settings = () => {
           </div>
 
           <div className="settings-card">
-            <div className="card-title">Notifications</div>
+            <h2 className="card-title">Notifications</h2>
             <div className="settings-row">
               <div>
                 <p className="settings-label">Activity Reminders</p>
@@ -310,6 +319,7 @@ const Settings = () => {
               <button
                 className={`toggle ${settings.notifications ? 'active' : ''}`}
                 type="button"
+                aria-label="Activity reminders"
                 aria-pressed={settings.notifications}
                 disabled={loading}
                 onClick={() => updateSetting('notifications', !settings.notifications)}
@@ -320,7 +330,7 @@ const Settings = () => {
           </div>
 
           <div className="settings-card">
-            <div className="card-title">Performance</div>
+            <h2 className="card-title">Performance</h2>
             <div className="settings-row">
               <div>
                 <p className="settings-label">Data Saver</p>
@@ -329,6 +339,7 @@ const Settings = () => {
               <button
                 className={`toggle ${settings.dataSaver ? 'active' : ''}`}
                 type="button"
+                aria-label="Data saver"
                 aria-pressed={settings.dataSaver}
                 disabled={loading}
                 onClick={() => updateSetting('dataSaver', !settings.dataSaver)}
@@ -344,6 +355,8 @@ const Settings = () => {
               </div>
               <select
                 className="settings-select"
+                id="preview-quality"
+                name="previewQuality"
                 value={settings.quality}
                 onChange={(e) => updateSetting('quality', e.target.value)}
                 aria-label="Preview quality"
@@ -436,7 +449,7 @@ const Settings = () => {
               Reset Defaults
             </button>
             <button className="settings-button" type="button" onClick={handleSave} disabled={loading || saving || !dirty}>
-              {saving ? 'Saving...' : dirty ? 'Save Changes' : 'Saved'}
+              {saving ? 'Saving…' : dirty ? 'Save Changes' : 'Saved'}
             </button>
             <button className="settings-button danger" type="button" onClick={handleLogout}>
               Logout

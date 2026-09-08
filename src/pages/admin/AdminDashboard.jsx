@@ -5,7 +5,6 @@ import {
   createAdminActivity,
   fetchAdminDashboardData,
   fetchAdminStorageUsage,
-  fetchClassDirectory,
 } from '../../services/adminApi';
 import {
   AR_MODEL_LIBRARY_UPDATED_EVENT,
@@ -47,6 +46,31 @@ const formatStorage = (bytes) => {
   const maximumFractionDigits = amount >= 100 || unitIndex === 0 ? 0 : amount >= 10 ? 1 : 2;
 
   return `${amount.toLocaleString(undefined, { maximumFractionDigits })} ${units[unitIndex]}`;
+};
+
+const WeeklyBarChart = ({ values = [], labels = [], ariaLabel }) => {
+  const maximum = Math.max(1, ...values.map((value) => Number(value) || 0));
+
+  return (
+    <div className="weekly-chart" role="img" aria-label={ariaLabel}>
+      {values.map((rawValue, index) => {
+        const value = Number(rawValue) || 0;
+        const height = value === 0 ? '4px' : `${Math.max(14, (value / maximum) * 100)}%`;
+        return (
+          <div className="weekly-chart-column" key={`${labels[index] || index}-${index}`}>
+            <span className="weekly-chart-value">{value}</span>
+            <div className="weekly-chart-track" aria-hidden="true">
+              <span
+                className="weekly-chart-fill"
+                style={{ '--chart-height': height, '--chart-delay': `${index * 55}ms` }}
+              />
+            </div>
+            <span className="weekly-chart-label">{labels[index] || `W${index + 1}`}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
 };
 
 function AdminDashboard({ onNavigate, role = 'Admin' }) {
@@ -140,7 +164,7 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
 
     const [dashboardResult, classesResult, storageResult] = await Promise.all([
       fetchAdminDashboardData(),
-      fetchClassDirectory(),
+      Promise.resolve({ success: true, data: [] }),
       fetchAdminStorageUsage(),
     ]);
 
@@ -204,25 +228,6 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
     };
   }, [classOptions, createDraft.classId, isCreateOpen]);
 
-  const resetCreateForm = React.useCallback(() => {
-    setCreateDraft({
-      title: '',
-      description: '',
-      classId: classOptions[0]?.id || '',
-      dueDate: '',
-      instructions: '',
-      modelId: DEFAULT_MODEL_ID,
-      puzzlePieces: DEFAULT_PUZZLE_PIECES,
-      rubricId: '',
-    });
-    setCreateError('');
-  }, [classOptions]);
-
-  const handleOpenCreate = () => {
-    resetCreateForm();
-    setIsCreateOpen(true);
-  };
-
   const submitCreate = async () => {
     setCreateError('');
 
@@ -273,7 +278,7 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
     <AdminShell
       active={homePageKey}
       onNavigate={onNavigate}
-      className="page-homepage"
+      className={`page-homepage ${isSuperAdmin ? 'page-superadmin page-superadmin-dashboard' : 'page-admin page-admin-dashboard'}`}
       homePageKey={homePageKey}
       showAudit={isSuperAdmin}
       auditPageKey="audit"
@@ -287,21 +292,45 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
 
       <section className="dash-stats">
         <div className="stat">
-          <div className="stat-label">Total Users</div>
+          <div className="stat-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M16 20v-1.6c0-2.2-1.8-4-4-4H7c-2.2 0-4 1.8-4 4V20" />
+              <circle cx="9.5" cy="7" r="3.5" />
+              <path d="M16.5 4.7a3.5 3.5 0 0 1 0 6.6M18 14.7c1.8.7 3 2.3 3 4.3v1" />
+            </svg>
+          </div>
+          <div className="stat-copy">
+            <div className="stat-label">Total Users</div>
+            <div className="stat-meta">All platform roles</div>
+          </div>
           <div className="stat-value">{dashboard.metrics.totalUsers}</div>
-          <div className="stat-meta">All roles</div>
         </div>
 
         <div className="stat">
-          <div className="stat-label">Active Activities</div>
+          <div className="stat-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M13 2 5.5 13h6L11 22l7.5-11h-6L13 2Z" />
+            </svg>
+          </div>
+          <div className="stat-copy">
+            <div className="stat-label">Active Activities</div>
+            <div className="stat-meta">Available to learners</div>
+          </div>
           <div className="stat-value">{dashboard.metrics.activeActivities}</div>
-          <div className="stat-meta">Currently active</div>
         </div>
 
         <div className="stat">
-          <div className="stat-label">Pending Reviews</div>
+          <div className="stat-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M9 5h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9" />
+              <path d="M3 3h6v6H3zM9 14h8M9 17.5h6" />
+            </svg>
+          </div>
+          <div className="stat-copy">
+            <div className="stat-label">Pending Reviews</div>
+            <div className="stat-meta">Waiting for grading</div>
+          </div>
           <div className="stat-value">{dashboard.metrics.pendingReview}</div>
-          <div className="stat-meta">Need grading</div>
         </div>
       </section>
 
@@ -374,41 +403,53 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
 
       <section className="dash-analytics">
         <div className="panel">
-          <div className="panel-title">New Users by Week</div>
-          <div className="panel-big">{dashboard.trend.newUsersByWeek.reduce((a, b) => a + b, 0)}</div>
-          <div className="panel-sub">Last {dashboard.trend.weekLabels.length} weeks</div>
-
-          <div className="chart-area">
-            {dashboard.trend.newUsersByWeek.map((value, index) => (
-              <span key={`users-${dashboard.trend.weekLabels[index] || index}`} className="panel-sub">
-                W{index + 1}: {value}
-              </span>
-            ))}
+          <div className="panel-head">
+            <div>
+              <div className="panel-title">New users</div>
+              <div className="panel-sub">Last {dashboard.trend.weekLabels.length} weeks</div>
+            </div>
+            <div className="panel-total">
+              <strong>{dashboard.trend.newUsersByWeek.reduce((a, b) => a + b, 0)}</strong>
+              <span>added</span>
+            </div>
           </div>
+          <WeeklyBarChart
+            values={dashboard.trend.newUsersByWeek}
+            labels={dashboard.trend.weekLabels}
+            ariaLabel={`New users over the last ${dashboard.trend.weekLabels.length} weeks`}
+          />
         </div>
 
         <div className="panel">
-          <div className="panel-title">Submissions by Week</div>
-          <div className="panel-big">{dashboard.metrics.totalSubmissions}</div>
-          <div className="panel-sub">Total submissions recorded</div>
-
-          <div className="bars">
-            {dashboard.trend.submissionsByWeek.map((value, index) => (
-              <div className="barcol" key={`submissions-${dashboard.trend.weekLabels[index] || index}`}>
-                <div
-                  className="bar"
-                  style={{
-                    height: `${Math.max(14, value * 8)}px`,
-                  }}
-                />
-                <span>{value}</span>
-              </div>
-            ))}
+          <div className="panel-head">
+            <div>
+              <div className="panel-title">Submissions</div>
+              <div className="panel-sub">Last {dashboard.trend.weekLabels.length} weeks</div>
+            </div>
+            <div className="panel-total">
+              <strong>{dashboard.trend.submissionsByWeek.reduce((a, b) => a + b, 0)}</strong>
+              <span>received</span>
+            </div>
           </div>
+          <WeeklyBarChart
+            values={dashboard.trend.submissionsByWeek}
+            labels={dashboard.trend.weekLabels}
+            ariaLabel={`Submissions received over the last ${dashboard.trend.weekLabels.length} weeks`}
+          />
+          <div className="panel-foot">{dashboard.metrics.totalSubmissions} submissions recorded overall</div>
         </div>
       </section>
 
-      <h2 className="dash-h2">Recent Activity Submissions</h2>
+      <div className="dash-section-head">
+        <h2 className="dash-h2">Recent Activity Submissions</h2>
+        <button
+          className="dash-section-link"
+          type="button"
+          onClick={() => setIsAllSubmissionsOpen(true)}
+        >
+          View all submissions
+        </button>
+      </div>
 
       <section className="dash-tablewrap">
         <table className="dash-table">
@@ -445,15 +486,6 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
           </tbody>
         </table>
       </section>
-
-      <div className="dash-actions">
-        <button className="btn secondary" type="button" onClick={() => setIsAllSubmissionsOpen(true)}>
-          View All
-        </button>
-        <button className="btn primary" type="button" onClick={handleOpenCreate}>
-          Create New Activity
-        </button>
-      </div>
 
       {isAllSubmissionsOpen && (
         <div className="dash-modal-backdrop" role="presentation" onClick={closeAllModals}>
