@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AR_MODEL_LIBRARY_UPDATED_EVENT,
   AR_OBJECT_LIBRARY,
@@ -16,6 +16,7 @@ import { formatClassLabel } from '../utils/classLabels';
 import { sanitizeColorRequirements } from '../utils/activityColorRequirements';
 import ActivityColorPalettePicker from './ActivityColorPalettePicker';
 import ActivityColorRequirements from './ActivityColorRequirements';
+import ActivityModelSelector from './ActivityModelSelector';
 import './CreateActivityModal.css';
 
 const MAX_MODEL_QUANTITY = 12;
@@ -36,16 +37,6 @@ const createInitialForm = (preselectedClassId = '') => ({
   allowedColors: [],
   colorRequirements: [],
 });
-
-const getModelQuantity = (modelIds, modelId) => (
-  (Array.isArray(modelIds) ? modelIds : []).filter((id) => id === modelId).length
-);
-
-const clampModelQuantity = (value) => {
-  const count = Number(value);
-  if (!Number.isFinite(count)) return 0;
-  return Math.max(0, Math.min(MAX_MODEL_QUANTITY, Math.floor(count)));
-};
 
 const CreateActivityModal = ({
   isOpen,
@@ -71,11 +62,6 @@ const CreateActivityModal = ({
   }, [isOpen, preselectedClassId]);
 
   const selectedClassId = hasPreselectedClass ? preselectedClassId : formData.classId;
-  const selectedModelCount = useMemo(
-    () => (Array.isArray(formData.modelIds) ? formData.modelIds.length : 0),
-    [formData.modelIds]
-  );
-
   if (!isOpen) return null;
 
   const closeModal = () => {
@@ -92,20 +78,6 @@ const CreateActivityModal = ({
         return next.length > 0 ? { ...current, allowedObjects: next } : current;
       }
       return { ...current, allowedObjects: [...current.allowedObjects, objectId] };
-    });
-  };
-
-  const updateModelQuantity = (modelId, nextQuantity) => {
-    const quantity = clampModelQuantity(nextQuantity);
-    setFormData((current) => {
-      const currentIds = current.modelIds?.length ? current.modelIds : [DEFAULT_MODEL_ID];
-      const counts = new Map();
-      currentIds.forEach((id) => counts.set(id, (counts.get(id) || 0) + 1));
-      counts.set(modelId, quantity);
-      const modelIds = modelOptions.flatMap((model) => (
-        Array.from({ length: counts.get(model.id) || 0 }, () => model.id)
-      ));
-      return modelIds.length > 0 ? { ...current, modelIds } : current;
     });
   };
 
@@ -243,22 +215,12 @@ const CreateActivityModal = ({
 
           <div className="form-group">
             <span className="form-label">Base 3D Models</span>
-            <div className="model-quantity-grid">
-              {modelOptions.map((model) => {
-                const quantity = getModelQuantity(formData.modelIds, model.id);
-                return (
-                  <div key={model.id} className={`model-quantity-row ${quantity > 0 ? 'active' : ''}`}>
-                    <span className="model-quantity-name">{model.label}</span>
-                    <div className="model-quantity-controls">
-                      <button type="button" onClick={() => updateModelQuantity(model.id, quantity - 1)} disabled={quantity === 0 || selectedModelCount === quantity} aria-label={`Remove one ${model.label}`}>−</button>
-                      <span className="model-quantity-count" aria-label={`${model.label} quantity ${quantity}`}>{quantity}</span>
-                      <button type="button" onClick={() => updateModelQuantity(model.id, quantity + 1)} disabled={quantity >= MAX_MODEL_QUANTITY} aria-label={`Add one ${model.label}`}>+</button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <small className="form-help">Set how many of each model students need.</small>
+            <ActivityModelSelector
+              modelOptions={modelOptions}
+              modelIds={formData.modelIds}
+              maxQuantity={MAX_MODEL_QUANTITY}
+              onChange={(modelIds) => setFormData((current) => ({ ...current, modelIds }))}
+            />
           </div>
 
           <div className="form-group">

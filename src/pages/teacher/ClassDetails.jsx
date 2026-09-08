@@ -32,19 +32,10 @@ import {
 import './ClassDetails.css';
 import ActivityColorRequirements from '../../components/ActivityColorRequirements';
 import ActivityColorPalettePicker from '../../components/ActivityColorPalettePicker';
+import ActivityModelSelector from '../../components/ActivityModelSelector';
 import { sanitizeColorRequirements } from '../../utils/activityColorRequirements';
 
 const MAX_MODEL_QUANTITY = 12;
-
-const clampModelQuantity = (value) => {
-  const count = Number(value);
-  if (!Number.isFinite(count)) return 0;
-  return Math.max(0, Math.min(MAX_MODEL_QUANTITY, Math.floor(count)));
-};
-
-const getModelQuantity = (modelIds, modelId) => (
-  (Array.isArray(modelIds) ? modelIds : []).filter((id) => id === modelId).length
-);
 
 const ClassDetails = () => {
   const { classId } = useParams();
@@ -379,25 +370,6 @@ const ClassDetails = () => {
     setSelectedIds([...selectedIds, objectId]);
   };
 
-  const updateModelQuantity = (selectedIds, setSelectedIds, modelId, nextQuantity) => {
-    const quantity = clampModelQuantity(nextQuantity);
-    const currentIds = Array.isArray(selectedIds) && selectedIds.length > 0
-      ? selectedIds
-      : [DEFAULT_MODEL_ID];
-    const counts = new Map();
-    currentIds.forEach((id) => {
-      counts.set(id, (counts.get(id) || 0) + 1);
-    });
-    counts.set(modelId, quantity);
-
-    const nextModelIds = modelOptions.flatMap((model) => (
-      Array.from({ length: counts.get(model.id) || 0 }, () => model.id)
-    ));
-
-    if (nextModelIds.length === 0) return;
-    setSelectedIds(nextModelIds);
-  };
-
   if (loading) {
     return (
       <div className="page-container">
@@ -730,42 +702,13 @@ const ClassDetails = () => {
                             </div>
                           </div>
                           <div className="form-group">
-                            <label className="form-label">Base 3D Models</label>
-                            <div className="model-quantity-grid">
-                              {modelOptions.map((model) => {
-                                const quantity = getModelQuantity(editModelIds, model.id);
-                                return (
-                                  <div key={model.id} className={`model-quantity-row ${quantity > 0 ? 'active' : ''}`}>
-                                    <span className="model-quantity-name">{model.label}</span>
-                                    <div className="model-quantity-controls">
-                                      <button
-                                        type="button"
-                                        onClick={() => updateModelQuantity(editModelIds, setEditModelIds, model.id, quantity - 1)}
-                                        disabled={quantity === 0 || editModelIds.length === quantity}
-                                        aria-label={`Remove one ${model.label}`}
-                                      >
-                                        -
-                                      </button>
-                                      <span
-                                        className="model-quantity-count"
-                                        aria-label={`${model.label} quantity ${quantity}`}
-                                      >
-                                        {quantity}
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => updateModelQuantity(editModelIds, setEditModelIds, model.id, quantity + 1)}
-                                        disabled={quantity >= MAX_MODEL_QUANTITY}
-                                        aria-label={`Add one ${model.label}`}
-                                      >
-                                        +
-                                      </button>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            <p className="object-kit-help">Set how many of each model students need.</p>
+                            <p className="form-label">Base 3D Models</p>
+                            <ActivityModelSelector
+                              modelOptions={modelOptions}
+                              modelIds={editModelIds}
+                              maxQuantity={MAX_MODEL_QUANTITY}
+                              onChange={setEditModelIds}
+                            />
                           </div>
                           <div className="form-group">
                             <label className="form-label">Puzzle Pieces</label>

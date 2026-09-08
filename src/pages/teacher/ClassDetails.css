@@ -481,7 +481,7 @@ body:has(.class-details-shell)::-webkit-scrollbar {
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: border-color 0.18s ease, background-color 0.18s ease, color 0.18s ease;
 }
 
 .object-kit-chip:hover {
@@ -492,69 +492,6 @@ body:has(.class-details-shell)::-webkit-scrollbar {
   border-color: #1800ad;
   background: #f0edff;
   color: #1800ad;
-}
-
-.model-quantity-grid {
-  display: grid;
-  gap: 8px;
-}
-
-.model-quantity-row {
-  border: 1px solid #d8d2e7;
-  border-radius: 10px;
-  background: #fff;
-  padding: 8px 10px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-}
-
-.model-quantity-row.active {
-  border-color: #1800ad;
-  background: #f0edff;
-}
-
-.model-quantity-name {
-  font-size: 12px;
-  font-weight: 700;
-  color: #2f2841;
-}
-
-.model-quantity-controls {
-  display: grid;
-  grid-template-columns: 32px 48px 32px;
-  gap: 6px;
-  align-items: center;
-}
-
-.model-quantity-controls button {
-  height: 32px;
-  border: 1px solid #cfc6ef;
-  border-radius: 8px;
-  background: #fff;
-  color: #1800ad;
-  font-size: 18px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.model-quantity-controls button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.model-quantity-count {
-  width: 48px;
-  height: 32px;
-  border: 1px solid #d8d2e7;
-  border-radius: 8px;
-  background: #fff;
-  display: grid;
-  place-items: center;
-  font-weight: 800;
-  font-size: 14px;
-  color: #2f2841;
 }
 
 .form-input,
