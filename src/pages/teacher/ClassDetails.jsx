@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
+import CreateActivityModal from '../../components/CreateActivityModal';
 import {
   getClassById,
   getClassStudents,
   getClassActivities,
-  createActivity,
   updateActivity,
   enrollStudentToClassByEmail,
   removeStudentFromClass,
@@ -60,19 +60,6 @@ const ClassDetails = () => {
   const [enrollNotice, setEnrollNotice] = useState('');
   const [removeBusyId, setRemoveBusyId] = useState(null);
   const [showActivityForm, setShowActivityForm] = useState(false);
-  const [activityName, setActivityName] = useState('');
-  const [activityDescription, setActivityDescription] = useState('');
-  const [activityInstructions, setActivityInstructions] = useState('');
-  const [activityDueDate, setActivityDueDate] = useState('');
-  const [activityThumbnailUrl, setActivityThumbnailUrl] = useState('');
-  const [activityThumbnailName, setActivityThumbnailName] = useState('');
-  const [activityThumbnailError, setActivityThumbnailError] = useState('');
-  const [activityAllowedObjects, setActivityAllowedObjects] = useState([...DEFAULT_ALLOWED_OBJECT_IDS]);
-  const [activityModelIds, setActivityModelIds] = useState([DEFAULT_MODEL_ID]);
-  const [activityPuzzlePieces, setActivityPuzzlePieces] = useState(DEFAULT_PUZZLE_PIECES);
-  const [activityRubricId, setActivityRubricId] = useState('');
-  const [activityAllowedColors, setActivityAllowedColors] = useState([]);
-  const [activityColorRequirements, setActivityColorRequirements] = useState([]);
   const [editingActivityId, setEditingActivityId] = useState(null);
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -151,66 +138,6 @@ const ClassDetails = () => {
       setName(file.name);
     } catch (error) {
       setError(error.message || 'Unable to process thumbnail image.');
-    }
-  };
-
-  const resetCreateActivityForm = () => {
-    setActivityName('');
-    setActivityDescription('');
-    setActivityInstructions('');
-    setActivityDueDate('');
-    setActivityThumbnailUrl('');
-    setActivityThumbnailName('');
-    setActivityThumbnailError('');
-    setActivityAllowedObjects([...DEFAULT_ALLOWED_OBJECT_IDS]);
-    setActivityModelIds([DEFAULT_MODEL_ID]);
-    setActivityPuzzlePieces(DEFAULT_PUZZLE_PIECES);
-    setActivityRubricId('');
-    setActivityAllowedColors([]);
-    setActivityColorRequirements([]);
-  };
-
-  const handleAddActivity = async () => {
-    if (activityName.trim()) {
-      setActivityThumbnailError('');
-      try {
-        const userInfo = JSON.parse(sessionStorage.getItem('userInfo') || '{}');
-        const encodedDescription = encodeActivityDescription(activityDescription, {
-          instructions: activityInstructions,
-          allowedObjectIds: activityAllowedObjects,
-          modelIds: activityModelIds,
-          puzzlePieces: activityPuzzlePieces,
-          allowedColors: activityAllowedColors,
-          colorRequirements: activityColorRequirements,
-        });
-        const uploadedThumbnailUrl = await uploadActivityThumbnail({
-          imageUrl: activityThumbnailUrl,
-          teacherId: userInfo.id,
-          fileName: activityThumbnailName || activityName,
-        });
-
-        const result = await createActivity(userInfo.id, {
-          title: activityName,
-          description: encodedDescription,
-          class_id: classId,
-          due_date: activityDueDate || null,
-          status: 'active',
-          image_url: uploadedThumbnailUrl,
-          rubric_id: activityRubricId || null,
-        });
-
-        if (result.success) {
-          resetCreateActivityForm();
-          setShowActivityForm(false);
-          await loadClassData();
-        } else {
-          setActivityThumbnailError(result.error || 'Failed to create activity.');
-          console.error('Failed to create activity:', result.error);
-        }
-      } catch (error) {
-        setActivityThumbnailError(error.message || 'Failed to create activity.');
-        console.error('Failed to create activity:', error);
-      }
     }
   };
 
@@ -538,218 +465,20 @@ const ClassDetails = () => {
                 <h2>Class Activities</h2>
                 <button 
                   className="btn-add-activity"
-                  onClick={() => {
-                    if (showActivityForm) {
-                      resetCreateActivityForm();
-                    }
-                    setShowActivityForm(!showActivityForm);
-                  }}
+                  onClick={() => setShowActivityForm(true)}
                 >
                   + Add Activity
                 </button>
               </div>
 
-              {showActivityForm && (
-                <div className="activity-form">
-                  <input
-                    type="text"
-                    placeholder="Activity name"
-                    value={activityName}
-                    onChange={(e) => setActivityName(e.target.value)}
-                    className="form-input"
-                  />
-                  <textarea
-                    placeholder="Activity description (optional)"
-                    value={activityDescription}
-                    onChange={(e) => setActivityDescription(e.target.value)}
-                    className="form-textarea"
-                    rows="3"
-                  />
-                  <textarea
-                    placeholder="Teacher instructions shown before AR starts"
-                    value={activityInstructions}
-                    onChange={(e) => setActivityInstructions(e.target.value)}
-                    className="form-textarea"
-                    rows="4"
-                  />
-                  <ActivityColorPalettePicker
-                    value={activityAllowedColors}
-                    onChange={(allowedColors) => {
-                      setActivityAllowedColors(allowedColors);
-                      setActivityColorRequirements((current) => sanitizeColorRequirements(current, allowedColors));
-                    }}
-                  />
-                  <ActivityColorRequirements
-                    instructions={activityInstructions}
-                    allowedObjectIds={activityAllowedObjects}
-                    modelIds={activityModelIds}
-                    modelOptions={modelOptions}
-                    allowedColors={activityAllowedColors}
-                    value={activityColorRequirements}
-                    onChange={setActivityColorRequirements}
-                  />
-                  <input
-                    type="date"
-                    placeholder="Due date"
-                    value={activityDueDate}
-                    onChange={(e) => setActivityDueDate(e.target.value)}
-                    className="form-input"
-                  />
-                  <label className="activity-rubric-field">
-                    <span className="form-label">Rubric (optional)</span>
-                    <select
-                      className="form-input"
-                      value={activityRubricId}
-                      onChange={(event) => setActivityRubricId(event.target.value)}
-                    >
-                      <option value="">No rubric</option>
-                      {rubrics.map((rubric) => (
-                        <option key={rubric.id} value={rubric.id}>
-                          {rubric.title}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="activity-rubric-help">
-                      The selected rubric is saved with this activity and becomes the AI checking guide.
-                    </span>
-                  </label>
-                  <div className="activity-thumbnail-upload">
-                    <label className="form-label">Activity Thumbnail</label>
-                    {activityThumbnailUrl && (
-                      <img
-                        src={activityThumbnailUrl}
-                        alt="Activity thumbnail preview"
-                        className="activity-thumbnail-preview"
-                      />
-                    )}
-                    <div className="activity-thumbnail-actions">
-                      <label className="btn-upload-thumbnail">
-                        Choose Image
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => {
-                            handleThumbnailChange(
-                              e.target.files?.[0],
-                              setActivityThumbnailUrl,
-                              setActivityThumbnailName,
-                              setActivityThumbnailError
-                            );
-                            e.target.value = '';
-                          }}
-                        />
-                      </label>
-                      {activityThumbnailUrl && (
-                        <button
-                          type="button"
-                          className="btn-clear-thumbnail"
-                          onClick={() => {
-                            setActivityThumbnailUrl('');
-                            setActivityThumbnailName('');
-                            setActivityThumbnailError('');
-                          }}
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                    {activityThumbnailName && (
-                      <p className="thumbnail-file-name">{activityThumbnailName}</p>
-                    )}
-                    {activityThumbnailError && (
-                      <p className="thumbnail-error">{activityThumbnailError}</p>
-                    )}
-                  </div>
-                  <div className="object-kit-selector">
-                    <p className="object-kit-title">AR Object Kit</p>
-                    <div className="object-kit-grid">
-                      {AR_OBJECT_LIBRARY.map((item) => {
-                        const selected = activityAllowedObjects.includes(item.id);
-                        return (
-                          <button
-                            key={item.id}
-                            type="button"
-                            className={`object-kit-chip ${selected ? 'active' : ''}`}
-                            onClick={() =>
-                              toggleAllowedObject(activityAllowedObjects, setActivityAllowedObjects, item.id)
-                            }
-                          >
-                            <span>{item.icon}</span>
-                            <span>{item.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <p className="object-kit-help">Choose which objects students can spawn in AR.</p>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Base 3D Models</label>
-                    <div className="model-quantity-grid">
-                      {modelOptions.map((model) => {
-                        const quantity = getModelQuantity(activityModelIds, model.id);
-                        return (
-                          <div key={model.id} className={`model-quantity-row ${quantity > 0 ? 'active' : ''}`}>
-                            <span className="model-quantity-name">{model.label}</span>
-                            <div className="model-quantity-controls">
-                              <button
-                                type="button"
-                                onClick={() => updateModelQuantity(activityModelIds, setActivityModelIds, model.id, quantity - 1)}
-                                disabled={quantity === 0 || activityModelIds.length === quantity}
-                                aria-label={`Remove one ${model.label}`}
-                              >
-                                -
-                              </button>
-                              <span
-                                className="model-quantity-count"
-                                aria-label={`${model.label} quantity ${quantity}`}
-                              >
-                                {quantity}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => updateModelQuantity(activityModelIds, setActivityModelIds, model.id, quantity + 1)}
-                                disabled={quantity >= MAX_MODEL_QUANTITY}
-                                aria-label={`Add one ${model.label}`}
-                              >
-                                +
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <p className="object-kit-help">Set how many of each model students need, for example 2 popsicle sticks.</p>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Puzzle Pieces</label>
-                    <select
-                      className="form-input"
-                      value={activityPuzzlePieces}
-                      onChange={(e) => setActivityPuzzlePieces(Number(e.target.value))}
-                    >
-                      {PUZZLE_PIECE_OPTIONS.map((count) => (
-                        <option key={count} value={count}>
-                          {count === 0 ? 'Off' : `${count} pieces`}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="form-actions">
-                    <button
-                      className="btn-cancel"
-                      onClick={() => {
-                        resetCreateActivityForm();
-                        setShowActivityForm(false);
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    <button className="btn-submit" onClick={handleAddActivity}>
-                      Add Activity
-                    </button>
-                  </div>
-                </div>
-              )}
+              <CreateActivityModal
+                isOpen={showActivityForm}
+                onClose={() => setShowActivityForm(false)}
+                onCreated={loadClassData}
+                classes={classData ? [classData] : []}
+                rubrics={rubrics}
+                preselectedClassId={classId}
+              />
 
               <div className="activities-list">
                 {activities.length === 0 ? (

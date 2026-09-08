@@ -1,0 +1,84 @@
+.create-activity-modal__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(19, 16, 28, 0.56);
+}
+
+.create-activity-modal {
+  width: min(720px, 100%);
+  max-height: min(92vh, 980px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgba(18, 10, 58, 0.28);
+}
+
+.create-activity-modal__header,
+.create-activity-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+}
+
+.create-activity-modal__header { border-bottom: 1px solid #e8e2ef; }
+.create-activity-modal__header h2 { margin: 2px 0 0; color: #141217; font-size: 24px; }
+.create-activity-modal__eyebrow { margin: 0; color: #3b25c4; font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.create-activity-modal__close { width: 38px; height: 38px; border: 0; border-radius: 10px; background: #f4f1f8; color: #514861; font-size: 26px; cursor: pointer; }
+.create-activity-modal__close:hover { background: #ece7f3; color: #1800ad; }
+
+.create-activity-modal__body { min-height: 0; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+.create-activity-modal__body .form-group { display: flex; flex-direction: column; gap: 8px; }
+.create-activity-modal__body .form-label { color: #211a2d; font-size: 14px; font-weight: 700; }
+.create-activity-modal__body .form-input,
+.create-activity-modal__body .form-textarea { box-sizing: border-box; width: 100%; padding: 12px 14px; border: 1px solid #ddd5e7; border-radius: 10px; background: #fdfcfe; color: #191421; font: inherit; }
+.create-activity-modal__body .form-input:focus,
+.create-activity-modal__body .form-textarea:focus { outline: none; border-color: #3b25c4; box-shadow: 0 0 0 3px rgba(59, 37, 196, .1); }
+.create-activity-modal__body .form-textarea { min-height: 96px; resize: vertical; }
+.create-activity-modal__body .form-help { color: #746b80; font-size: 12px; line-height: 1.45; }
+.create-activity-modal__object-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.create-activity-modal__body .activity-object-chip { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px; border: 1px solid #ddd5f7; border-radius: 10px; background: #fff; color: #2e2742; font-weight: 700; cursor: pointer; }
+.create-activity-modal__body .activity-object-chip.active { border-color: #1800ad; background: #f1edff; color: #1800ad; }
+.create-activity-modal__body .model-quantity-grid { display: grid; gap: 8px; }
+.create-activity-modal__body .model-quantity-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid #ddd5f7; border-radius: 10px; }
+.create-activity-modal__body .model-quantity-row.active { border-color: #1800ad; background: #f1edff; }
+.create-activity-modal__body .model-quantity-name { color: #2e2742; font-size: 13px; font-weight: 700; }
+.create-activity-modal__body .model-quantity-controls { display: grid; grid-template-columns: 32px 42px 32px; align-items: center; gap: 6px; }
+.create-activity-modal__body .model-quantity-controls button { height: 32px; border: 1px solid #cfc6ef; border-radius: 8px; background: #fff; color: #1800ad; font-size: 18px; font-weight: 800; cursor: pointer; }
+.create-activity-modal__body .model-quantity-controls button:disabled { opacity: .42; cursor: not-allowed; }
+.create-activity-modal__body .model-quantity-count { display: grid; width: 42px; height: 32px; place-items: center; border: 1px solid #d8d2e7; border-radius: 8px; background: #fff; color: #2e2742; font-size: 14px; font-weight: 800; }
+.create-activity-modal__body .form-section { display: flex; flex-direction: column; gap: 12px; }
+.create-activity-modal__body .form-section-title { margin: 0; color: #211a2d; font-size: 16px; }
+.create-activity-modal__upload { padding: 28px 20px; border: 2px dashed #ddd5e7; border-radius: 12px; background: #fdfcfe; text-align: center; }
+.create-activity-modal__upload.has-preview { display: grid; grid-template-columns: minmax(140px, 190px) 1fr; align-items: center; gap: 18px; padding: 18px; text-align: left; }
+.create-activity-modal__upload .thumbnail-preview { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; }
+.create-activity-modal__upload-content { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.create-activity-modal__upload.has-preview .create-activity-modal__upload-content { align-items: flex-start; }
+.create-activity-modal__upload-content p { margin: 0; color: #6d6378; font-size: 13px; }
+.create-activity-modal__body .thumbnail-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.create-activity-modal__body .btn-upload,
+.create-activity-modal__body .btn-clear-thumbnail { padding: 8px 14px; border-radius: 20px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.create-activity-modal__body .btn-upload { background: #eee9fb; color: #2410a7; }
+.create-activity-modal__body .btn-upload input { display: none; }
+.create-activity-modal__body .btn-clear-thumbnail { border: 1px solid #f0c8c8; background: #fff7f7; color: #9f1d1d; }
+.create-activity-modal__error { margin: 0; padding: 10px 12px; border-radius: 9px; background: #fff1f0; color: #a52a22; font-size: 13px; font-weight: 700; }
+.create-activity-modal__footer { justify-content: flex-end; border-top: 1px solid #e8e2ef; background: #faf8fc; }
+.create-activity-modal__footer .btn { padding: 10px 18px; }
+
+@media (max-width: 600px) {
+  .create-activity-modal__overlay { padding: 0; }
+  .create-activity-modal { width: 100%; max-height: 100dvh; min-height: 100dvh; border-radius: 0; }
+  .create-activity-modal__header,
+  .create-activity-modal__footer,
+  .create-activity-modal__body { padding-left: 16px; padding-right: 16px; }
+  .create-activity-modal__object-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .create-activity-modal__upload.has-preview { grid-template-columns: 1fr; text-align: center; }
+  .create-activity-modal__upload.has-preview .create-activity-modal__upload-content { align-items: center; }
+}

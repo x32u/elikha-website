@@ -90,12 +90,14 @@ describe('Class activity rubric selector', () => {
       addButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
-    const createSelect = container.querySelector('.activities-section > .activity-form .activity-rubric-field select');
+    const createSelect = container.querySelector('.create-activity-modal #activity-rubric');
     expect(createSelect).not.toBeNull();
     expect(Array.from(createSelect.options).map((option) => option.textContent)).toContain('Bird coloring rubric');
+    expect(container.querySelector('#activity-class')).toBeNull();
+    expect(container.textContent).not.toContain('Required Materials');
 
     await act(async () => {
-      addButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      container.querySelector('.create-activity-modal__close').dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
     const expandButton = container.querySelector('[aria-label="Expand activity"]');
