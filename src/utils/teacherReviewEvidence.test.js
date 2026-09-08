@@ -63,15 +63,15 @@ describe('teacher review evidence contract', () => {
         beginning_descriptor_snapshot: 'Needs guidance.',
         developing_descriptor_snapshot: 'Sometimes follows the guide.',
         consistent_descriptor_snapshot: 'Consistently follows the guide.',
-        // Ratings are normalized to the SF9 code the DepEd form uses, so a
-        // legacy 'C' from an older client is stored as 'CO'.
+        // Ratings use compatible BG/DV/CO values, so a legacy 'C' from an
+        // older client is stored as 'CO'.
         selected_rating: 'CO',
         teacher_note: 'The required areas are visibly complete.',
       }],
     });
   });
 
-  test('normalizes legacy and SF9 ratings to the SF9 code', () => {
+  test('normalizes legacy and current ratings to the compatible code', () => {
     expect(build({ criterionRatings: ['C'] }).criteria[0].selected_rating).toBe('CO');
     expect(build({ criterionRatings: ['CO'] }).criteria[0].selected_rating).toBe('CO');
     expect(build({ criterionRatings: ['B'] }).criteria[0].selected_rating).toBe('BG');
@@ -79,8 +79,8 @@ describe('teacher review evidence contract', () => {
     expect(build({ criterionRatings: ['NO'] }).criteria[0].selected_rating).toBe('NO');
   });
 
-  test('reads descriptors from a rubric that uses SF9 level codes', () => {
-    const sf9Rubric = {
+  test('reads descriptors from a rubric that uses BG/DV/CO level codes', () => {
+    const developmentalRubric = {
       id: 'rubric-2',
       assignedVersion: '1',
       criteria: [{
@@ -93,7 +93,7 @@ describe('teacher review evidence contract', () => {
       }],
     };
 
-    const criteria = build({ rubric: sf9Rubric, criterionRatings: ['DV'] }).criteria[0];
+    const criteria = build({ rubric: developmentalRubric, criterionRatings: ['DV'] }).criteria[0];
     expect(criteria.beginning_descriptor_snapshot).toBe('Rarely demonstrates the expected competency.');
     expect(criteria.developing_descriptor_snapshot).toBe('Sometimes demonstrates the competency.');
     expect(criteria.consistent_descriptor_snapshot).toBe('Always demonstrates the expected competency.');

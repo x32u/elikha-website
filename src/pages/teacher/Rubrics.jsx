@@ -4,54 +4,32 @@ import Navbar from '../../components/Navbar';
 import { assignRubricToActivity, createRubric, deleteRubric, getTeacherRubrics } from '../../services/rubricApi';
 import { getTeacherActivities } from '../../services/teacherApi';
 import {
-  AR_EXCLUDED_COMPETENCIES,
-  SF9_DOMAINS,
-  SF9_RATINGS,
-  competenciesForActivityType,
-  findArCompetency,
-  makeSf9Levels,
-} from '../../utils/sf9Competencies';
+  RUBRIC_RATINGS,
+  makeRubricLevels,
+  toRubricRatingCode,
+} from '../../utils/rubricRatings';
 import './Rubrics.css';
 
-const makeCriterion = (name = '', competencyCode = '') => {
-  const competency = findArCompetency(competencyCode);
-  return {
-    name,
-    domain: competency?.domain || '',
-    competencyCode: competency?.code || '',
-    competencyText: competency?.text || '',
-    levels: makeSf9Levels(),
-  };
-};
-
-const fromCompetency = (code) => {
-  const competency = findArCompetency(code);
-  return makeCriterion(competency?.suggestedCriterion || '', code);
-};
-
-// Starter sets are per activity type, limited to competencies the AR can
-// actually evidence for that type: a colouring activity and a puzzle show
-// different things, so one shared rubric cannot judge both.
-const STARTERS = {
-  paint: ['IV.G.24', 'III.1', 'III.10'],
-  scene: ['III.7', 'III.10', 'III.5'],
-  puzzle: ['III.2', 'III.10', 'III.7'],
-  blank: [],
-};
+const makeCriterion = (name = '') => ({ name, levels: makeRubricLevels() });
 
 const ACTIVITY_TYPE_LABELS = {
-  paint: 'AR painting / colouring',
-  scene: 'AR scene building / loose parts',
-  puzzle: 'AR puzzle assembly',
-  blank: 'Start blank',
+  general: 'General / not specified',
+  paint: 'Painting / coloring',
+  scene: 'Creative scene building',
+  puzzle: 'Puzzle assembly',
 };
 
-const copy = (value) => JSON.parse(JSON.stringify(value));
-
-const buildStarter = (type) => {
-  const codes = STARTERS[type] || [];
-  return codes.length ? codes.map(fromCompetency) : [makeCriterion()];
-};
+const copyForPrivateRubric = (criterion = {}) => ({
+  name: String(criterion.name || ''),
+  levels: makeRubricLevels().map((defaultLevel) => {
+    const savedLevel = (Array.isArray(criterion.levels) ? criterion.levels : [])
+      .find((level) => toRubricRatingCode(level?.code) === defaultLevel.code);
+    return {
+      ...defaultLevel,
+      description: String(savedLevel?.description || '').trim() || defaultLevel.description,
+    };
+  }),
+});
 
 const titleWords = (value) => new Set(String(value || '').toLowerCase().match(/[a-z]{4,}/g) || []);
 
@@ -94,9 +72,9 @@ export default function Rubrics() {
   const user = useMemo(() => JSON.parse(sessionStorage.getItem('userInfo') || '{}'), []);
   const [rubrics, setRubrics] = useState([]);
   const [activities, setActivities] = useState([]);
-  const [activityType, setActivityType] = useState('paint');
+  const [activityType, setActivityType] = useState('general');
   const [title, setTitle] = useState('');
-  const [criteria, setCriteria] = useState(() => buildStarter('paint'));
+  const [criteria, setCriteria] = useState(() => [makeCriterion()]);
   const [selectedActivityId, setSelectedActivityId] = useState('');
   const [saving, setSaving] = useState(false);
   const [attachmentActivityId, setAttachmentActivityId] = useState('');
@@ -111,20 +89,19 @@ export default function Rubrics() {
   }, [user.id]);
   useEffect(() => { load(); }, [load]);
 
-  const chooseStarter = (value) => { setActivityType(value); setCriteria(buildStarter(value)); };
   const updateCriterion = (index, patch) => setCriteria((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
-  const chooseCompetency = (index, code) => {
-    const competency = findArCompetency(code);
-    updateCriterion(index, {
-      domain: competency?.domain || '',
-      competencyCode: competency?.code || '',
-      competencyText: competency?.text || '',
-      name: criteria[index]?.name?.trim() ? criteria[index].name : (competency?.suggestedCriterion || ''),
-    });
-  };
   const updateLevel = (criterionIndex, levelIndex, description) => setCriteria((items) => items.map((item, itemIndex) => itemIndex === criterionIndex ? { ...item, levels: item.levels.map((level, index) => index === levelIndex ? { ...level, description } : level) } : item));
   const addCriterion = () => setCriteria((items) => [...items, makeCriterion()]);
-  const duplicate = (rubric) => { setTitle(`${rubric.title} (copy)`); setActivityType('blank'); setCriteria(copy(rubric.criteria || [makeCriterion()])); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const duplicate = (rubric) => {
+    setTitle(`${rubric.title} (copy)`);
+    const savedType = rubric?.metadata?.activityType;
+    setActivityType(ACTIVITY_TYPE_LABELS[savedType] ? savedType : 'general');
+    const savedCriteria = Array.isArray(rubric.criteria) && rubric.criteria.length
+      ? rubric.criteria
+      : [makeCriterion()];
+    setCriteria(savedCriteria.map(copyForPrivateRubric));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const attachmentWarning = useMemo(() => {
     const rubric = rubrics.find((item) => item.id === attachmentRubricId);
@@ -134,15 +111,22 @@ export default function Rubrics() {
 
   const save = async (event) => {
     event.preventDefault();
-    const validCriteria = criteria.filter((item) => item.name.trim()).map((item) => ({ ...item, name: item.name.trim() }));
+    const validCriteria = criteria.filter((item) => item.name.trim()).map((item) => ({
+      name: item.name.trim(),
+      levels: item.levels.map((level) => ({
+        code: toRubricRatingCode(level.code),
+        label: level.label,
+        description: level.description.trim(),
+      })),
+    }));
     if (!title.trim() || !validCriteria.length || validCriteria.some((item) => item.levels.some((level) => !level.description.trim()))) return alert('Enter a rubric name, at least one skill, and all Beginning, Developing, and Consistent descriptions.');
     setSaving(true);
     const result = await createRubric({
       teacherId: user.id,
       title: title.trim(),
-      description: 'DepEd SF9 developmental observation checklist.',
+      description: 'Teacher-created private-school activity rubric.',
       criteria: validCriteria,
-      metadata: { isTemplate: true, assessmentStyle: 'SF9-kindergarten', ratingScale: 'BG-DV-CO', activityType },
+      metadata: { version: 2, isTemplate: true, assessmentStyle: 'private-school', ratingScale: 'BG-DV-CO', activityType },
     });
     setSaving(false);
     if (!result.success) return alert(`Could not save rubric: ${result.error}`);
@@ -150,7 +134,7 @@ export default function Rubrics() {
       const attachment = await assignRubricToActivity(selectedActivityId, result.data.id);
       if (!attachment.success) alert(`Rubric saved, but attachment failed: ${attachment.error}`);
     }
-    setTitle(''); chooseStarter(activityType); setSelectedActivityId(''); await load();
+    setTitle(''); setCriteria([makeCriterion()]); setSelectedActivityId(''); await load();
   };
   const remove = async (id) => { if (window.confirm('Delete this unused rubric? Rubrics already attached to activities are protected to preserve grading history.')) { const result = await deleteRubric(id); if (!result.success) alert(result.error); else load(); } };
   const attachExisting = async (event) => {
@@ -171,34 +155,28 @@ export default function Rubrics() {
   };
 
   return <div className="rubrics-page"><Navbar /><main className="rubrics-content">
-    <header><h1>Kindergarten Rubrics</h1><p>Create a DepEd SF9 progress rubric for one E-Likha activity. The saved rubric is the guide AI uses for its draft review.</p></header>
+    <header><span className="rubric-mode-badge">Private-school rubric</span><h1>Flexible Rubrics</h1><p>Write the skills that matter for each activity. The saved criteria and level descriptions guide the AI draft and the teacher’s final review.</p></header>
     <section className="rubric-form-card simple-rubric-form"><h2>Create rubric</h2>
       <form onSubmit={save}>
-        <div className="rubric-top-fields"><label>Activity type<select value={activityType} onChange={(event) => chooseStarter(event.target.value)}>{Object.entries(ACTIVITY_TYPE_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Rubric name<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Cactus Colouring" /></label></div>
-        <h3>Rubric table</h3><p className="rubric-tip">Enter the skills you will observe in <b>this</b> activity. These rows—and the SF9 rating indicators—become the AI’s basis for checking submitted work. Only competencies the AR can actually show are offered.</p>
-        <details className="excluded-details"><summary>Competencies to observe in class instead</summary><ul>{AR_EXCLUDED_COMPETENCIES.map((competency) => <li key={competency.code}><b>{competency.code}</b> {competency.text}<br /><small>{competency.reason}</small></li>)}</ul></details>
-        <div className="rubric-table-wrap"><table className="sf9-rubric-table"><thead><tr>
-          <th scope="col">Observable skill</th>
-          {SF9_RATINGS.map((rating) => <th scope="col" key={rating.code}><abbr title={rating.label}>{rating.code}</abbr><span>{rating.label}</span></th>)}
+        <div className="rubric-top-fields"><label>Activity type <small>(optional organizer)</small><select value={activityType} onChange={(event) => setActivityType(event.target.value)}>{Object.entries(ACTIVITY_TYPE_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Rubric name<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Cactus Coloring" /></label></div>
+        <h3>Rubric criteria</h3><p className="rubric-tip">Describe exactly what the teacher should be able to observe in the submitted work. You may keep the suggested level descriptions or tailor them to the skill.</p>
+        <div className="rubric-table-wrap"><table className="rubric-level-table"><thead><tr>
+          <th scope="col">Observable skill / criterion</th>
+          {RUBRIC_RATINGS.map((rating) => <th scope="col" key={rating.code}><span>{rating.label}</span><small>{rating.defaultDescription}</small></th>)}
           <th scope="col"><span className="sr-only">Actions</span></th>
         </tr></thead><tbody>{criteria.map((item, index) => <tr key={index}>
           <td>
-            <input value={item.name} onChange={(event) => updateCriterion(index, { name: event.target.value })} placeholder="e.g. Uses small hand movements to colour" aria-label={`Skill ${index + 1}`} />
-            <select className="competency-select" value={item.competencyCode || ''} onChange={(event) => chooseCompetency(index, event.target.value)} aria-label={`DepEd competency for skill ${index + 1}`}>
-              <option value="">No competency tagged</option>
-              {competenciesForActivityType(activityType === 'blank' ? '' : activityType).map((competency) => <option value={competency.code} key={competency.code}>{competency.code} — {competency.text}</option>)}
-            </select>
-            {item.competencyCode && <small className="competency-note">{SF9_DOMAINS[item.domain]}{findArCompetency(item.competencyCode)?.arEvidence ? ` · ${findArCompetency(item.competencyCode).arEvidence}` : ''}</small>}
+            <textarea className="criterion-input" value={item.name} onChange={(event) => updateCriterion(index, { name: event.target.value })} placeholder="e.g. Colors the flower petals using the colors named in the instructions" aria-label={`Observable criterion ${index + 1}`} rows="4" />
           </td>
           {item.levels.map((level, levelIndex) => <td key={level.code}><textarea value={level.description} onChange={(event) => updateLevel(index, levelIndex, event.target.value)} aria-label={`${level.label} description for skill ${index + 1}`} rows="4" /></td>)}
           <td>{criteria.length > 1 && <button type="button" className="text-danger" onClick={() => setCriteria((items) => items.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}</td>
         </tr>)}</tbody></table></div>
-        <button type="button" className="secondary rubric-add" onClick={addCriterion}>+ Add skill row</button>
-        <details className="attach-details"><summary>Attach this checklist to an activity now (optional)</summary><label>Activity<select value={selectedActivityId} onChange={(event) => setSelectedActivityId(event.target.value)}><option value="">Attach later</option>{activities.map((activity) => <option value={activity.id} key={activity.id}>{activity.title}</option>)}</select></label></details>
+        <button type="button" className="secondary rubric-add" onClick={addCriterion}>+ Add criterion</button>
+        <details className="attach-details"><summary>Attach this rubric to an activity now (optional)</summary><label>Activity<select value={selectedActivityId} onChange={(event) => setSelectedActivityId(event.target.value)}><option value="">Attach later</option>{activities.map((activity) => <option value={activity.id} key={activity.id}>{activity.title}</option>)}</select></label></details>
         <button className="primary rubric-save" disabled={saving}>{saving ? 'Saving...' : selectedActivityId ? 'Save and attach rubric' : 'Save rubric'}</button>
       </form>
     </section>
-    <section className="rubric-list"><h2>Saved rubrics</h2>{rubrics.length === 0 ? <p className="empty-state">No saved rubrics yet.</p> : rubrics.map((rubric) => <article className="rubric-card" key={rubric.id}><div><h3>{rubric.title}</h3><p>{(rubric.criteria || []).map((item) => item.competencyCode ? `${item.competencyCode} ${item.name}` : item.name).join(' · ')}</p></div><div><button className="secondary" onClick={() => duplicate(rubric)}>Use as copy</button><button className="text-danger" onClick={() => remove(rubric.id)}>Delete</button></div></article>)}</section>
+    <section className="rubric-list"><h2>Saved rubrics</h2>{rubrics.length === 0 ? <p className="empty-state">No saved rubrics yet.</p> : rubrics.map((rubric) => <article className="rubric-card" key={rubric.id}><div><h3>{rubric.title}</h3><p>{(rubric.criteria || []).map((item) => item.name).filter(Boolean).join(' · ')}</p></div><div><button className="secondary" onClick={() => duplicate(rubric)}>Use as copy</button><button className="text-danger" onClick={() => remove(rubric.id)}>Delete</button></div></article>)}</section>
     <section className="rubric-form-card rubric-attachment-card">
       <h2>Attach a saved rubric</h2>
       <p>Choose the exact activity that should use this rubric for AI checking.</p>

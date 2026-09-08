@@ -95,7 +95,7 @@ describe('sf9DraftStarRationale', () => {
     expect(rationale).toContain('2 Consistent');
     expect(rationale).toContain('1 Developing');
     expect(rationale).toContain('1 Beginning');
-    expect(rationale).toContain('follow-up');
+    expect(rationale).toContain('needed support');
   });
 
   test('mentions criteria that were not observed', () => {

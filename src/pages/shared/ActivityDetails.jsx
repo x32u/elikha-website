@@ -6,18 +6,17 @@ import { getActivityById } from '../../services/teacherApi';
 import { getActivityDetails, getStudentActivityAssessment } from '../../services/studentApi';
 import { getArModelLibrary, parseActivityDescription } from '../../utils/activityArConfig';
 import { hasStarRating, normalizeStarRating, starRatingLabel } from '../../utils/starRating';
-import { sf9RatingLabel, toSf9RatingCode } from '../../utils/sf9Competencies';
+import { rubricRatingLabel, toRubricRatingCode } from '../../utils/rubricRatings';
 import './ActivityDetails.css';
 
 const EMPTY_ASSESSMENT = { rubric: null, final_review: null };
-// Rating labels come from the shared SF9 helper, which understands both the
-// SF9 codes (CO/DV/BG) and the legacy single letters (C/D/B).
-const reviewLevelLabel = (rating) => sf9RatingLabel(rating);
+// Legacy single-letter ratings and current BG/DV/CO values share these labels.
+const reviewLevelLabel = (rating) => rubricRatingLabel(rating);
 
 const cleanDisplayText = (value) => typeof value === 'string' ? value.trim() : '';
 
 const criterionResultDescriptor = (criterion) => {
-  const rating = toSf9RatingCode(criterion?.selected_rating);
+  const rating = toRubricRatingCode(criterion?.selected_rating);
   if (rating === 'BG') return cleanDisplayText(criterion?.beginning_descriptor_snapshot);
   if (rating === 'DV') return cleanDisplayText(criterion?.developing_descriptor_snapshot);
   if (rating === 'CO') return cleanDisplayText(criterion?.consistent_descriptor_snapshot);
@@ -500,14 +499,14 @@ const ActivityDetails = () => {
                     <div className="final-criteria" aria-label="Criterion results">
                       <h4>Criterion results</h4>
                       {finalCriteria.map((criterion, criterionIndex) => {
-                        const rating = toSf9RatingCode(criterion.selected_rating);
+                        const rating = toRubricRatingCode(criterion.selected_rating);
                         const descriptor = criterionResultDescriptor(criterion);
                         return (
                           <article className="final-criterion" key={`${criterion.criterion_index ?? criterionIndex}-${criterion.criterion_title_snapshot}`}>
                             <div className="final-criterion-heading">
                               <h5>{criterion.criterion_title_snapshot || `Criterion ${criterionIndex + 1}`}</h5>
                               <span className={`final-criterion-rating rating-${rating.toLowerCase()}`}>
-                                {rating || '—'}{reviewLevelLabel(rating) ? ` — ${reviewLevelLabel(rating)}` : ''}
+                                {reviewLevelLabel(rating) || 'Not rated'}
                               </span>
                             </div>
                             {descriptor && <p>{descriptor}</p>}

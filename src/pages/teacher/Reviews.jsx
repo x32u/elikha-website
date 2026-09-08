@@ -9,15 +9,16 @@ import { hasStarRating, normalizeStarRating, starRatingLabel } from '../../utils
 import { getActivityRubric } from '../../services/rubricApi';
 import { getAiSubmissionGrade, requestAiSubmissionGrade } from '../../services/aiGradingApi';
 import { buildTeacherRubricEvidence } from '../../utils/teacherReviewEvidence';
-import { SF9_RATINGS, sf9RatingLabel, toSf9RatingCode } from '../../utils/sf9Competencies';
-import { sf9DraftStarRationale } from '../../utils/sf9StarRating';
+import { RUBRIC_RATINGS, rubricRatingLabel, toRubricRatingCode } from '../../utils/rubricRatings';
+import { rubricDraftStarRationale } from '../../utils/rubricStarRating';
 
-const rubricLevelLabel = (level) => level.code ? `${level.code} — ${level.label || sf9RatingLabel(level.code) || ''}` : `${level.score} pts`;
-// An AI criterion carries its SF9 rating in levelCode. A missing or NO code
+const rubricLevelLabel = (level) => level.code ? (level.label || rubricRatingLabel(level.code) || '') : `${level.score} pts`;
+// An AI criterion carries its private-school rating in levelCode. A missing or
+// Not observed code
 // means the draft could not judge that criterion, which is not the same as
 // Beginning, so it must never fall back to a level.
 const developmentalLevel = (criterion) =>
-  sf9RatingLabel(criterion?.levelCode) || 'Needs teacher review';
+  rubricRatingLabel(criterion?.levelCode) || 'Needs teacher review';
 const starRatingDescription = (value) => ({ 5: 'Consistent', 4: 'Developing, approaching Consistent', 3: 'Developing', 2: 'Beginning, with emerging progress', 1: 'Beginning' }[normalizeStarRating(value)] || 'Not rated');
 
 const Reviews = () => {
@@ -243,7 +244,7 @@ const Reviews = () => {
     const suggestedRating = normalizeStarRating(aiEvaluation.suggested_score);
     if (suggestedRating) setScore(suggestedRating);
     if (aiEvaluation.feedback) setFeedback(aiEvaluation.feedback);
-    const suggested = (aiEvaluation.criterion_scores || []).map((item) => toSf9RatingCode(item.levelCode));
+    const suggested = (aiEvaluation.criterion_scores || []).map((item) => toRubricRatingCode(item.levelCode));
     if (suggested.length === (activityRubric?.criteria || []).length && suggested.every(Boolean)) setCriterionRatings(suggested);
   };
 
@@ -254,7 +255,7 @@ const Reviews = () => {
       alert('Please choose an overall rating');
       return;
     }
-    if (activityRubric && (!criterionRatings.every((value) => Boolean(toSf9RatingCode(value))) || !teacherConfirmed)) {
+    if (activityRubric && (!criterionRatings.every((value) => Boolean(toRubricRatingCode(value))) || !teacherConfirmed)) {
       alert('Select a rating for every criterion and confirm that you reviewed the AI draft before submitting.');
       return;
     }
@@ -606,7 +607,7 @@ const Reviews = () => {
                           <div><span>Suggested star rating (draft)</span>{hasStarRating(aiEvaluation.suggested_score)
                             ? <>{renderStars(aiEvaluation.suggested_score)}<small>{starRatingDescription(aiEvaluation.suggested_score)}</small></>
                             : <small className="ai-no-draft">Not enough visible evidence for a draft rating. Rate each criterion yourself.</small>}
-                            <small className="ai-draft-rationale">{sf9DraftStarRationale((aiEvaluation.criterion_scores || []).map((item) => item.levelCode))}</small></div>
+                            <small className="ai-draft-rationale">{rubricDraftStarRationale((aiEvaluation.criterion_scores || []).map((item) => item.levelCode))}</small></div>
                           <strong>Teacher confirmation required</strong>
                         </div>
 
@@ -676,12 +677,12 @@ const Reviews = () => {
                   <section className="teacher-observation" aria-label="Teacher rubric observation">
                     <span>Teacher assessment</span>
                     <h3>Confirm each observed criterion</h3>
-                    <p>AI suggestions are optional drafts. Choose CO (Consistent), DV (Developing), or BG (Beginning) for every criterion, or NO if you could not observe it and NA if it does not apply.</p>
+                    <p>AI suggestions are optional drafts. Choose Beginning, Developing, or Consistent for every criterion. Use Not observed when the submission does not show enough evidence, or Not applicable when a criterion does not fit.</p>
                     {(activityRubric.criteria || []).map((criterion, index) => (
                       <article className="teacher-observation__criterion" key={`${criterion.name}-${index}`}>
                         <strong>{criterion.name}</strong>
                         <div className="criterion-rating-options" role="radiogroup" aria-label={`${criterion.name} rating`}>
-                          {[...SF9_RATINGS.map((rating) => rating.code), 'NO', 'NA'].map((value) => <button type="button" key={value} title={sf9RatingLabel(value)} aria-label={sf9RatingLabel(value) || value} className={toSf9RatingCode(criterionRatings[index]) === value ? 'active' : ''} onClick={() => setCriterionRatings((items) => items.map((item, itemIndex) => itemIndex === index ? value : item))}>{value}</button>)}
+                          {[...RUBRIC_RATINGS.map((rating) => rating.code), 'NO', 'NA'].map((value) => <button type="button" key={value} title={rubricRatingLabel(value)} aria-label={rubricRatingLabel(value) || value} className={toRubricRatingCode(criterionRatings[index]) === value ? 'active' : ''} onClick={() => setCriterionRatings((items) => items.map((item, itemIndex) => itemIndex === index ? value : item))}>{rubricRatingLabel(value)}</button>)}
                         </div>
                         <textarea value={criterionNotes[index] || ''} onChange={(event) => setCriterionNotes((items) => items.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder="Optional teacher note or visible evidence for this criterion" rows="2" />
                       </article>

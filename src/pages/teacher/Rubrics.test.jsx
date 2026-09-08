@@ -1,4 +1,22 @@
-import { findSubjectMismatch } from './Rubrics';
+import React, { act } from 'react';
+import { createRoot } from 'react-dom/client';
+import { MemoryRouter } from 'react-router-dom';
+import Rubrics, { findSubjectMismatch } from './Rubrics';
+
+const mockGetTeacherRubrics = jest.fn();
+const mockGetTeacherActivities = jest.fn();
+const mockCreateRubric = jest.fn();
+
+jest.mock('../../components/Navbar', () => () => <nav>Navigation</nav>);
+jest.mock('../../services/rubricApi', () => ({
+  assignRubricToActivity: jest.fn(),
+  createRubric: (...args) => mockCreateRubric(...args),
+  deleteRubric: jest.fn(),
+  getTeacherRubrics: (...args) => mockGetTeacherRubrics(...args),
+}));
+jest.mock('../../services/teacherApi', () => ({
+  getTeacherActivities: (...args) => mockGetTeacherActivities(...args),
+}));
 
 // The teacher's real activity list from the live project.
 const ACTIVITIES = [
@@ -76,5 +94,94 @@ describe('findSubjectMismatch', () => {
     expect(findSubjectMismatch(null, activity('a2'), ACTIVITIES)).toBe('');
     expect(findSubjectMismatch(robotRubric, null, ACTIVITIES)).toBe('');
     expect(findSubjectMismatch({ criteria: [] }, activity('a2'), ACTIVITIES)).toBe('');
+  });
+});
+
+describe('private-school rubric builder', () => {
+  let container;
+  let root;
+
+  beforeEach(() => {
+    mockGetTeacherRubrics.mockResolvedValue({ success: true, data: [] });
+    mockGetTeacherActivities.mockResolvedValue({ success: true, data: [] });
+    mockCreateRubric.mockResolvedValue({ success: true, data: { id: 'rubric-new' } });
+    sessionStorage.setItem('userInfo', JSON.stringify({ id: 'teacher-1' }));
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    global.IS_REACT_ACT_ENVIRONMENT = true;
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    sessionStorage.clear();
+    jest.clearAllMocks();
+    delete global.IS_REACT_ACT_ENVIRONMENT;
+  });
+
+  it('uses free-form criteria and full private-school rating labels', async () => {
+    await act(async () => {
+      root.render(<MemoryRouter><Rubrics /></MemoryRouter>);
+    });
+
+    expect(container.textContent).toContain('Private-school rubric');
+    expect(container.textContent).toContain('Flexible Rubrics');
+    expect(container.querySelectorAll('.criterion-input')).toHaveLength(1);
+    expect(container.querySelector('.competency-select')).toBeNull();
+    expect(container.querySelector('.excluded-details')).toBeNull();
+    expect(container.textContent).not.toMatch(/DepEd|SF9|III\.1|IV\.G\.24/);
+
+    const headers = Array.from(container.querySelectorAll('.rubric-level-table th'))
+      .map((header) => header.textContent);
+    expect(headers[1]).toContain('Beginning');
+    expect(headers[2]).toContain('Developing');
+    expect(headers[3]).toContain('Consistent');
+  });
+
+  it('adds free-form rows without tying them to the activity organizer', async () => {
+    await act(async () => {
+      root.render(<MemoryRouter><Rubrics /></MemoryRouter>);
+    });
+
+    const addButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.trim() === '+ Add criterion');
+    await act(async () => {
+      addButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(container.querySelectorAll('.criterion-input')).toHaveLength(2);
+    expect(container.querySelectorAll('.rubric-level-table tbody textarea')).toHaveLength(8);
+  });
+
+  it('saves only free-form text and the compatible three-level contract', async () => {
+    await act(async () => {
+      root.render(<MemoryRouter><Rubrics /></MemoryRouter>);
+    });
+
+    const setValue = (element, value) => {
+      const prototype = element instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(prototype, 'value').set.call(element, value);
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+
+    await act(async () => {
+      setValue(container.querySelector('input[placeholder="e.g. Cactus Coloring"]'), 'Creative Color Choices');
+      setValue(container.querySelector('.criterion-input'), 'Uses the requested colors on each shape');
+    });
+    await act(async () => {
+      container.querySelector('.simple-rubric-form form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+
+    expect(mockCreateRubric).toHaveBeenCalledTimes(1);
+    const payload = mockCreateRubric.mock.calls[0][0];
+    expect(payload.description).toBe('Teacher-created private-school activity rubric.');
+    expect(payload.metadata).toMatchObject({ version: 2, assessmentStyle: 'private-school' });
+    expect(payload.criteria).toHaveLength(1);
+    expect(payload.criteria[0].name).toBe('Uses the requested colors on each shape');
+    expect(payload.criteria[0]).not.toHaveProperty('competencyCode');
+    expect(payload.criteria[0].levels.map((level) => level.code)).toEqual(['BG', 'DV', 'CO']);
   });
 });

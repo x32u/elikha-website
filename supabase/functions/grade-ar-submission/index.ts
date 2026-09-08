@@ -2,13 +2,14 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { callGroqEvaluation } from "./groq.ts";
 import { normalizeArColorSuggestions, resolveActivityColorPalette } from "./colorPalette.ts";
 import {
-  isSf9Rubric,
-  SF9_AI_RATING_CODES,
-  SF9_RATING_LABELS,
-  sf9DraftStarRating,
-  sf9OrdinalScore,
-  toSf9RatingCode,
-} from "./sf9.ts";
+  buildRubricRatingPromptLines,
+  isDevelopmentalRubric,
+  RUBRIC_AI_RATING_CODES,
+  RUBRIC_RATING_LABELS,
+  rubricDraftStarRating,
+  rubricOrdinalScore,
+  toRubricRatingCode,
+} from "./ratingScale.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,7 +21,7 @@ const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const PROCESSING_TTL_MS = 2 * 60 * 1000;
 const DEFAULT_GROQ_MODEL = "qwen/qwen3.6-27b";
 const DEFAULT_GEMINI_MODEL = "gemini-3.6-flash";
-const GRADER_VERSION = "grader-v2";
+const GRADER_VERSION = "grader-v3-private-rubric";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -64,7 +65,7 @@ const responseSchema = {
           criterionIndex: { type: "integer" },
           rating: {
             type: "string",
-            enum: [...SF9_AI_RATING_CODES],
+            enum: [...RUBRIC_AI_RATING_CODES],
           },
           evidence: { type: "string" },
           confidence: {
@@ -190,13 +191,12 @@ const normalizeRubric = (rubric: JsonRecord): RubricCriterion[] => {
     const levels = rawLevels.map((rawLevel) => {
       const level = asObject(rawLevel);
       const code = cleanText(level.code, 12).toUpperCase();
-      // SF9 developmental levels (BG/DV/CO) carry no numeric score; the builder
-      // writes only a code. Derive an ordinal score from the code so the
-      // downstream max-score guard and stored rubric_score stay valid. Legacy
-      // point rubrics keep their explicit numeric score.
+      // Developmental levels carry codes instead of points. Their ordinal
+      // values preserve the existing stored score contract; older point
+      // rubrics keep their explicit numeric scores.
       const score = Number.isFinite(Number(level.score))
         ? Number(level.score)
-        : sf9OrdinalScore(code);
+        : rubricOrdinalScore(code);
       return {
         score,
         code,
@@ -424,9 +424,7 @@ const buildPrompt = ({
     "Give one short, child-friendly color suggestion after the activity. Base it on the teacher instructions and rubric when they specify target colors.",
     "When no color is objectively correct, present the suggestion as an optional harmonious or contrasting idea and explicitly respect the child's creative choice.",
     `Return one to three suggested colors, using only this exact activity palette: ${JSON.stringify(activityDetails.allowedColors)}. Do not invent, rename, or substitute any color outside this list. A color the learner cannot pick in AR is useless advice.`,
-    "Rate every criterion with exactly one DepEd SF9 code: CO (Consistent), DV (Developing), BG (Beginning), or NO.",
-    `SF9 rating meanings: ${JSON.stringify(SF9_RATING_LABELS)}.`,
-    "Use NO when the submitted image and AR state do not show enough evidence to judge that criterion, or when the criterion does not apply to this activity. Never guess BG just because evidence is missing: BG means the child rarely demonstrates the competency, which is a claim about the child, not about the photo.",
+    ...buildRubricRatingPromptLines(),
     "Use low confidence and explain the visibility limitation when the snapshot does not show enough evidence.",
     "Return one criterionScores item for every rubric criterion, using its exact criterionIndex.",
     "",
@@ -481,7 +479,7 @@ const validateEvaluation = (
     byIndex.set(Number(entry.criterionIndex), entry);
   });
 
-  const developmental = isSf9Rubric(criteria);
+  const developmental = isDevelopmentalRubric(criteria);
 
   const criterionScores: EvaluationCriterion[] = criteria.map(
     (criterion, criterionIndex) => {
@@ -490,19 +488,19 @@ const validateEvaluation = (
         throw new Error(`The AI omitted rubric criterion ${criterionIndex + 1}.`);
       }
 
-      // Developmental rubrics are rated by SF9 code; legacy point rubrics still
-      // return a numeric score that has to match one of the rubric's levels.
-      const ratingCode = toSf9RatingCode(entry.rating);
+      // Developmental rubrics use the compatible BG/DV/CO values; legacy point
+      // rubrics still return a numeric score matching one of their levels.
+      const ratingCode = toRubricRatingCode(entry.rating);
       let matchingLevel: RubricLevel | undefined;
 
       if (developmental) {
-        if (!SF9_AI_RATING_CODES.includes(ratingCode)) {
+        if (!RUBRIC_AI_RATING_CODES.includes(ratingCode)) {
           throw new Error(
             `The AI returned an invalid rating for "${criterion.name}".`,
           );
         }
         matchingLevel = criterion.levels.find(
-          (level) => toSf9RatingCode(level.code) === ratingCode,
+          (level) => toRubricRatingCode(level.code) === ratingCode,
         );
       } else {
         const score = Number(entry.score ?? entry.rating);
@@ -528,7 +526,7 @@ const validateEvaluation = (
         score: matchingLevel ? matchingLevel.score : 0,
         levelCode,
         levelLabel: levelCode
-          ? SF9_RATING_LABELS[levelCode as keyof typeof SF9_RATING_LABELS]
+          ? RUBRIC_RATING_LABELS[levelCode as keyof typeof RUBRIC_RATING_LABELS]
           : undefined,
         maxScore: Math.max(...criterion.levels.map((level) => level.score)),
         levelDescription: matchingLevel?.description ||
@@ -552,14 +550,10 @@ const validateEvaluation = (
     throw new Error("The attached rubric has no positive maximum score.");
   }
 
-  // SF9 levels are ordinal categories, so they are never averaged as points.
-  // Averaging collapsed distinct learners onto one star (four Developing
-  // ratings and two Consistent + two Beginning both produced 4) and made "not
-  // observed" read as the bottom of the scale. sf9DraftStarRating instead keeps
-  // a Beginning rating visible and ignores unobserved criteria; it returns null
-  // when nothing could be judged, so the teacher sees no draft at all.
+  // Developmental levels remain ordinal categories. Keep Beginning visible,
+  // ignore unobserved criteria, and return no draft when nothing can be judged.
   const suggestedScore = developmental
-    ? sf9DraftStarRating(criterionScores.map((item) => item.levelCode))
+    ? rubricDraftStarRating(criterionScores.map((item) => item.levelCode))
     : Math.max(
       1,
       Math.min(5, Math.round(Math.max(0, Math.min(1, rubricScore / rubricMaxScore)) * 4) + 1),
