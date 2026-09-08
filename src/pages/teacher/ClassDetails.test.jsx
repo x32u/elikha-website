@@ -5,6 +5,7 @@ import ClassDetails from './ClassDetails';
 const mockGetClassById = jest.fn();
 const mockGetClassStudents = jest.fn();
 const mockGetClassActivities = jest.fn();
+const mockUpdateClass = jest.fn();
 const mockGetActivityRubricOptions = jest.fn();
 const mockGetActivityRubricManagementState = jest.fn();
 
@@ -17,6 +18,7 @@ jest.mock('../../services/teacherApi', () => ({
   getClassById: (...args) => mockGetClassById(...args),
   getClassStudents: (...args) => mockGetClassStudents(...args),
   getClassActivities: (...args) => mockGetClassActivities(...args),
+  updateClass: (...args) => mockUpdateClass(...args),
   createActivity: jest.fn(),
   updateActivity: jest.fn(),
   enrollStudentToClassByEmail: jest.fn(),
@@ -47,6 +49,10 @@ describe('Class activity rubric selector', () => {
         due_date: '2026-08-29',
         image_url: '',
       }],
+    });
+    mockUpdateClass.mockResolvedValue({
+      success: true,
+      data: { id: 'class-1', name: 'Emerald', grade: 'Grade 6', section: 'A' },
     });
     mockGetActivityRubricOptions.mockResolvedValue({
       success: true,
@@ -116,5 +122,34 @@ describe('Class activity rubric selector', () => {
     expect(editSelect.value).toBe('rubric-1');
     expect(editSelect.disabled).toBe(true);
     expect(container.textContent).toContain('This rubric is locked because student work depends on it.');
+  });
+
+  test('lets the teacher rename the class without recreating it', async () => {
+    await act(async () => {
+      root.render(<ClassDetails />);
+    });
+
+    const editButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent.trim() === 'Edit class name'
+    );
+    expect(editButton).toBeDefined();
+
+    await act(async () => {
+      editButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const nameInput = container.querySelector('#edit-class-name');
+    expect(nameInput.value).toBe('Diamond');
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      setter.call(nameInput, 'Emerald');
+      nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      container.querySelector('.edit-class-modal').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+
+    expect(mockUpdateClass).toHaveBeenCalledWith('class-1', { name: 'Emerald' });
+    expect(container.querySelector('.edit-class-modal')).toBeNull();
   });
 });

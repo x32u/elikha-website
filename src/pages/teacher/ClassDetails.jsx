@@ -6,6 +6,7 @@ import {
   getClassById,
   getClassStudents,
   getClassActivities,
+  updateClass,
   updateActivity,
   enrollStudentToClassByEmail,
   removeStudentFromClass,
@@ -59,6 +60,10 @@ const ClassDetails = () => {
   const [enrollError, setEnrollError] = useState('');
   const [enrollNotice, setEnrollNotice] = useState('');
   const [removeBusyId, setRemoveBusyId] = useState(null);
+  const [showEditClassModal, setShowEditClassModal] = useState(false);
+  const [editClassName, setEditClassName] = useState('');
+  const [editClassError, setEditClassError] = useState('');
+  const [savingClassName, setSavingClassName] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [editingActivityId, setEditingActivityId] = useState(null);
   const [editName, setEditName] = useState('');
@@ -198,6 +203,45 @@ const ClassDetails = () => {
     setEnrollError('');
     setEnrollNotice('Student removed from class.');
     await loadClassData();
+  };
+
+  const openEditClassModal = () => {
+    setEditClassName(classData?.name || '');
+    setEditClassError('');
+    setShowEditClassModal(true);
+  };
+
+  const closeEditClassModal = () => {
+    if (savingClassName) return;
+    setShowEditClassModal(false);
+    setEditClassError('');
+  };
+
+  const handleSaveClassName = async (event) => {
+    event.preventDefault();
+    const name = editClassName.trim();
+    if (!name) {
+      setEditClassError('Class name is required.');
+      return;
+    }
+
+    if (name === String(classData?.name || '').trim()) {
+      closeEditClassModal();
+      return;
+    }
+
+    setSavingClassName(true);
+    setEditClassError('');
+    const result = await updateClass(classId, { name });
+    setSavingClassName(false);
+
+    if (!result.success) {
+      setEditClassError(result.error || 'Failed to update the class name.');
+      return;
+    }
+
+    setClassData((current) => ({ ...current, ...(result.data || {}), name }));
+    setShowEditClassModal(false);
   };
 
   const formatDateInput = (value) => {
@@ -398,7 +442,47 @@ const ClassDetails = () => {
                 <p className="class-subtitle">{students.length} students • {activities.length} activities</p>
               </div>
             </div>
+            <button type="button" className="edit-class-button" onClick={openEditClassModal}>
+              Edit class name
+            </button>
           </header>
+
+          {showEditClassModal && (
+            <div className="edit-class-modal__overlay" onMouseDown={(event) => {
+              if (event.target === event.currentTarget) closeEditClassModal();
+            }}>
+              <form className="edit-class-modal" onSubmit={handleSaveClassName} aria-labelledby="edit-class-title">
+                <div className="edit-class-modal__header">
+                  <div>
+                    <span className="edit-class-modal__eyebrow">Class settings</span>
+                    <h2 id="edit-class-title">Edit class name</h2>
+                  </div>
+                  <button type="button" className="edit-class-modal__close" onClick={closeEditClassModal} aria-label="Close edit class form">×</button>
+                </div>
+                <div className="edit-class-modal__body">
+                  <label htmlFor="edit-class-name">Class Name</label>
+                  <input
+                    id="edit-class-name"
+                    className="form-input"
+                    value={editClassName}
+                    onChange={(event) => {
+                      setEditClassName(event.target.value);
+                      if (editClassError) setEditClassError('');
+                    }}
+                    autoFocus
+                    maxLength={120}
+                    required
+                  />
+                  <p className="edit-class-modal__help">This changes the class name everywhere. Students, activities, and submissions stay connected.</p>
+                  {editClassError && <p className="edit-class-modal__error" role="alert">{editClassError}</p>}
+                </div>
+                <div className="edit-class-modal__actions">
+                  <button type="button" className="btn-cancel" onClick={closeEditClassModal} disabled={savingClassName}>Cancel</button>
+                  <button type="submit" className="btn-submit" disabled={savingClassName}>{savingClassName ? 'Saving…' : 'Save name'}</button>
+                </div>
+              </form>
+            </div>
+          )}
 
           <div className="class-details-layout">
             {/* Students Section */}

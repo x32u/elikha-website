@@ -98,6 +98,113 @@ body:has(.class-details-shell)::-webkit-scrollbar {
   gap: 24px;
 }
 
+.edit-class-button {
+  flex-shrink: 0;
+  margin-top: 9px;
+  padding: 9px 13px;
+  border: 1px solid #cfc6ef;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #1800ad;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.edit-class-button:hover {
+  border-color: #1800ad;
+  background: #f4f1ff;
+}
+
+.edit-class-modal__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(19, 16, 28, 0.56);
+}
+
+.edit-class-modal {
+  width: min(460px, 100%);
+  overflow: hidden;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(18, 10, 58, 0.28);
+}
+
+.edit-class-modal__header,
+.edit-class-modal__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px;
+}
+
+.edit-class-modal__header {
+  border-bottom: 1px solid #e8e2ef;
+}
+
+.edit-class-modal__header h2 {
+  margin: 3px 0 0;
+  color: #17121e;
+  font-size: 22px;
+}
+
+.edit-class-modal__eyebrow {
+  color: #3b25c4;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.edit-class-modal__close {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 9px;
+  background: #f4f1f8;
+  color: #514861;
+  font-size: 25px;
+  cursor: pointer;
+}
+
+.edit-class-modal__body {
+  display: grid;
+  gap: 9px;
+  padding: 22px;
+}
+
+.edit-class-modal__body label {
+  color: #211a2d;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.edit-class-modal__help,
+.edit-class-modal__error {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.edit-class-modal__help {
+  color: #746b80;
+}
+
+.edit-class-modal__error {
+  color: #a52a22;
+  font-weight: 700;
+}
+
+.edit-class-modal__actions {
+  justify-content: flex-end;
+  border-top: 1px solid #e8e2ef;
+  background: #faf8fc;
+}
+
 .class-section {
   min-width: 0;
   overflow: hidden;
@@ -830,6 +937,11 @@ body:has(.class-details-shell)::-webkit-scrollbar {
 
   .class-details-header {
     flex-direction: column;
+  }
+
+  .edit-class-button {
+    width: 100%;
+    margin-top: 0;
   }
 
   .class-badge {
