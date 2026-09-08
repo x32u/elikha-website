@@ -4,6 +4,7 @@ import {
   recoverPlatformRole,
   recoverProfileName,
   validateManagePlatformUserInput,
+  validateSetPlatformUserStatusInput,
   type ManagePlatformUserInput,
 } from "./logic.ts";
 
@@ -14,7 +15,7 @@ const corsHeaders = {
   "Vary": "Origin",
 };
 
-const PROFILE_COLUMNS = "id, name, email, role, created_at, updated_at";
+const PROFILE_COLUMNS = "id, name, email, role, avatar_url, is_active, disabled_at, disabled_by, created_at, updated_at";
 const MAX_REQUEST_BYTES = 16 * 1024;
 const AUTH_PAGE_SIZE = 1000;
 const MAX_AUTH_PAGES = 100;
@@ -225,6 +226,64 @@ const createNewUser = async ({
   }, 201);
 };
 
+const setPlatformUserStatus = async ({
+  admin,
+  callerId,
+  userId,
+  isActive,
+}: {
+  admin: SupabaseClient;
+  callerId: string;
+  userId: string;
+  isActive: boolean;
+}) => {
+  const target = await loadProfile(admin, userId);
+  if (!target) {
+    return jsonResponse({ success: false, code: "user_not_found", message: "User account was not found." }, 404);
+  }
+  if (!isActive && userId === callerId) {
+    return jsonResponse({ success: false, code: "self_deactivation_forbidden", message: "You cannot deactivate your own account." }, 409);
+  }
+  if (!isActive && String(target.role || "").toLowerCase() === "superadmin") {
+    const { count, error: countError } = await admin.from("users").select("id", { count: "exact", head: true })
+      .eq("role", "superadmin").eq("is_active", true).neq("id", userId);
+    if (countError) throw countError;
+    if ((count || 0) < 1) {
+      return jsonResponse({ success: false, code: "final_superadmin", message: "The final active super administrator cannot be deactivated." }, 409);
+    }
+  }
+
+  const wasActive = target.is_active !== false;
+  if (wasActive === isActive) {
+    return jsonResponse({ success: true, status: isActive ? "active" : "inactive", message: `Account is already ${isActive ? "active" : "inactive"}.`, user: target });
+  }
+
+  const { error: authUpdateError } = await admin.auth.admin.updateUserById(userId, {
+    ban_duration: isActive ? "none" : "876000h",
+  });
+  if (authUpdateError) {
+    console.error("Auth status update failed", { code: authUpdateError.code, status: authUpdateError.status });
+    return jsonResponse({ success: false, code: "auth_status_update_failed", message: "The sign-in account status could not be changed." }, 502);
+  }
+
+  const { data: updated, error: profileUpdateError } = await admin.from("users").update({
+    is_active: isActive,
+    disabled_at: isActive ? null : new Date().toISOString(),
+    disabled_by: isActive ? null : callerId,
+  }).eq("id", userId).select(PROFILE_COLUMNS).single();
+  if (profileUpdateError || !updated) {
+    await admin.auth.admin.updateUserById(userId, { ban_duration: wasActive ? "none" : "876000h" }).catch(() => undefined);
+    throw profileUpdateError || new Error("Profile status update returned no user.");
+  }
+
+  return jsonResponse({
+    success: true,
+    status: isActive ? "active" : "inactive",
+    message: isActive ? "User account reactivated." : "User account deactivated. Their saved data was kept.",
+    user: updated,
+  });
+};
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -294,7 +353,7 @@ Deno.serve(async (request) => {
 
   const { data: callerProfile, error: callerProfileError } = await admin
     .from("users")
-    .select("role")
+    .select("role, is_active")
     .eq("id", authData.user.id)
     .maybeSingle();
   if (callerProfileError) {
@@ -307,11 +366,11 @@ Deno.serve(async (request) => {
       message: "Account-management permission could not be verified.",
     }, 500);
   }
-  if (String(callerProfile?.role || "").trim().toLowerCase() !== "superadmin") {
+  if (String(callerProfile?.role || "").trim().toLowerCase() !== "superadmin" || callerProfile?.is_active === false) {
     return jsonResponse({
       success: false,
       code: "forbidden",
-      message: "Only a super administrator can create platform accounts.",
+      message: "Only an active super administrator can manage platform accounts.",
     }, 403);
   }
 
@@ -332,6 +391,28 @@ Deno.serve(async (request) => {
       code: "invalid_json",
       message: "A JSON request body is required.",
     }, 400);
+  }
+
+  const bodyRecord = body && typeof body === "object" && !Array.isArray(body) ? body as JsonRecord : {};
+  if (bodyRecord.action === "set_status") {
+    const statusValidation = validateSetPlatformUserStatusInput(body);
+    if (!statusValidation.ok) {
+      return jsonResponse({ success: false, code: "validation_failed", message: statusValidation.message }, 400);
+    }
+    try {
+      return await setPlatformUserStatus({
+        admin,
+        callerId: authData.user.id,
+        userId: statusValidation.value.userId,
+        isActive: statusValidation.value.isActive,
+      });
+    } catch (error) {
+      console.error("Platform account status change failed", {
+        name: error instanceof Error ? error.name : "UnknownError",
+        code: typeof (error as { code?: unknown })?.code === "string" ? (error as { code: string }).code : undefined,
+      });
+      return jsonResponse({ success: false, code: "status_change_failed", message: "The account status could not be changed." }, 500);
+    }
   }
 
   const validation = validateManagePlatformUserInput(body);

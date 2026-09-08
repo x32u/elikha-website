@@ -233,7 +233,7 @@ export const fetchAllUsers = async () => {
   try {
     const { data, error } = await supabase
       .from('users')
-      .select('id, name, email, role, avatar_url, created_at, updated_at')
+      .select('id, name, email, role, avatar_url, is_active, disabled_at, disabled_by, created_at, updated_at')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -241,8 +241,8 @@ export const fetchAllUsers = async () => {
     const users = (data || []).map((user) => ({
       ...user,
       role_label: toRoleLabel(user.role),
-      status: 'Active',
-      status_label: 'Active',
+      status: user.is_active === false ? 'Inactive' : 'Active',
+      status_label: user.is_active === false ? 'Inactive' : 'Active',
     }));
 
     return { success: true, data: users };
@@ -268,7 +268,7 @@ export const updatePlatformUser = async (userId, updates) => {
       .from('users')
       .update(payload)
       .eq('id', userId)
-      .select('id, name, email, role, avatar_url, created_at, updated_at')
+      .select('id, name, email, role, avatar_url, is_active, disabled_at, disabled_by, created_at, updated_at')
       .single();
 
     if (error) throw error;
@@ -278,8 +278,8 @@ export const updatePlatformUser = async (userId, updates) => {
       data: {
         ...data,
         role_label: toRoleLabel(data.role),
-        status: 'Active',
-        status_label: 'Active',
+        status: data.is_active === false ? 'Inactive' : 'Active',
+        status_label: data.is_active === false ? 'Inactive' : 'Active',
       },
     };
   } catch (error) {
@@ -362,8 +362,8 @@ export const createPlatformUser = async ({ name, email, password, role, classId 
       data: {
         ...data,
         role_label: toRoleLabel(data.role),
-        status: 'Active',
-        status_label: 'Active',
+        status: data.is_active === false ? 'Inactive' : 'Active',
+        status_label: data.is_active === false ? 'Inactive' : 'Active',
         class_id: safeClassId || null,
       },
       creationStatus: functionData.status || 'created',
@@ -373,6 +373,39 @@ export const createPlatformUser = async ({ name, email, password, role, classId 
   } catch (error) {
     console.error('Error creating user:', error);
     return { success: false, error: error.message };
+  }
+};
+
+export const setPlatformUserActive = async (userId, isActive) => {
+  try {
+    const safeUserId = String(userId || '').trim();
+    if (!safeUserId || typeof isActive !== 'boolean') {
+      return { success: false, error: 'A user and Active or Inactive status are required.' };
+    }
+    const { data: functionData, error: functionError } = await supabase.functions.invoke(
+      'manage-platform-user',
+      { body: { action: 'set_status', userId: safeUserId, isActive } }
+    );
+    if (functionError) {
+      return { success: false, error: await readFunctionErrorMessage(functionError, 'Failed to change account status.') };
+    }
+    if (!functionData?.success || !functionData?.user?.id) {
+      return { success: false, error: String(functionData?.message || '').trim() || 'Failed to change account status.' };
+    }
+    const user = functionData.user;
+    return {
+      success: true,
+      message: String(functionData.message || '').trim(),
+      data: {
+        ...user,
+        role_label: toRoleLabel(user.role),
+        status: user.is_active === false ? 'Inactive' : 'Active',
+        status_label: user.is_active === false ? 'Inactive' : 'Active',
+      },
+    };
+  } catch (error) {
+    console.error('Error changing user status:', error);
+    return { success: false, error: error.message || 'Failed to change account status.' };
   }
 };
 
@@ -390,6 +423,7 @@ export const fetchParentLinkDirectory = async () => {
       .from('users')
       .select('id, name, email, role')
       .in('role', ['parent', 'student'])
+      .eq('is_active', true)
       .order('name', { ascending: true });
 
     if (error) throw error;
@@ -585,6 +619,7 @@ export const fetchAdminTeachers = async () => {
       .from('users')
       .select('id, name, email, role')
       .eq('role', 'teacher')
+      .eq('is_active', true)
       .order('name', { ascending: true });
 
     if (error) throw error;

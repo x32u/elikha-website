@@ -6,6 +6,7 @@ const mockFetchAllUsers = jest.fn();
 const mockFetchClassDirectory = jest.fn();
 const mockCreatePlatformUser = jest.fn();
 const mockUpdatePlatformUser = jest.fn();
+const mockSetPlatformUserActive = jest.fn();
 const setInputValue = (input, value) => {
   const valueSetter = Object.getOwnPropertyDescriptor(
     window.HTMLInputElement.prototype,
@@ -24,6 +25,7 @@ jest.mock('../../services/adminApi', () => ({
   fetchClassDirectory: (...args) => mockFetchClassDirectory(...args),
   fetchParentLinkDirectory: jest.fn(),
   fetchParentStudentLinks: jest.fn(),
+  setPlatformUserActive: (...args) => mockSetPlatformUserActive(...args),
   updatePlatformUser: (...args) => mockUpdatePlatformUser(...args),
 }));
 
@@ -35,6 +37,8 @@ describe('Super Admin create-account password control', () => {
     mockFetchAllUsers.mockResolvedValue({ success: true, data: [] });
     mockFetchClassDirectory.mockResolvedValue({ success: true, data: [] });
     mockCreatePlatformUser.mockResolvedValue({ success: false, error: 'Not configured.' });
+    mockSetPlatformUserActive.mockResolvedValue({ success: true, data: {}, message: '' });
+    window.sessionStorage.clear();
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -167,6 +171,8 @@ describe('Admin role-assignment restrictions', () => {
       ],
     });
     mockFetchClassDirectory.mockResolvedValue({ success: true, data: [] });
+    mockSetPlatformUserActive.mockResolvedValue({ success: true, data: {}, message: '' });
+    window.sessionStorage.clear();
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -207,5 +213,34 @@ describe('Admin role-assignment restrictions', () => {
     expect(roleValues).toEqual(['student', 'teacher', 'parent']);
     expect(roleValues).not.toContain('admin');
     expect(roleValues).not.toContain('superadmin');
+  });
+});
+
+describe('Super Admin account status management', () => {
+  let container; let root;
+  beforeEach(() => {
+    window.sessionStorage.setItem('userInfo', JSON.stringify({ id: 'superadmin-self', role: 'superadmin' }));
+    mockFetchAllUsers.mockResolvedValue({ success: true, data: [
+      { id: 'teacher-id', name: 'Teacher One', email: 'teacher@example.com', role: 'teacher', is_active: true, status_label: 'Active' },
+      { id: 'inactive-id', name: 'Learner Two', email: 'learner@example.com', role: 'student', is_active: false, status_label: 'Inactive' },
+    ] });
+    mockFetchClassDirectory.mockResolvedValue({ success: true, data: [] });
+    mockUpdatePlatformUser.mockResolvedValue({ success: true, data: { id: 'teacher-id', name: 'Teacher One', email: 'teacher@example.com', role: 'teacher', is_active: true, status_label: 'Active' } });
+    mockSetPlatformUserActive.mockResolvedValue({ success: true, message: 'User account deactivated.', data: { id: 'teacher-id', is_active: false, status_label: 'Inactive' } });
+    container = document.createElement('div'); document.body.appendChild(container);
+    root = createRoot(container); global.IS_REACT_ACT_ENVIRONMENT = true;
+  });
+  afterEach(() => { act(() => root.unmount()); container.remove(); window.sessionStorage.clear(); delete global.IS_REACT_ACT_ENVIRONMENT; jest.clearAllMocks(); });
+
+  it('shows real statuses and lets a superadmin deactivate an account', async () => {
+    await act(async () => root.render(<AdminUsers role="SuperAdmin" />));
+    expect(container.textContent).toContain('Inactive');
+    const teacherRow = [...container.querySelectorAll('tbody tr')].find((row) => row.textContent.includes('teacher@example.com'));
+    await act(async () => [...teacherRow.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Edit').click());
+    const statusSelect = [...container.querySelectorAll('select')].find((select) => select.closest('.um-field')?.textContent.includes('Status'));
+    await act(async () => { statusSelect.value = 'inactive'; statusSelect.dispatchEvent(new Event('change', { bubbles: true })); });
+    await act(async () => [...container.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Save').click());
+    expect(mockSetPlatformUserActive).toHaveBeenCalledWith('teacher-id', false);
+    expect(container.textContent).toContain('User account deactivated.');
   });
 });

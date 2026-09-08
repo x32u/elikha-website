@@ -9,6 +9,7 @@ import {
   fetchClassDirectory,
   fetchParentLinkDirectory,
   fetchParentStudentLinks,
+  setPlatformUserActive,
   updatePlatformUser,
 } from '../../services/adminApi';
 import { formatClassOptionLabel } from '../../utils/classLabels';
@@ -32,6 +33,10 @@ const ADMIN_ONLY_ROLES = new Set(['admin', 'superadmin']);
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const getCurrentUserId = () => {
+  try { return JSON.parse(sessionStorage.getItem('userInfo') || '{}')?.id || ''; } catch { return ''; }
+};
+
 const roleLabel = (value) => {
   const normalized = String(value || '').toLowerCase().trim();
   return ROLE_OPTIONS.find((option) => option.value === normalized)?.label || 'Unknown';
@@ -43,6 +48,7 @@ function AdminUsers({ onNavigate, role }) {
     ? ROLE_OPTIONS
     : ROLE_OPTIONS.filter((option) => !ADMIN_ONLY_ROLES.has(option.value));
   const homePageKey = isSuperAdmin ? 'sa-dashboard' : 'homepage';
+  const currentUserId = getCurrentUserId();
 
   const [query, setQuery] = React.useState('');
   const [roleFilter, setRoleFilter] = React.useState('All');
@@ -202,6 +208,7 @@ function AdminUsers({ onNavigate, role }) {
       email: user.email || '',
       role: String(user.role || '').toLowerCase(),
       status: user.status_label || 'Active',
+      isActive: user.is_active !== false,
     });
     setSaveError('');
     setEditAvatarFile(null);
@@ -338,6 +345,18 @@ function AdminUsers({ onNavigate, role }) {
     }
 
     let updatedUser = result.data;
+    const statusChanged = isSuperAdmin && editDraft.isActive !== (editing?.is_active !== false);
+    if (statusChanged) {
+      const statusResult = await setPlatformUserActive(editDraft.id, editDraft.isActive);
+      if (!statusResult.success) {
+        setSaveBusy(false);
+        setSaveError(`Profile details were saved, but status was not changed: ${statusResult.error}`);
+        setUsers((prev) => prev.map((user) => (user.id === updatedUser.id ? { ...user, ...updatedUser } : user)));
+        return;
+      }
+      updatedUser = { ...updatedUser, ...statusResult.data };
+      setNotice(statusResult.message || `User is now ${editDraft.isActive ? 'active' : 'inactive'}.`);
+    }
     if (editAvatarFile) {
       try {
         const { path } = await uploadUserAvatar(editDraft.id, editAvatarFile);
@@ -614,7 +633,7 @@ function AdminUsers({ onNavigate, role }) {
 
           {openMenu === 'status' && (
             <div className="um-menu" role="menu" aria-label="Status filter">
-              {['All', 'Active'].map((option) => (
+              {['All', 'Active', 'Inactive'].map((option) => (
                 <button
                   key={option}
                   type="button"
@@ -677,7 +696,7 @@ function AdminUsers({ onNavigate, role }) {
                   <td>{roleLabel(user.role)}</td>
                   <td className="um-muted">{user.email || '—'}</td>
                   <td>
-                    <span className="um-status active">{user.status_label || 'Active'}</span>
+                    <span className={`um-status ${user.is_active === false ? 'inactive' : 'active'}`}>{user.status_label || (user.is_active === false ? 'Inactive' : 'Active')}</span>
                   </td>
                   <td>
                     <button
@@ -807,7 +826,17 @@ function AdminUsers({ onNavigate, role }) {
 
                 <label className="um-field">
                   <span>Status</span>
-                  <input className="um-input" value="Active" disabled />
+                  <select
+                    className="um-input"
+                    value={editDraft.isActive ? 'active' : 'inactive'}
+                    disabled={!isSuperAdmin}
+                    onChange={(event) => setEditDraft((prev) => ({ ...prev, isActive: event.target.value === 'active' }))}
+                    title={isSuperAdmin ? 'Inactive accounts cannot sign in. Their saved data is retained.' : 'Only a super administrator can change account status.'}
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive" disabled={editDraft.id === currentUserId}>Inactive</option>
+                  </select>
+                  {isSuperAdmin && <small>Inactive users cannot sign in. Their profile and work are kept.</small>}
                 </label>
               </div>
             </div>

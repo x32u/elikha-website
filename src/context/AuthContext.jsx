@@ -52,6 +52,14 @@ export const AuthProvider = ({ children }) => {
     if (requestId !== requestSequence.current) return result;
 
     if (!result.success) {
+      if (result.reason === 'inactive') {
+        try {
+          await supabase.auth.signOut({ scope: 'local' });
+        } catch {
+          // Clearing local app state still prevents continued UI access if the
+          // network drops while the server-side Auth ban is being enforced.
+        }
+      }
       publishUserInfo(null);
       setAuthState({ status: 'anonymous', userInfo: null });
       return result;
@@ -88,6 +96,20 @@ export const AuthProvider = ({ children }) => {
     };
   }, [refreshAuth, setAnonymous]);
 
+  useEffect(() => {
+    if (authState.status !== 'authenticated') return undefined;
+    const recheck = () => refreshAuth({ showLoading: false });
+    const onVisibility = () => { if (document.visibilityState === 'visible') recheck(); };
+    const intervalId = window.setInterval(recheck, 30_000);
+    window.addEventListener('focus', recheck);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', recheck);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [authState.status, refreshAuth]);
+
   const contextValue = useMemo(() => ({
     ...authState,
     refreshAuth,
@@ -107,4 +129,3 @@ export const useAuth = () => {
   }
   return context;
 };
-

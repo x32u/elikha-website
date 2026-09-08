@@ -62,5 +62,15 @@ describe('auth state helpers', () => {
     expect(getDefaultRouteForRole('Teacher')).toBe('/classes');
     expect(getDefaultRouteForRole('unknown')).toBe('/homepage');
   });
-});
 
+  it('rejects a valid Auth session when its database profile is inactive', async () => {
+    const query = createProfileQuery({ data: { id: 'disabled-user', role: 'student', is_active: false }, error: null });
+    const client = {
+      auth: { getUser: jest.fn(async () => ({ data: { user: { id: 'disabled-user' } }, error: null })) },
+      from: jest.fn(() => query),
+    };
+    const result = await resolveAuthenticatedProfile(client);
+    expect(result.success).toBe(false);
+    expect(result.reason).toBe('inactive');
+  });
+});

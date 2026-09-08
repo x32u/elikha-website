@@ -4,6 +4,7 @@ import {
   recoverPlatformRole,
   recoverProfileName,
   validateManagePlatformUserInput,
+  validateSetPlatformUserStatusInput,
 } from "./logic.ts";
 
 test("normalizes a valid platform account request", () => {
@@ -22,6 +23,23 @@ test("normalizes a valid platform account request", () => {
     password: "temporary-password",
     role: "teacher",
   });
+});
+
+test("validates account status changes without accepting malformed targets", () => {
+  assert.deepEqual(validateSetPlatformUserStatusInput({
+    action: "set_status",
+    userId: "6aa5d0d4-2a9f-4483-b6c8-0cf4c6c98ac4",
+    isActive: false,
+  }), {
+    ok: true,
+    value: {
+      action: "set_status",
+      userId: "6aa5d0d4-2a9f-4483-b6c8-0cf4c6c98ac4",
+      isActive: false,
+    },
+  });
+  assert.equal(validateSetPlatformUserStatusInput({ action: "set_status", userId: "nope", isActive: false }).ok, false);
+  assert.equal(validateSetPlatformUserStatusInput({ action: "set_status", userId: "6aa5d0d4-2a9f-4483-b6c8-0cf4c6c98ac4", isActive: "false" }).ok, false);
 });
 
 test("rejects invalid email, password, and role values", () => {

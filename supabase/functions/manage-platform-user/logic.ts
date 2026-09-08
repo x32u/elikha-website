@@ -15,12 +15,23 @@ export type ManagePlatformUserInput = {
   role: PlatformRole;
 };
 
+export type SetPlatformUserStatusInput = {
+  action: "set_status";
+  userId: string;
+  isActive: boolean;
+};
+
 type ValidationResult =
   | { ok: true; value: ManagePlatformUserInput }
   | { ok: false; message: string };
 
+type StatusValidationResult =
+  | { ok: true; value: SetPlatformUserStatusInput }
+  | { ok: false; message: string };
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const roleSet = new Set<string>(PLATFORM_ROLES);
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const asObject = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value)
@@ -68,6 +79,15 @@ export const validateManagePlatformUserInput = (value: unknown): ValidationResul
   }
 
   return { ok: true, value: { name, email, password, role } };
+};
+
+export const validateSetPlatformUserStatusInput = (value: unknown): StatusValidationResult => {
+  const body = asObject(value);
+  const userId = typeof body.userId === "string" ? body.userId.trim() : "";
+  if (body.action !== "set_status" || !UUID_PATTERN.test(userId) || typeof body.isActive !== "boolean") {
+    return { ok: false, message: "A valid user and Active or Inactive status are required." };
+  }
+  return { ok: true, value: { action: "set_status", userId, isActive: body.isActive } };
 };
 
 // Authorization roles must never be restored from user_metadata because the

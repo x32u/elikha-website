@@ -10,6 +10,7 @@ jest.mock('../lib/supabase', () => {
     supabase: {
       auth: {
         onAuthStateChange: (...args) => mockOnAuthStateChange(...args),
+        signOut: jest.fn().mockResolvedValue({ error: null }),
       },
     },
   };
@@ -87,5 +88,12 @@ describe('AuthProvider', () => {
       name: 'Lea',
       role: 'student',
     });
+  });
+
+  it('clears an inactive account session', async () => {
+    mockResolveAuthenticatedProfile.mockResolvedValue({ success: false, reason: 'inactive' });
+    await act(async () => { root.render(<AuthProvider><Probe /></AuthProvider>); });
+    expect(container.querySelector('output').getAttribute('data-status')).toBe('anonymous');
+    expect(window.sessionStorage.getItem('userInfo')).toBeNull();
   });
 });

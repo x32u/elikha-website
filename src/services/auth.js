@@ -11,7 +11,10 @@ export const authenticateUser = async (email, password) => {
       password,
     });
 
-    if (error) return { success: false, error: 'Invalid email or password' };
+    if (error) {
+      const message = String(error.message || '').toLowerCase();
+      return { success: false, error: message.includes('banned') ? 'This account is inactive. Contact a super administrator.' : 'Invalid email or password' };
+    }
 
     // Roles are sourced from the users table (database), not hardcoded accounts.
     const { data: userData, error: userError } = await supabase
@@ -29,6 +32,11 @@ export const authenticateUser = async (email, password) => {
         };
       }
       return { success: false, error: 'Unable to load account profile' };
+    }
+
+    if (userData.is_active === false) {
+      await supabase.auth.signOut({ scope: 'local' });
+      return { success: false, error: 'This account is inactive. Contact a super administrator.' };
     }
 
     const normalizedRole = normalizeRole(userData.role || 'student');

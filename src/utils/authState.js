@@ -39,6 +39,14 @@ export const resolveAuthenticatedProfile = async (client) => {
     };
   }
 
+  if (profile.is_active === false) {
+    return {
+      success: false,
+      reason: 'inactive',
+      error: new Error('This account is inactive. Contact a super administrator.'),
+    };
+  }
+
   const normalizedRole = normalizeRole(profile.role || 'student');
 
   return {
@@ -49,4 +57,3 @@ export const resolveAuthenticatedProfile = async (client) => {
     },
   };
 };
-
