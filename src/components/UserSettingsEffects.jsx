@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { getStudentPendingActivities } from '../services/studentApi';
 import { useUserSettings } from '../hooks/useUserSettings';
+import { shouldPlayBackgroundMusic } from '../utils/userSettings';
 
 const musicContext = require.context('../music', false, /\.mp3$/i);
 const MUSIC_TRACKS = musicContext.keys().map((file) => {
@@ -45,7 +46,7 @@ const playClickSound = (audioContextRef) => {
 };
 
 export default function UserSettingsEffects() {
-  const { settings, userId } = useUserSettings();
+  const { settings, userId, userRole } = useUserSettings();
   const location = useLocation();
   const audioContextRef = useRef(null);
   const latestSettingsRef = useRef(settings);
@@ -60,7 +61,13 @@ export default function UserSettingsEffects() {
   }, [settings]);
 
   useEffect(() => {
-    const canPlayAudio = settings.backgroundMusic && !isArSession && MUSIC_TRACKS.length;
+    const canPlayAudio = shouldPlayBackgroundMusic({
+      backgroundMusic: settings.backgroundMusic,
+    }, {
+      role: userRole,
+      isArSession,
+      hasTracks: MUSIC_TRACKS.length > 0,
+    });
     if (!canPlayAudio) return undefined;
 
     const player = new Audio();
@@ -126,7 +133,7 @@ export default function UserSettingsEffects() {
       player.pause();
       player.src = '';
     };
-  }, [settings.backgroundMusic, isArSession]);
+  }, [settings.backgroundMusic, isArSession, userRole]);
 
   useEffect(() => {
     const handleFirstInteraction = () => {

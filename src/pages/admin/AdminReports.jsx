@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSearchParams } from 'react-router-dom';
 import './styles/AdminReports.css';
 import AdminShell from './components/AdminShell';
 import { fetchAdminAnalytics } from '../../services/adminApi';
@@ -9,6 +10,8 @@ const RANGE_TO_DAYS = {
   '30d': 30,
   '90d': 90,
 };
+
+const ACTIVITY_PAGE_SIZES = [10, 25, 50];
 
 const rangeLabel = (range) => {
   if (range === '7d') return 'Last 7 Days';
@@ -47,6 +50,7 @@ function AdminReports({ onNavigate, role }) {
   const lastActivityTriggerRef = React.useRef(null);
   const modalRef = React.useRef(null);
   const modalCloseRef = React.useRef(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [range, setRange] = React.useState('30d');
   const [selectedActivity, setSelectedActivity] = React.useState(null);
@@ -54,6 +58,23 @@ function AdminReports({ onNavigate, role }) {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [analytics, setAnalytics] = React.useState(createEmptyAnalytics);
+
+  const activitySearch = searchParams.get('activity') || '';
+  const requestedPage = Math.max(1, Number.parseInt(searchParams.get('activityPage'), 10) || 1);
+  const requestedPageSize = Number.parseInt(searchParams.get('activityRows'), 10);
+  const activityPageSize = ACTIVITY_PAGE_SIZES.includes(requestedPageSize) ? requestedPageSize : 10;
+
+  const updateActivityTableParams = React.useCallback((updates) => {
+    const next = new URLSearchParams(searchParams);
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value === '' || value === null || value === undefined || value === 1 || value === 10) {
+        next.delete(key);
+      } else {
+        next.set(key, String(value));
+      }
+    });
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const loadAnalytics = React.useCallback(async () => {
     const requestId = requestSequence.current + 1;
@@ -157,6 +178,28 @@ function AdminReports({ onNavigate, role }) {
   const trendMax = Math.max(1, ...analytics.submissionTrend.map((item) => item.count));
   const studentMax = Math.max(1, ...analytics.studentEngagement.map((item) => item.submissions));
   const formatPercent = (value) => value == null ? 'N/A' : `${value}%`;
+  const filteredActivityPerformance = React.useMemo(() => {
+    const query = activitySearch.trim().toLocaleLowerCase();
+    if (!query) return analytics.activityPerformance;
+    return analytics.activityPerformance.filter((activity) => (
+      String(activity.activity_title || '').toLocaleLowerCase().includes(query)
+    ));
+  }, [activitySearch, analytics.activityPerformance]);
+  const activityPageCount = Math.max(
+    1,
+    Math.ceil(filteredActivityPerformance.length / activityPageSize)
+  );
+  const activityPage = Math.min(requestedPage, activityPageCount);
+  const activityStartIndex = (activityPage - 1) * activityPageSize;
+  const visibleActivityPerformance = filteredActivityPerformance.slice(
+    activityStartIndex,
+    activityStartIndex + activityPageSize
+  );
+  const visibleActivityStart = filteredActivityPerformance.length === 0 ? 0 : activityStartIndex + 1;
+  const visibleActivityEnd = Math.min(
+    activityStartIndex + activityPageSize,
+    filteredActivityPerformance.length
+  );
 
   return (
     <AdminShell
@@ -254,7 +297,39 @@ function AdminReports({ onNavigate, role }) {
       </section>
 
       <h2 className="rpt-h2">Activity Performance</h2>
-      <div className="rpt-tablewrap" role="region" aria-label="Activity performance table" tabIndex={0}>
+      <section className="rpt-table-section" aria-label="Activity performance">
+        <div className="rpt-table-toolbar">
+          <label className="rpt-activity-search">
+            <span>Search activities</span>
+            <input
+              type="search"
+              name="activity-search"
+              autoComplete="off"
+              placeholder="Search by activity name…"
+              value={activitySearch}
+              onChange={(event) => updateActivityTableParams({
+                activity: event.target.value,
+                activityPage: 1,
+              })}
+            />
+          </label>
+          <label className="rpt-page-size">
+            <span>Rows per page</span>
+            <select
+              value={activityPageSize}
+              onChange={(event) => updateActivityTableParams({
+                activityRows: Number(event.target.value),
+                activityPage: 1,
+              })}
+            >
+              {ACTIVITY_PAGE_SIZES.map((size) => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="rpt-tablewrap" role="region" aria-label="Activity performance table" tabIndex={0}>
         <table className="rpt-table">
           <thead>
             <tr>
@@ -273,14 +348,20 @@ function AdminReports({ onNavigate, role }) {
               <tr>
                 <td colSpan={8}>Loading analytics...</td>
               </tr>
-            ) : analytics.activityPerformance.length === 0 ? (
+            ) : visibleActivityPerformance.length === 0 ? (
               <tr>
-                <td colSpan={8}>No activity data is available.</td>
+                <td colSpan={8}>
+                  {activitySearch ? 'No activities match your search.' : 'No activity data is available.'}
+                </td>
               </tr>
             ) : (
-              analytics.activityPerformance.map((activity) => (
+              visibleActivityPerformance.map((activity) => (
                 <tr key={activity.activity_id}>
-                  <th scope="row">{activity.activity_title}</th>
+                  <th scope="row">
+                    <span className="rpt-activity-name" title={activity.activity_title}>
+                      {activity.activity_title}
+                    </span>
+                  </th>
                   <td>
                     <div className="rpt-progress">
                       <div className="rpt-meter" aria-hidden="true">
@@ -317,7 +398,31 @@ function AdminReports({ onNavigate, role }) {
             )}
           </tbody>
         </table>
-      </div>
+        </div>
+
+        <footer className="rpt-pagination" aria-label="Activity table pagination">
+          <p aria-live="polite">
+            Showing {visibleActivityStart}–{visibleActivityEnd} of {filteredActivityPerformance.length} activities
+          </p>
+          <div className="rpt-pagination-actions">
+            <span>Page {activityPage} of {activityPageCount}</span>
+            <button
+              type="button"
+              onClick={() => updateActivityTableParams({ activityPage: activityPage - 1 })}
+              disabled={activityPage <= 1}
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => updateActivityTableParams({ activityPage: activityPage + 1 })}
+              disabled={activityPage >= activityPageCount}
+            >
+              Next
+            </button>
+          </div>
+        </footer>
+      </section>
 
       <h2 className="rpt-h2">Student Engagement</h2>
       <section className="rpt-grid2" aria-label="Student engagement">

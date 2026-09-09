@@ -1,4 +1,5 @@
 import {
+  getActivityDetails,
   getStudentActivities,
   getStudentActivityAssessment,
   getStudentClasses,
@@ -292,5 +293,161 @@ describe('getStudentActivities', () => {
     expect(activeClassIn).toHaveBeenCalledWith('id', ['active-class', 'disabled-class']);
     expect(activeClassEq).toHaveBeenCalledWith('is_active', true);
     expect(activityIn).toHaveBeenCalledWith('class_id', ['active-class']);
+  });
+
+  it('hides existing assignments from disabled classes', async () => {
+    const assignmentEq = jest.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'assignment-active',
+          activity_id: 'activity-active',
+          status: 'assigned',
+          activity: {
+            id: 'activity-active',
+            title: 'Active work',
+            class_id: 'active-class',
+          },
+        },
+        {
+          id: 'assignment-disabled',
+          activity_id: 'activity-disabled',
+          status: 'assigned',
+          activity: {
+            id: 'activity-disabled',
+            title: 'Disabled work',
+            class_id: 'disabled-class',
+          },
+        },
+      ],
+      error: null,
+    });
+    const enrollmentEq = jest.fn().mockResolvedValue({
+      data: [{ class_id: 'active-class' }, { class_id: 'disabled-class' }],
+      error: null,
+    });
+    const activeClassEq = jest.fn().mockResolvedValue({
+      data: [{ id: 'active-class' }],
+      error: null,
+    });
+    const activityOrder = jest.fn().mockResolvedValue({ data: [], error: null });
+    const submissionEq = jest.fn().mockResolvedValue({ data: [], error: null });
+
+    mockFrom.mockImplementation((table) => {
+      if (table === 'activity_assignments') {
+        return { select: () => ({ eq: assignmentEq }) };
+      }
+      if (table === 'class_students') {
+        return { select: () => ({ eq: enrollmentEq }) };
+      }
+      if (table === 'classes') {
+        return { select: () => ({ in: () => ({ eq: activeClassEq }) }) };
+      }
+      if (table === 'activities') {
+        return {
+          select: () => ({ in: () => ({ eq: () => ({ order: activityOrder }) }) }),
+        };
+      }
+      if (table === 'submissions') {
+        return { select: () => ({ eq: submissionEq }) };
+      }
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    const result = await getStudentActivities('student-id');
+
+    expect(result.success).toBe(true);
+    expect(result.data.map((activity) => activity.id)).toEqual(['activity-active']);
+  });
+});
+
+describe('getActivityDetails inactive-class guard', () => {
+  beforeEach(() => mockFrom.mockReset());
+
+  it('blocks a direct activity URL when its class is disabled', async () => {
+    const activitySingle = jest.fn().mockResolvedValue({
+      data: { id: 'activity-1', class_id: 'disabled-class' },
+      error: null,
+    });
+    const activeClassMaybeSingle = jest.fn().mockResolvedValue({ data: null, error: null });
+
+    mockFrom.mockImplementation((table) => {
+      if (table === 'activities') {
+        return { select: () => ({ eq: () => ({ single: activitySingle }) }) };
+      }
+      if (table === 'classes') {
+        return {
+          select: () => ({
+            eq: () => ({ eq: () => ({ maybeSingle: activeClassMaybeSingle }) }),
+          }),
+        };
+      }
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await expect(getActivityDetails('activity-1', 'student-id')).resolves.toEqual({
+      success: false,
+      error: 'This class is currently inactive.',
+    });
+  });
+
+  it('uses the linked class grade when an older activity has no copied grade', async () => {
+    const activitySingle = jest.fn().mockResolvedValue({
+      data: {
+        id: 'activity-1',
+        class_id: 'class-1',
+        grade: null,
+        subject: null,
+        description: 'Draw a garden.',
+      },
+      error: null,
+    });
+    const activeClassMaybeSingle = jest.fn().mockResolvedValue({
+      data: {
+        id: 'class-1',
+        name: 'Grade 4 - Ruby',
+        grade: 'Grade 4',
+        section: 'Ruby',
+        subject: 'MAPEH',
+      },
+      error: null,
+    });
+    const assignmentSingle = jest.fn().mockResolvedValue({
+      data: { id: 'assignment-1', status: 'assigned' },
+      error: null,
+    });
+    const submissionSingle = jest.fn().mockResolvedValue({ data: null, error: null });
+
+    mockFrom.mockImplementation((table) => {
+      if (table === 'activities') {
+        return { select: () => ({ eq: () => ({ single: activitySingle }) }) };
+      }
+      if (table === 'classes') {
+        return {
+          select: () => ({
+            eq: () => ({ eq: () => ({ maybeSingle: activeClassMaybeSingle }) }),
+          }),
+        };
+      }
+      if (table === 'activity_assignments') {
+        return {
+          select: () => ({ eq: () => ({ eq: () => ({ single: assignmentSingle }) }) }),
+        };
+      }
+      if (table === 'submissions') {
+        return {
+          select: () => ({ eq: () => ({ eq: () => ({ single: submissionSingle }) }) }),
+        };
+      }
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    const result = await getActivityDetails('activity-1', 'student-id');
+
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual(expect.objectContaining({
+      grade: 'Grade 4',
+      subject: 'MAPEH',
+      class: expect.objectContaining({ section: 'Ruby' }),
+    }));
   });
 });

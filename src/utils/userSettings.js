@@ -10,6 +10,7 @@ export const DEFAULT_USER_SETTINGS = Object.freeze({
 });
 
 const VALID_QUALITIES = new Set(['auto', 'high', 'medium', 'low']);
+const ADMINISTRATIVE_ROLES = new Set(['admin', 'superadmin']);
 
 export const getUserSettingsKey = (userId = 'anonymous') => `elikha_user_settings_${userId || 'anonymous'}`;
 
@@ -84,6 +85,19 @@ export const getCurrentUserSettings = () => {
 export const shouldLoadRichMedia = (settings = getCurrentUserSettings()) => {
   const normalized = normalizeUserSettings(settings);
   return !normalized.dataSaver && normalized.quality !== 'low';
+};
+
+export const shouldPlayBackgroundMusic = (
+  settings,
+  { role = '', isArSession = false, hasTracks = true } = {}
+) => {
+  const normalizedRole = String(role || '').trim().toLowerCase();
+  return Boolean(
+    normalizeUserSettings(settings).backgroundMusic &&
+    hasTracks &&
+    !isArSession &&
+    !ADMINISTRATIVE_ROLES.has(normalizedRole)
+  );
 };
 
 export const subscribeToUserSettings = (callback) => {

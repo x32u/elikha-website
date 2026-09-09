@@ -292,15 +292,21 @@ export const getStudentActivities = async (studentId) => {
       submissionMap.set(sub.activity_id, sub);
     });
 
+    const activeClassIds = new Set(classIds);
+    const accessibleAssignments = (assignments || []).filter((assignment) => {
+      const assignedClassId = assignment.activity?.class_id;
+      return !assignedClassId || activeClassIds.has(assignedClassId);
+    });
+
     const assignmentMap = new Map();
-    (assignments || []).forEach((assignment) => {
+    accessibleAssignments.forEach((assignment) => {
       if (assignment.activity?.id) {
         assignmentMap.set(assignment.activity.id, assignment);
       }
     });
 
     const activityRows = [
-      ...(assignments || []),
+      ...accessibleAssignments,
       ...classActivities
         .filter((activity) => activity?.id && !assignmentMap.has(activity.id))
         .map((activity) => ({
@@ -404,6 +410,22 @@ export const getActivityDetails = async (activityId, studentId) => {
 
     if (actError) throw actError;
 
+    let classInfo = null;
+    if (activity?.class_id) {
+      const { data: activeClass, error: classError } = await supabase
+        .from('classes')
+        .select('id, name, grade, section, subject')
+        .eq('id', activity.class_id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (classError) throw classError;
+      if (!activeClass) {
+        return { success: false, error: 'This class is currently inactive.' };
+      }
+      classInfo = activeClass;
+    }
+
     // Get student's assignment status
     const { data: assignment } = await supabase
       .from('activity_assignments')
@@ -434,6 +456,9 @@ export const getActivityDetails = async (activityId, studentId) => {
       success: true,
       data: {
         ...activity,
+        class: classInfo,
+        grade: activity?.grade || classInfo?.grade || null,
+        subject: activity?.subject || classInfo?.subject || null,
         description: parsedActivity.summary || '',
         ar_instructions: parsedActivity.instructions || '',
         color_requirements: parsedActivity.colorRequirements || [],

@@ -1,4 +1,10 @@
-import { createActivity, getAllSubmissions, gradeSubmission, updateActivity } from './teacherApi';
+import {
+  createActivity,
+  getAllSubmissions,
+  getTeacherActivities,
+  gradeSubmission,
+  updateActivity,
+} from './teacherApi';
 
 const mockRpc = jest.fn();
 const mockFrom = jest.fn();
@@ -42,6 +48,17 @@ describe('teacher transaction services', () => {
       success: true,
       data: expect.objectContaining({ id: 'activity-1' }),
     });
+  });
+
+  test('rejects activity creation without a rubric before calling the RPC', async () => {
+    const result = await createActivity({
+      teacher_id: 'teacher-1',
+      title: 'Missing rubric',
+      class_id: 'class-1',
+    });
+
+    expect(result).toEqual({ success: false, error: 'A rubric is required to create an activity.' });
+    expect(mockRpc).not.toHaveBeenCalled();
   });
 
   test('updates the activity and its rubric choice atomically', async () => {
@@ -149,5 +166,51 @@ describe('teacher transaction services', () => {
     });
     expect(enrollmentsByStudent).toHaveBeenCalledWith('student_id', ['student-1']);
     expect(enrollmentsByClass).toHaveBeenCalledWith('class_id', ['class-1']);
+  });
+
+  test('hides activities belonging to disabled classes while keeping classless drafts', async () => {
+    const activitiesOrder = jest.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'active-activity',
+          class_id: 'active-class',
+          class: { id: 'active-class', is_active: true },
+        },
+        {
+          id: 'disabled-activity',
+          class_id: 'disabled-class',
+          class: { id: 'disabled-class', is_active: false },
+        },
+        {
+          id: 'classless-draft',
+          class_id: null,
+          class: null,
+        },
+      ],
+      error: null,
+    });
+    const activitiesEq = jest.fn().mockReturnValue({ order: activitiesOrder });
+    const activitiesSelect = jest.fn().mockReturnValue({ eq: activitiesEq });
+    const relatedIn = jest.fn().mockResolvedValue({ data: [], error: null });
+
+    mockFrom.mockImplementation((table) => {
+      if (table === 'activities') return { select: activitiesSelect };
+      if (table === 'activity_assignments' || table === 'submissions') {
+        return { select: () => ({ in: relatedIn }) };
+      }
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    const result = await getTeacherActivities('teacher-1');
+
+    expect(result.success).toBe(true);
+    expect(result.data.map((activity) => activity.id)).toEqual([
+      'active-activity',
+      'classless-draft',
+    ]);
+    expect(relatedIn).toHaveBeenCalledWith('activity_id', [
+      'active-activity',
+      'classless-draft',
+    ]);
   });
 });

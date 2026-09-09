@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import CreateActivityModal from '../../components/CreateActivityModal';
+import ActivityOverviewModal from './ActivityOverviewModal';
 import './Activities.css';
 import { getTeacherActivities, getTeacherClasses } from '../../services/teacherApi';
 import { getDueDateState } from '../../utils/dateDisplay';
@@ -21,6 +22,7 @@ const formatDueDate = (value) => {
 
 const Activities = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState('upcoming');
   const [currentPage, setCurrentPage] = useState(1);
@@ -28,6 +30,21 @@ const Activities = () => {
   const [assignments, setAssignments] = useState([]);
   const [classes, setClasses] = useState([]);
   const [rubrics, setRubrics] = useState([]);
+  const [viewingActivityId, setViewingActivityId] = useState(location.state?.activityId || null);
+  const activityOpenerRef = useRef(null);
+
+  const openActivityOverview = (activityId, opener) => {
+    activityOpenerRef.current = opener || null;
+    setViewingActivityId(activityId);
+  };
+
+  const closeActivityOverview = () => {
+    setViewingActivityId(null);
+    if (location.state?.activityId) {
+      navigate('/activities', { replace: true, state: null });
+    }
+    window.requestAnimationFrame(() => activityOpenerRef.current?.focus?.());
+  };
 
   useEffect(() => {
     loadData();
@@ -140,7 +157,20 @@ const Activities = () => {
 
             <div className="assignments-list">
               {paginatedAssignments.map((item) => (
-                <div key={item.id} className="assignment-card" onClick={() => navigate(`/activity/${item.id}`)}>
+                <div
+                  key={item.id}
+                  className="assignment-card"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`View ${item.title}`}
+                  onClick={(event) => openActivityOverview(item.id, event.currentTarget)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      openActivityOverview(item.id, event.currentTarget);
+                    }
+                  }}
+                >
                   <div className="assignment-left">
                     <div className="assignment-chip">{item.chip}</div>
                     <div className="assignment-title">{item.title}</div>
@@ -208,6 +238,11 @@ const Activities = () => {
           onCreated={loadData}
           classes={classes}
           rubrics={rubrics}
+        />
+        <ActivityOverviewModal
+          activityId={viewingActivityId}
+          onClose={closeActivityOverview}
+          onReviews={() => navigate('/reviews')}
         />
       </main>
     </div>

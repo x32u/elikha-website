@@ -63,7 +63,7 @@ const getActiveStudentUserMap = async (studentIds) => {
 
   const { data, error } = await supabase
     .from('users')
-    .select('id, name, email, role')
+    .select('id, name, email, role, avatar_url')
     .in('id', uniqueIds)
     .eq('role', 'student');
 
@@ -483,6 +483,7 @@ export const getTeacherStudents = async (teacherId) => {
           id: enrollment.student_id,
           name: student?.name || enrollment.student_name || 'Student',
           email: student?.email || enrollment.student_email || '',
+          avatar_url: student?.avatar_url || '',
           classes: []
         });
       }
@@ -664,13 +665,15 @@ export const getTeacherActivities = async (teacherId) => {
       .from('activities')
       .select(`
         *,
-        class:classes(id, name, grade, section)
+        class:classes(id, name, grade, section, is_active)
       `)
       .eq('teacher_id', teacherId)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    const activities = data || [];
+    const activities = (data || []).filter(
+      (activity) => !activity.class_id || activity.class?.is_active === true
+    );
     const activityIds = activities.map((activity) => activity.id).filter(Boolean);
 
     if (activityIds.length === 0) return { success: true, data: [] };
@@ -709,12 +712,15 @@ export const getActivityById = async (activityId) => {
       .from('activities')
       .select(`
         *,
-        class:classes(id, name, grade, section)
+        class:classes(id, name, grade, section, is_active)
       `)
       .eq('id', activityId)
       .single();
 
     if (error) throw error;
+    if (data?.class_id && data.class?.is_active !== true) {
+      return { success: false, error: 'This class is currently inactive.' };
+    }
     return { success: true, data };
   } catch (error) {
     console.error('Error fetching activity:', error);
@@ -731,6 +737,9 @@ export const createActivity = async (teacherIdOrPayload, activityDataInput) => {
     if (!teacherId) {
       return { success: false, error: 'Missing teacher ID' };
     }
+    if (!activityData.rubric_id) {
+      return { success: false, error: 'A rubric is required to create an activity.' };
+    }
 
     const { data, error } = await supabase.rpc('create_activity_with_assignments', {
       p_teacher_id: teacherId,
@@ -742,7 +751,7 @@ export const createActivity = async (teacherIdOrPayload, activityDataInput) => {
       p_due_date: activityData.due_date || null,
       p_status: activityData.status || 'active',
       p_image_url: activityData.image_url || null,
-      p_rubric_id: activityData.rubric_id || null,
+      p_rubric_id: activityData.rubric_id,
     });
 
     if (error) throw error;

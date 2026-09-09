@@ -22,8 +22,15 @@
   background: #f4f7ff;
 }
 
+/* Settings has naturally two-column content, so it can use a wider desktop
+   rail than dense admin tables without sacrificing readable line lengths. */
+.page-admin.page-admin-settings,
+.page-superadmin.page-superadmin-settings {
+  --adm-content-max: 1440px;
+}
+
 .set-container {
-  width: min(100%, 1120px);
+  width: min(100%, var(--adm-content-max, 1280px));
   max-width: none;
   margin: 0 auto;
   position: relative;

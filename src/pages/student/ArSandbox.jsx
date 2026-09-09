@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Navbar from '../../components/Navbar';
 import ARApp from '../ar/ARApp';
 import {
+  AR_MODEL_LIBRARY_UPDATED_EVENT,
   DEFAULT_MODEL_ID,
   getArRenderableModelLibrary,
 } from '../../utils/activityArConfig';
@@ -12,6 +13,7 @@ import {
 } from '../../utils/practiceLevels';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { saveUserSettings } from '../../services/userSettingsApi';
+import SandboxModelPicker from './SandboxModelPicker';
 import './ArSandbox.css';
 
 const postToMobileShell = (payload) => {
@@ -37,14 +39,28 @@ const ArSandbox = () => {
     };
   }, []);
   const { settings: userSettings, userId } = useUserSettings();
-  const models = useMemo(() => getArRenderableModelLibrary(), []);
+  const [models, setModels] = useState(() => getArRenderableModelLibrary());
+  useEffect(() => {
+    const refreshModels = () => setModels(getArRenderableModelLibrary());
+    window.addEventListener(AR_MODEL_LIBRARY_UPDATED_EVENT, refreshModels);
+    return () => window.removeEventListener(AR_MODEL_LIBRARY_UPDATED_EVENT, refreshModels);
+  }, []);
   const [selectedModelId, setSelectedModelId] = useState(
     models.find((model) => model.id === mobileLaunch.modelId)?.id ||
       models.find((model) => model.id === DEFAULT_MODEL_ID)?.id || models[0]?.id || ''
   );
   const [difficultyId, setDifficultyId] = useState(getPracticeLevel(mobileLaunch.difficulty).id);
   const [sessionId, setSessionId] = useState(0);
-  const [isRunning, setIsRunning] = useState(mobileLaunch.autoStart);
+  const hasRequestedModel = models.some((model) => model.id === mobileLaunch.modelId);
+  const [isRunning, setIsRunning] = useState(mobileLaunch.autoStart && hasRequestedModel);
+
+  useEffect(() => {
+    if (!mobileLaunch.modelId) return;
+    const requestedModel = models.find((model) => model.id === mobileLaunch.modelId);
+    if (!requestedModel) return;
+    setSelectedModelId(requestedModel.id);
+    if (mobileLaunch.autoStart) setIsRunning(true);
+  }, [mobileLaunch.autoStart, mobileLaunch.modelId, models]);
 
   const selectedModel = models.find((model) => model.id === selectedModelId) || models[0];
   const selectedLevel = getPracticeLevel(difficultyId);
@@ -134,15 +150,11 @@ const ArSandbox = () => {
           </div>
 
           <div className="sandbox-fields sandbox-fields-single">
-            <label className="sandbox-field">
-              <span>Base model</span>
-              <select value={selectedModelId} onChange={(event) => setSelectedModelId(event.target.value)}>
-                {models.map((model) => (
-                  <option key={model.id} value={model.id}>{model.label}</option>
-                ))}
-              </select>
-              <small>Select the object you want to use for this practice session.</small>
-            </label>
+            <SandboxModelPicker
+              models={models}
+              value={selectedModelId}
+              onChange={setSelectedModelId}
+            />
           </div>
 
           <section className="sandbox-voice-guide" aria-labelledby="sandbox-voice-guide-title">

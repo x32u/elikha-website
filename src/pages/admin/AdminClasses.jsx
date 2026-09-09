@@ -12,8 +12,10 @@ import {
   updateAdminClassSection,
 } from '../../services/adminApi';
 import { formatClassLabel } from '../../utils/classLabels';
+import { normalizeHexColor } from '../../utils/arColorPalette';
 
-const GRADE_OPTIONS = [
+const DEFAULT_GRADE_SUGGESTIONS = [
+  'Kindergarten',
   'Grade 4',
   'Grade 5',
   'Grade 6',
@@ -34,8 +36,175 @@ const normalizeDraftFromClass = (classInfo) => ({
   section: classInfo?.section || '',
   subject: classInfo?.subject || '',
   teacherId: classInfo?.teacher_id || '',
-  color: classInfo?.color || COLOR_OPTIONS[0],
+  color: normalizeHexColor(classInfo?.color) || COLOR_OPTIONS[0],
 });
+
+const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, value));
+
+const hsvToHex = (h, s, v) => {
+  const chroma = v * s;
+  const section = (h / 60) % 6;
+  const x = chroma * (1 - Math.abs((section % 2) - 1));
+  const [r1, g1, b1] = section < 1 ? [chroma, x, 0] : section < 2 ? [x, chroma, 0]
+    : section < 3 ? [0, chroma, x] : section < 4 ? [0, x, chroma]
+      : section < 5 ? [x, 0, chroma] : [chroma, 0, x];
+  const m = v - chroma;
+  return `#${[r1, g1, b1].map((channel) => Math.round((channel + m) * 255).toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+};
+
+const hexToHsv = (hex) => {
+  const safe = normalizeHexColor(hex) || COLOR_OPTIONS[0];
+  const [r, g, b] = [1, 3, 5].map((index) => parseInt(safe.slice(index, index + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  let hue = 0;
+  if (delta) {
+    hue = max === r
+      ? 60 * (((g - b) / delta) % 6)
+      : max === g
+        ? 60 * (((b - r) / delta) + 2)
+        : 60 * (((r - g) / delta) + 4);
+  }
+  return { h: hue < 0 ? hue + 360 : hue, s: max ? delta / max : 0, v: max };
+};
+
+function ClassColorPicker({ value, onChange }) {
+  const safeValue = normalizeHexColor(value) || COLOR_OPTIONS[0];
+  const [hsv, setHsv] = React.useState(() => hexToHsv(safeValue));
+  const [hexDraft, setHexDraft] = React.useState(safeValue);
+  const squareRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const normalized = normalizeHexColor(value);
+    if (!normalized || normalized === hsvToHex(hsv.h, hsv.s, hsv.v)) return;
+    setHsv(hexToHsv(normalized));
+    setHexDraft(normalized);
+  }, [value, hsv.h, hsv.s, hsv.v]);
+
+  const setColor = React.useCallback((next) => {
+    const hex = hsvToHex(next.h, next.s, next.v);
+    setHsv(next);
+    setHexDraft(hex);
+    onChange(hex);
+  }, [onChange]);
+
+  const setFromSquare = React.useCallback((clientX, clientY) => {
+    const rect = squareRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setColor({
+      ...hsv,
+      s: clamp((clientX - rect.left) / rect.width),
+      v: 1 - clamp((clientY - rect.top) / rect.height),
+    });
+  }, [hsv, setColor]);
+
+  const handleHexChange = (event) => {
+    const draftValue = event.target.value.toUpperCase();
+    setHexDraft(draftValue);
+    const normalized = normalizeHexColor(draftValue);
+    if (normalized) {
+      setHsv(hexToHsv(normalized));
+      onChange(normalized);
+    }
+  };
+
+  return (
+    <div className="ac-class-color-picker">
+      <div
+        ref={squareRef}
+        className="ac-color-square"
+        role="slider"
+        tabIndex="0"
+        aria-label="Class color saturation and brightness"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow={Math.round(hsv.s * 100)}
+        aria-valuetext={`${Math.round(hsv.s * 100)}% saturation, ${Math.round(hsv.v * 100)}% brightness`}
+        style={{ '--ac-picker-hue': hsvToHex(hsv.h, 1, 1) }}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.currentTarget.setPointerCapture?.(event.pointerId);
+          setFromSquare(event.clientX, event.clientY);
+        }}
+        onPointerMove={(event) => {
+          if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+            setFromSquare(event.clientX, event.clientY);
+          }
+        }}
+        onKeyDown={(event) => {
+          const directions = {
+            ArrowLeft: [-0.02, 0],
+            ArrowRight: [0.02, 0],
+            ArrowUp: [0, 0.02],
+            ArrowDown: [0, -0.02],
+          };
+          const direction = directions[event.key];
+          if (!direction) return;
+          event.preventDefault();
+          setColor({
+            ...hsv,
+            s: clamp(hsv.s + direction[0]),
+            v: clamp(hsv.v + direction[1]),
+          });
+        }}
+      >
+        <span
+          className="ac-color-handle"
+          style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }}
+        />
+      </div>
+
+      <div className="ac-color-controls">
+        <label className="ac-color-control">
+          <span>Hue</span>
+          <input
+            className="ac-color-hue"
+            type="range"
+            min="0"
+            max="359"
+            value={Math.round(hsv.h)}
+            onChange={(event) => setColor({ ...hsv, h: Number(event.target.value) })}
+          />
+        </label>
+        <label className="ac-color-control">
+          <span>Hex color</span>
+          <span className="ac-color-hex-field">
+            <i style={{ backgroundColor: safeValue }} aria-hidden="true" />
+            <input
+              value={hexDraft}
+              maxLength="7"
+              spellCheck="false"
+              aria-label="Class color hex value"
+              aria-invalid={!normalizeHexColor(hexDraft)}
+              onChange={handleHexChange}
+              onBlur={() => setHexDraft(safeValue)}
+            />
+          </span>
+        </label>
+        <div className="ac-color-quick" aria-label="Quick class colors">
+          <span>Quick choices</span>
+          <div className="ac-colors">
+            {COLOR_OPTIONS.map((color) => (
+              <button
+                key={color}
+                type="button"
+                className={safeValue === color ? 'active' : ''}
+                style={{ background: color }}
+                onClick={() => {
+                  setHsv(hexToHsv(color));
+                  setHexDraft(color);
+                  onChange(color);
+                }}
+                aria-label={`Use ${color}`}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function AdminClasses({ onNavigate }) {
   const [classes, setClasses] = React.useState([]);
@@ -147,16 +316,23 @@ function AdminClasses({ onNavigate }) {
   const saveClass = async () => {
     setSaveError('');
 
+    const normalizedColor = normalizeHexColor(draft.color);
+
     const payload = {
       grade: draft.grade.trim(),
       section: draft.section.trim(),
       subject: draft.subject.trim(),
       teacherId: draft.teacherId,
-      color: draft.color,
+      color: normalizedColor || '',
     };
 
     if (!payload.grade || !payload.section || !payload.subject || !payload.teacherId) {
       setSaveError('Grade, section, subject, and teacher are required.');
+      return;
+    }
+
+    if (!payload.color) {
+      setSaveError('Choose a valid six-digit class color.');
       return;
     }
 
@@ -232,6 +408,10 @@ function AdminClasses({ onNavigate }) {
 
   const selectedTeacher = teachers.find((teacher) => teacher.id === draft.teacherId);
   const previewName = [draft.grade, draft.section].filter(Boolean).join(' - ') || 'New Class Section';
+  const gradeSuggestions = React.useMemo(() => Array.from(new Set([
+    ...DEFAULT_GRADE_SUGGESTIONS,
+    ...classes.map((classInfo) => String(classInfo.grade || '').trim()).filter(Boolean),
+  ])).sort((left, right) => left.localeCompare(right, undefined, { numeric: true })), [classes]);
 
   return (
     <AdminShell active="classes" onNavigate={onNavigate} className="page-admin page-admin-classes" homePageKey="homepage">
@@ -296,7 +476,6 @@ function AdminClasses({ onNavigate }) {
                             {classInfo.is_active === false ? 'Inactive' : 'Active'}
                           </span>
                         </strong>
-                        <span>{classInfo.name || 'Class section'}</span>
                       </div>
                     </div>
                   </td>
@@ -342,13 +521,20 @@ function AdminClasses({ onNavigate }) {
               )}
 
               <label className="ac-field">
-                <span>Grade</span>
-                <select value={draft.grade} onChange={(event) => updateDraft('grade', event.target.value)}>
-                  <option value="">Select grade</option>
-                  {GRADE_OPTIONS.map((grade) => (
-                    <option key={grade} value={grade}>{grade}</option>
-                  ))}
-                </select>
+                <span>Grade level</span>
+                <input
+                  className="ac-grade-input"
+                  value={draft.grade}
+                  list="admin-grade-suggestions"
+                  maxLength="60"
+                  autoComplete="off"
+                  onChange={(event) => updateDraft('grade', event.target.value)}
+                  placeholder="Kindergarten, Grade 6, Senior High"
+                />
+                <small className="ac-field-hint">Choose an existing value or type a new grade level.</small>
+                <datalist id="admin-grade-suggestions">
+                  {gradeSuggestions.map((grade) => <option key={grade} value={grade} />)}
+                </datalist>
               </label>
 
               <label className="ac-field">
@@ -381,20 +567,10 @@ function AdminClasses({ onNavigate }) {
                 </select>
               </label>
 
-              <div className="ac-field">
+              <div className="ac-field ac-field--full ac-color-field">
                 <span>Color</span>
-                <div className="ac-colors">
-                  {COLOR_OPTIONS.map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      className={draft.color === color ? 'active' : ''}
-                      style={{ background: color }}
-                      onClick={() => updateDraft('color', color)}
-                      aria-label={`Use ${color}`}
-                    />
-                  ))}
-                </div>
+                <small className="ac-field-hint">Pick any color for class cards and labels.</small>
+                <ClassColorPicker value={draft.color} onChange={(color) => updateDraft('color', color)} />
               </div>
 
               <div className="ac-preview">

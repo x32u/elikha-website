@@ -120,6 +120,10 @@ describe('student ActivityDetails AR guide', () => {
 
     await renderActivity(root);
 
+    const heroPreview = container.querySelector('.hero-preview');
+    expect(heroPreview).not.toBeNull();
+    expect(heroPreview.getAttribute('src')).toBe('https://example.com/submitted-lantern.png');
+
     const viewButton = Array.from(container.querySelectorAll('button'))
       .find((button) => button.textContent.trim() === 'View in AR');
     expect(viewButton).toBeDefined();
@@ -350,7 +354,7 @@ describe('student ActivityDetails AR guide', () => {
 
     await renderActivity(root);
 
-    expect(container.textContent).toContain('Grade level: N/A');
+    expect(container.textContent).not.toContain('Grade level:');
     expect(container.textContent).toContain('Your final activity review');
     expect(container.textContent).toContain('2/5');
     expect(container.textContent).toContain('Keep practicing your color placement.');

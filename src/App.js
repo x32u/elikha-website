@@ -46,6 +46,7 @@ import ModelLibraryEffects from './components/ModelLibraryEffects';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { isSupabaseConfigured } from './lib/supabase';
 import { getDefaultRouteForRole, normalizeRole } from './utils/authState';
+import { isMobileSandboxAutoLaunch } from './utils/mobileLaunch';
 import './styles/App.css';
 
 const SessionCheck = () => (
@@ -95,6 +96,18 @@ const RoleProtectedRoute = ({ allowedRoles = [], children }) => {
   }
 
   return <Navigate to={getDefaultRouteForRole(role)} replace />;
+};
+
+const SandboxRoute = () => {
+  if (isMobileSandboxAutoLaunch(window.location.search)) return <ArSandbox />;
+
+  return (
+    <ProtectedRoute>
+      <RoleProtectedRoute allowedRoles={['student']}>
+        <ArSandbox />
+      </RoleProtectedRoute>
+    </ProtectedRoute>
+  );
 };
 
 function App() {
@@ -173,13 +186,7 @@ function App() {
         />
         <Route
           path="/sandbox"
-          element={
-            <ProtectedRoute>
-              <RoleProtectedRoute allowedRoles={['student']}>
-                <ArSandbox />
-              </RoleProtectedRoute>
-            </ProtectedRoute>
-          }
+          element={<SandboxRoute />}
         />
         <Route
           path="/profile"

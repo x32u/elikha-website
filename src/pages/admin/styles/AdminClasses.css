@@ -169,17 +169,22 @@
 
 .ac-class-cell strong,
 .ac-table td > strong {
-  display: block;
   font-size: 16px;
   font-weight: 900;
 }
 
-.ac-class-cell span:last-child,
 .ac-muted {
   display: block;
   margin-top: 3px;
   color: var(--ac-muted);
   font-size: 13px;
+}
+
+.ac-class-cell > div > strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
 }
 
 .ac-color {
@@ -303,6 +308,7 @@
 .ac-modal-body .ac-alert,
 .ac-field:nth-of-type(3),
 .ac-field:nth-of-type(4),
+.ac-field--full,
 .ac-preview,
 .ac-students-panel {
   grid-column: 1 / -1;
@@ -321,6 +327,13 @@
   color: var(--ac-ink);
   font-size: 14px;
   font-weight: 800;
+}
+
+.ac-field-hint {
+  color: var(--ac-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .ac-field input,
@@ -345,6 +358,16 @@
   box-shadow: 0 0 0 4px rgba(151, 217, 255, 0.55);
 }
 
+.ac-grade-input {
+  appearance: none;
+}
+
+.ac-grade-input::-webkit-calendar-picker-indicator {
+  display: none !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .ac-colors {
   display: flex;
   flex-wrap: wrap;
@@ -361,6 +384,115 @@
 
 .ac-colors button.active {
   border-color: #111827;
+}
+
+.ac-class-color-picker {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.9fr) minmax(250px, 1.1fr);
+  gap: 18px;
+  padding: 16px;
+  border: 1px solid var(--ac-border);
+  border-radius: 16px;
+  background: #fbfdff;
+}
+
+.ac-color-square {
+  position: relative;
+  min-height: 210px;
+  overflow: hidden;
+  border-radius: 14px;
+  background:
+    linear-gradient(to top, #000, transparent),
+    linear-gradient(to right, #fff, var(--ac-picker-hue));
+  box-shadow: inset 0 0 0 1px rgba(13, 28, 18, 0.14);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.ac-color-square:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 4px rgba(151, 217, 255, 0.55),
+    inset 0 0 0 2px var(--ac-blue);
+}
+
+.ac-color-handle {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border: 4px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 2px 7px rgba(13, 28, 18, 0.55);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.ac-color-controls {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+}
+
+.ac-color-control,
+.ac-color-quick {
+  display: grid;
+  gap: 7px;
+  color: var(--ac-ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ac-color-hue {
+  width: 100%;
+  height: 14px;
+  margin: 4px 0;
+  appearance: none;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  accent-color: var(--ac-blue);
+}
+
+.ac-color-hex-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 46px;
+  padding: 0 12px;
+  border: 1px solid var(--ac-border);
+  border-radius: 13px;
+  background: #fff;
+}
+
+.ac-color-hex-field:focus-within {
+  box-shadow: 0 0 0 4px rgba(151, 217, 255, 0.55);
+}
+
+.ac-color-hex-field i {
+  width: 27px;
+  height: 27px;
+  flex: 0 0 27px;
+  border: 1px solid rgba(13, 28, 18, 0.2);
+  border-radius: 50%;
+}
+
+.ac-field .ac-color-hex-field input {
+  width: 100%;
+  height: auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  box-shadow: none;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.ac-color-quick .ac-colors button {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
 }
 
 .ac-preview {
@@ -537,8 +669,17 @@
 
   .ac-field:nth-of-type(3),
   .ac-field:nth-of-type(4),
+  .ac-field--full,
   .ac-students-panel {
     grid-column: auto;
+  }
+
+  .ac-class-color-picker {
+    grid-template-columns: 1fr;
+  }
+
+  .ac-color-square {
+    min-height: 220px;
   }
 
   .ac-student-row {
@@ -556,17 +697,21 @@
 
 .ac-status {
   display: inline-flex;
-  margin-left: 8px;
-  padding: 2px 7px;
+  align-items: center;
+  width: fit-content;
+  margin: 0;
+  padding: 3px 8px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
   vertical-align: middle;
 }
 
 .ac-status.active {
-  color: #126b3a;
-  background: #dcf7e8;
+  color: #087443;
+  background: #dff7e9;
 }
 
 .ac-status.inactive {

@@ -5,6 +5,7 @@ import { getTeacherStudents, getStudentSubmissions, getStudentArtworks } from '.
 import { hasStarRating, starRatingText } from '../../utils/starRating';
 import ExcelJS from 'exceljs';
 import { serializeCsvRow } from '../../utils/reportAnalytics';
+import { resolveUserAvatarUrl } from '../../services/avatarApi';
 
 const Student = () => {
   const [loading, setLoading] = useState(true);
@@ -19,6 +20,7 @@ const Student = () => {
   const [studentArtworks, setStudentArtworks] = useState([]);
   const [exporting, setExporting] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [failedAvatarIds, setFailedAvatarIds] = useState(() => new Set());
 
   const formatDate = (value, fallback = 'No due date') => {
     if (!value) return fallback;
@@ -41,15 +43,11 @@ const Student = () => {
     setLoading(true);
     try {
       const userInfo = JSON.parse(sessionStorage.getItem('userInfo') || '{}');
-      console.log('Loading students for teacher:', userInfo.id);
       const result = await getTeacherStudents(userInfo.id);
-      
-      console.log('Students API result:', result);
-      
+
       if (result.success) {
         // Transform student data
-        const transformedStudents = result.data.map(student => {
-          console.log('Processing student:', student);
+        const transformedStudents = await Promise.all(result.data.map(async student => {
           // Get class info from the classes array if available
           const classInfo = student.classes?.[0] || {};
           
@@ -59,6 +57,7 @@ const Student = () => {
             grade: classInfo.grade || 'N/A',
             section: classInfo.name || 'N/A',
             avatar: student.name?.charAt(0) || 'S',
+            avatarUrl: await resolveUserAvatarUrl(student.id, student.avatar_url || ''),
             completionRate: student.submittedCount > 0 
               ? Math.round((student.submittedCount / (student.submittedCount + student.pendingCount)) * 100) 
               : 0,
@@ -66,8 +65,7 @@ const Student = () => {
             pendingCount: student.pendingCount || 0,
             lateCount: student.lateCount || 0
           };
-        });
-        console.log('Transformed students:', transformedStudents);
+        }));
         setAllStudents(transformedStudents);
       } else {
         console.error('Failed to load students:', result.error);
@@ -85,9 +83,6 @@ const Student = () => {
         getStudentSubmissions(studentId),
         getStudentArtworks(studentId)
       ]);
-
-      console.log('Submissions result:', submissionsResult);
-      console.log('Artworks result:', artworksResult);
 
       if (submissionsResult.success) {
         setStudentSubmissions(submissionsResult.data || []);
@@ -204,6 +199,20 @@ const Student = () => {
       default: return 'status-default';
     }
   };
+
+  const markAvatarFailed = (studentId) => {
+    setFailedAvatarIds((current) => {
+      const next = new Set(current);
+      next.add(studentId);
+      return next;
+    });
+  };
+
+  const renderStudentAvatar = (student, imageClassName) => (
+    student.avatarUrl && !failedAvatarIds.has(student.id)
+      ? <img className={imageClassName} src={student.avatarUrl} alt={`${student.name} profile`} onError={() => markAvatarFailed(student.id)} />
+      : student.avatar
+  );
 
   const getPrintableStatus = (item) => {
     const normalized = String(item.status || '').toLowerCase();
@@ -432,7 +441,7 @@ const Student = () => {
           {/* Student Header */}
           <section className="student-header-section">
             <div className="student-header-content">
-              <div className="student-avatar-large">{selectedStudent.avatar}</div>
+              <div className="student-avatar-large">{renderStudentAvatar(selectedStudent, 'student-avatar-image')}</div>
               <div className="student-info">
                 <h1 className="student-name">{selectedStudent.name}</h1>
                 <p className="student-grade">{selectedStudent.grade} - Section {selectedStudent.section}</p>
@@ -701,7 +710,7 @@ const Student = () => {
                 tabIndex={0}
                 aria-label={`View ${student.name}`}
               >
-                <div className="student-card-avatar">{student.avatar}</div>
+                <div className="student-card-avatar">{renderStudentAvatar(student, 'student-card-avatar-image')}</div>
                 <div className="student-card-header">
                   <h3 className="student-card-name">{student.name}</h3>
                   <p className="student-card-grade">{student.grade}</p>

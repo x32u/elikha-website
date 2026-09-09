@@ -241,7 +241,6 @@
     .reviews-header,
     .gesture-alerts-header,
     .class-details-header,
-    .teacher-reports-header,
     .m3d-header,
     .activities-header,
     .activity-details-header,
@@ -250,6 +249,17 @@
   ) {
     padding-right: 72px;
     box-sizing: border-box;
+  }
+}
+
+/* Wide layouts already leave the fixed notification bell outside centered
+   page content. Let header actions share the same right edge as the content
+   below instead of keeping an unnecessary 72px inset. */
+@media (min-width: 1500px) {
+  body:has(.teacher-nav) :is(
+    .students-header
+  ) {
+    padding-right: 0;
   }
 }
 

@@ -102,12 +102,14 @@ const CreateActivityModal = ({
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!formData.title.trim() || !selectedClassId) {
+    if (!formData.title.trim() || !selectedClassId || !formData.rubricId) {
       setFormData((current) => ({
         ...current,
-        thumbnailError: !selectedClassId
-          ? 'Enter an activity title and select a class.'
-          : 'Enter an activity title.',
+        thumbnailError: !formData.title.trim()
+          ? 'Enter an activity title.'
+          : !selectedClassId
+            ? 'Select a class.'
+            : 'Select a rubric before creating the activity.',
       }));
       return;
     }
@@ -138,7 +140,7 @@ const CreateActivityModal = ({
         due_date: formData.dueDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
         status: 'active',
         image_url: uploadedThumbnailUrl,
-        rubric_id: formData.rubricId || null,
+        rubric_id: formData.rubricId,
       });
 
       if (!result.success) throw new Error(result.error || 'Failed to create activity.');
@@ -185,12 +187,12 @@ const CreateActivityModal = ({
           )}
 
           <div className="form-group">
-            <label className="form-label" htmlFor="activity-rubric">Rubric (optional)</label>
-            <select id="activity-rubric" className="form-input" value={formData.rubricId} onChange={(event) => setFormData((current) => ({ ...current, rubricId: event.target.value }))}>
-              <option value="">No rubric</option>
+            <label className="form-label" htmlFor="activity-rubric">Rubric</label>
+            <select id="activity-rubric" className="form-input" required value={formData.rubricId} onChange={(event) => setFormData((current) => ({ ...current, rubricId: event.target.value }))}>
+              <option value="">Select a rubric</option>
               {rubrics.map((rubric) => <option key={rubric.id} value={rubric.id}>{rubric.title}</option>)}
             </select>
-            <small className="form-help">Students can review it before starting; its criteria guide the AI draft and teacher review.</small>
+            <small className="form-help">Required. Students review its criteria before starting, and it guides assessment.</small>
           </div>
 
           <div className="form-group">

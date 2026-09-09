@@ -30,6 +30,7 @@
 .rpt-h2,
 .rpt-summary-grid,
 .rpt-grid2,
+.rpt-table-section,
 .rpt-tablewrap {
   width: 960px;
   max-width: calc(100% - 23px);
@@ -68,7 +69,7 @@
 
 .rpt-actions {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 10px;
 }
 
@@ -583,8 +584,69 @@
 }
 
 /* Table */
+.rpt-table-section {
+  overflow: hidden;
+  border: 1px solid var(--rpt-border);
+  border-radius: var(--rpt-radius);
+  background: var(--rpt-panel);
+  box-shadow: var(--rpt-shadow-sm);
+}
+
+.rpt-table-toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--rpt-border);
+  background: #f7fafc;
+}
+
+.rpt-activity-search,
+.rpt-page-size {
+  display: grid;
+  gap: 5px;
+  color: var(--rpt-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.rpt-activity-search {
+  width: min(360px, 100%);
+}
+
+.rpt-activity-search input,
+.rpt-page-size select {
+  height: 40px;
+  border: 1px solid var(--rpt-border);
+  border-radius: 10px;
+  background-color: #ffffff;
+  color: var(--rpt-ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.rpt-activity-search input {
+  width: 100%;
+  padding: 0 12px;
+}
+
+.rpt-page-size select {
+  min-width: 82px;
+  padding: 0 28px 0 10px;
+}
+
+.rpt-activity-search input:focus-visible,
+.rpt-page-size select:focus-visible,
+.rpt-pagination button:focus-visible {
+  outline: none;
+  box-shadow: var(--rpt-focus-ring);
+}
+
 .rpt-tablewrap {
-  padding: 12px 16px;
+  width: 100%;
+  max-width: none;
+  padding: 0;
   overflow-x: auto;
 }
 
@@ -598,10 +660,9 @@
   border-collapse: separate;
   border-spacing: 0;
   background: var(--rpt-panel);
-  border: 1px solid var(--rpt-border);
-  border-radius: var(--rpt-radius);
-  overflow: hidden;
-  box-shadow: var(--rpt-shadow-sm);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   min-width: 1080px;
 }
 
@@ -617,23 +678,99 @@
   border-bottom: 1px solid var(--rpt-border);
 }
 
+.rpt-table thead th:first-child {
+  width: 270px;
+  min-width: 240px;
+}
+
 .rpt-th-actions {
   text-align: right;
 }
 
-.rpt-table tbody td {
-  padding: 8px 16px;
-  height: 72px;
+.rpt-table tbody td,
+.rpt-table tbody th {
+  height: 62px;
   vertical-align: middle;
   font-size: 14px;
-  line-height: 21px;
-  font-weight: 500;
+  line-height: 1.4;
   color: var(--rpt-ink);
-  border-top: 1px solid #cfdbe8;
+  border-top: 1px solid #dbe5ef;
 }
 
-.rpt-table tbody tr:hover td {
+.rpt-table tbody td {
+  padding: 8px 16px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.rpt-table tbody th {
+  width: 270px;
+  max-width: 270px;
+  padding: 9px 16px;
+  text-align: left;
+  font-weight: 700;
+}
+
+.rpt-activity-name {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  text-wrap: pretty;
+}
+
+.rpt-table tbody tr:hover td,
+.rpt-table tbody tr:hover th {
   background: rgba(247, 250, 252, 0.7);
+}
+
+.rpt-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 58px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--rpt-border);
+}
+
+.rpt-pagination p,
+.rpt-pagination-actions span {
+  margin: 0;
+  color: var(--rpt-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rpt-pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rpt-pagination button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--rpt-border);
+  border-radius: 9px;
+  background: #ffffff;
+  color: var(--rpt-blue);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.rpt-pagination button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--rpt-blue) 34%, white);
+  background: color-mix(in srgb, var(--rpt-blue) 7%, white);
+}
+
+.rpt-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .rpt-progress {
@@ -843,6 +980,7 @@
   .rpt-h2,
   .rpt-summary-grid,
   .rpt-grid2,
+  .rpt-table-section,
   .rpt-tablewrap {
     width: 100%;
     max-width: 960px;
@@ -871,5 +1009,19 @@
 @media (max-width: 560px) {
   .rpt-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .rpt-table-toolbar,
+  .rpt-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .rpt-page-size select {
+    width: 100%;
+  }
+
+  .rpt-pagination-actions {
+    justify-content: space-between;
   }
 }

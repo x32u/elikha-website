@@ -6,10 +6,11 @@ const mockSaveUserSettings = jest.fn();
 const mockUseUserSettings = jest.fn();
 
 jest.mock('../../components/Navbar', () => () => <nav>Navigation</nav>);
-jest.mock('../ar/ARApp', () => ({ mobileMode, sandboxDifficulty, onExit }) => (
+jest.mock('../ar/ARApp', () => ({ mobileMode, sandboxDifficulty, modelConfigs, onExit }) => (
   <div
     data-mobile-mode={String(mobileMode)}
     data-sandbox-difficulty={sandboxDifficulty}
+    data-model-id={modelConfigs?.[0]?.id || ''}
   >
     AR session
     <button type="button" data-testid="exit-ar" onClick={() => onExit?.('exit')}>
@@ -127,7 +128,7 @@ describe('AR Sandbox voice guide preference', () => {
     expect(container.querySelector('[data-mobile-mode="true"]')).not.toBeNull();
   });
 
-  it('enters the immersive sandbox directly from the native mobile launch', async () => {
+  it('asks native mobile launches to choose a model before entering AR', async () => {
     window.history.replaceState(
       {},
       '',
@@ -138,14 +139,13 @@ describe('AR Sandbox voice guide preference', () => {
       root.render(<ArSandbox />);
     });
 
-    const session = container.querySelector('[data-mobile-mode="true"]');
-    expect(session).not.toBeNull();
-    expect(session.getAttribute('data-sandbox-difficulty')).toBe('advanced');
-    expect(container.querySelector('.sandbox-setup')).toBeNull();
+    expect(container.querySelector('[data-mobile-mode="true"]')).toBeNull();
+    expect(container.querySelector('.sandbox-setup')).not.toBeNull();
+    expect(container.querySelector('.sandbox-model-picker__trigger')).not.toBeNull();
   });
 
   it('returns an immersive mobile sandbox to the native app on exit', async () => {
-    window.history.replaceState({}, '', '/sandbox?mobile=1&autostart=1&difficulty=easy');
+    window.history.replaceState({}, '', '/sandbox?mobile=1&autostart=1&difficulty=easy&model=cactus');
     window.ElikhaMobile = { postMessage: jest.fn() };
 
     await act(async () => {
@@ -161,5 +161,44 @@ describe('AR Sandbox voice guide preference', () => {
       JSON.stringify({ type: 'exit', source: 'sandbox' })
     );
     expect(container.querySelector('.sandbox-setup')).toBeNull();
+  });
+
+  it('searches and selects a model from the Sandbox library modal', async () => {
+    await act(async () => {
+      root.render(<ArSandbox />);
+    });
+
+    await act(async () => {
+      container.querySelector('.sandbox-model-picker__trigger').dispatchEvent(
+        new MouseEvent('click', { bubbles: true })
+      );
+    });
+    const dialog = document.querySelector('.sandbox-model-modal');
+    expect(dialog).not.toBeNull();
+
+    const search = dialog.querySelector('input[type="search"]');
+    await act(async () => {
+      const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      valueSetter.call(search, 'tree');
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    const treeOption = Array.from(dialog.querySelectorAll('.sandbox-model-card'))
+      .find((option) => option.querySelector('strong')?.textContent === 'Tree');
+    expect(treeOption).not.toBeNull();
+    await act(async () => {
+      treeOption.querySelector('input').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    const apply = Array.from(dialog.querySelectorAll('button'))
+      .find((button) => button.textContent.trim() === 'Use This Model');
+    await act(async () => apply.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+
+    expect(container.querySelector('.sandbox-model-picker__selection strong').textContent.toLowerCase()).toContain('tree');
+
+    const start = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.includes('Start Easy Practice'));
+    await act(async () => start.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+
+    expect(container.querySelector('[data-mobile-mode]')?.getAttribute('data-model-id')).toBe('tree');
   });
 });

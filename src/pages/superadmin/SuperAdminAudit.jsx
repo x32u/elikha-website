@@ -32,6 +32,7 @@ const actionTone = (action) => {
 };
 
 function SuperAdminAudit({ onNavigate }) {
+  const modalCloseRef = React.useRef(null);
   const [query, setQuery] = React.useState('');
   const [actionFilter, setActionFilter] = React.useState('All Actions');
   const [roleFilter, setRoleFilter] = React.useState('All Roles');
@@ -74,6 +75,10 @@ function SuperAdminAudit({ onNavigate }) {
     document.addEventListener('click', onDocClick);
     return () => document.removeEventListener('click', onDocClick);
   }, []);
+
+  React.useEffect(() => {
+    if (viewing) modalCloseRef.current?.focus();
+  }, [viewing]);
 
   React.useEffect(() => {
     const onKeyDown = (event) => {
@@ -187,8 +192,10 @@ function SuperAdminAudit({ onNavigate }) {
           </div>
           <input
             className="saud-search-input"
-            type="text"
-            placeholder="Search by user, role, action, or details"
+            type="search"
+            name="audit-search"
+            autoComplete="off"
+            placeholder="Search by user, role, action, or details…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -327,7 +334,7 @@ function SuperAdminAudit({ onNavigate }) {
             {loading ? (
               <tr>
                 <td className="saud-empty" colSpan={5}>
-                  Loading logs...
+                  Loading logs…
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
@@ -342,11 +349,11 @@ function SuperAdminAudit({ onNavigate }) {
                   <td>{log.user}</td>
                   <td>{log.role}</td>
                   <td>
-                    <span className={`saud-pill ${actionTone(log.action)}`}>{log.action}</span>
+                    <span className={`saud-actionpill ${actionTone(log.action)}`}>{log.action}</span>
                   </td>
                   <td className="saud-muted">{formatDate(log.timestamp)}</td>
                   <td>
-                    <button className="saud-action" type="button" onClick={() => setViewing(log)}>
+                    <button className="saud-view" type="button" onClick={() => setViewing(log)}>
                       View
                     </button>
                   </td>
@@ -368,31 +375,31 @@ function SuperAdminAudit({ onNavigate }) {
           >
             <div className="saud-modal-head">
               <div className="saud-modal-title">Audit Log Details</div>
-              <button className="saud-modal-x" type="button" onClick={() => setViewing(null)} aria-label="Close">
-                x
+              <button ref={modalCloseRef} className="saud-modal-x" type="button" onClick={() => setViewing(null)} aria-label="Close">
+                ×
               </button>
             </div>
 
             <div className="saud-modal-body">
-              <div className="saud-kv">
-                <div className="saud-k">User</div>
-                <div className="saud-v">{viewing.user}</div>
+              <div className="saud-detailrow">
+                <div className="saud-detailk">User</div>
+                <div className="saud-detailv">{viewing.user}</div>
               </div>
-              <div className="saud-kv">
-                <div className="saud-k">Role</div>
-                <div className="saud-v">{viewing.role}</div>
+              <div className="saud-detailrow">
+                <div className="saud-detailk">Role</div>
+                <div className="saud-detailv">{viewing.role}</div>
               </div>
-              <div className="saud-kv">
-                <div className="saud-k">Action</div>
-                <div className="saud-v">{viewing.action}</div>
+              <div className="saud-detailrow">
+                <div className="saud-detailk">Action</div>
+                <div className="saud-detailv">{viewing.action}</div>
               </div>
-              <div className="saud-kv">
-                <div className="saud-k">Date &amp; Time</div>
-                <div className="saud-v">{formatDate(viewing.timestamp)}</div>
+              <div className="saud-detailrow">
+                <div className="saud-detailk">Date &amp; Time</div>
+                <div className="saud-detailv">{formatDate(viewing.timestamp)}</div>
               </div>
-              <div className="saud-kv saud-kv-stack">
-                <div className="saud-k">Details</div>
-                <div className="saud-v">{viewing.details || 'No extra details available.'}</div>
+              <div className="saud-detailrow">
+                <div className="saud-detailk">Details</div>
+                <div className="saud-detailv">{viewing.details || 'No extra details available.'}</div>
               </div>
             </div>
 

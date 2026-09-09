@@ -8,7 +8,7 @@
   --admin-primary: #1800ad;
   --admin-panel: #ffffff;
   --admin-shadow: 0 8px 24px rgba(20, 47, 82, 0.055);
-  --adm-content-max: 1120px;
+  --adm-content-max: 1280px;
 }
 
 .page-admin .dash-main {
@@ -16,7 +16,7 @@
 }
 
 .page-admin .dash-content {
-  width: min(100%, 1120px);
+  width: min(100%, var(--adm-content-max));
   margin-inline: auto;
 }
 
@@ -47,6 +47,7 @@
   .rpt-h2,
   .rpt-summary-grid,
   .rpt-grid2,
+  .rpt-table-section,
   .rpt-tablewrap,
   .set-container
 ) {

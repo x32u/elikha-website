@@ -51,5 +51,12 @@ export const useUserSettings = () => {
     };
   }, [userInfo.id]);
 
-  return { settings, setSettings, loading, userId: userInfo.id, needsDatabaseSetup };
+  return {
+    settings,
+    setSettings,
+    loading,
+    userId: userInfo.id,
+    userRole: userInfo.role,
+    needsDatabaseSetup,
+  };
 };

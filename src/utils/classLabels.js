@@ -1,7 +1,8 @@
 export const formatGradeLabel = (grade) => {
   const value = String(grade || '').trim();
   if (!value) return '';
-  return /^grade\b/i.test(value) ? value : `Grade ${value}`;
+  if (/^grade\b/i.test(value)) return value;
+  return /^\d+(?:st|nd|rd|th)?$/i.test(value) ? `Grade ${value}` : value;
 };
 
 export const formatClassLabel = (classInfo) => {

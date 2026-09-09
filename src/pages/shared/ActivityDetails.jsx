@@ -4,9 +4,12 @@ import Navbar from '../../components/Navbar';
 import ArPreparationGuide from '../../components/ArPreparationGuide';
 import { getActivityById } from '../../services/teacherApi';
 import { getActivityDetails, getStudentActivityAssessment } from '../../services/studentApi';
+import { useStoredUserSettings } from '../../hooks/useStoredUserSettings';
 import { getArModelLibrary, parseActivityDescription } from '../../utils/activityArConfig';
+import { formatGradeLabel } from '../../utils/classLabels';
 import { hasStarRating, normalizeStarRating, starRatingLabel } from '../../utils/starRating';
 import { rubricRatingLabel, toRubricRatingCode } from '../../utils/rubricRatings';
+import { shouldLoadRichMedia } from '../../utils/userSettings';
 import './ActivityDetails.css';
 
 const EMPTY_ASSESSMENT = { rubric: null, final_review: null };
@@ -46,6 +49,7 @@ const ActivityDetails = () => {
   const [assessment, setAssessment] = useState(EMPTY_ASSESSMENT);
   const [assessmentError, setAssessmentError] = useState('');
   const [assessmentLoading, setAssessmentLoading] = useState(false);
+  const settings = useStoredUserSettings();
 
   const userInfo = useMemo(() => {
     try {
@@ -159,6 +163,11 @@ const ActivityDetails = () => {
     const count = Number(activity?.puzzle_pieces ?? parsedActivityConfig.puzzlePieces);
     return count === 3 || count === 4 ? count : 0;
   }, [activity?.puzzle_pieces, parsedActivityConfig.puzzlePieces]);
+  const activityPreviewUrl = useMemo(() => {
+    if (!shouldLoadRichMedia(settings)) return '';
+    return cleanDisplayText(submission?.artwork_url) || cleanDisplayText(activity?.image_url);
+  }, [activity?.image_url, settings, submission?.artwork_url]);
+  const gradeLabel = formatGradeLabel(activity?.grade || activity?.class?.grade);
 
   // CC-BY imports must credit their creator wherever the model is shown, so the
   // saved attribution string for each model this activity uses is surfaced here.
@@ -336,7 +345,15 @@ const ActivityDetails = () => {
         {isStudent && !isSubmitted && <ArPreparationGuide />}
 
         <section className="hero-section">
-          <div className="hero-image" role="img" aria-label={activity.subject || 'Activity'} />
+          <div
+            className={`hero-image ${activityPreviewUrl ? 'has-preview' : ''}`}
+            role="img"
+            aria-label={activityPreviewUrl ? `${activity.title} preview` : (activity.subject || 'Activity')}
+          >
+            {activityPreviewUrl && (
+              <img src={activityPreviewUrl} alt="" className="hero-preview" />
+            )}
+          </div>
           <div className="hero-text">
             <h2>{activity.subject || activity.title}</h2>
           </div>
@@ -349,9 +366,11 @@ const ActivityDetails = () => {
         <section className="section">
           <h3 className="section-title">Details</h3>
           <div className="material-list">
-            <div className="material-item">
-              <span className="material-name">Grade level: {activity.grade || 'N/A'}</span>
-            </div>
+            {gradeLabel && (
+              <div className="material-item">
+                <span className="material-name">Grade level: {gradeLabel}</span>
+              </div>
+            )}
             {activity.subject && (
               <div className="material-item">
                 <span className="material-name">Subject: {activity.subject}</span>

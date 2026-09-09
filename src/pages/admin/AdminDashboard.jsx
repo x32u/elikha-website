@@ -244,6 +244,11 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
       return;
     }
 
+    if (!createDraft.rubricId) {
+      setCreateError('Please select a rubric.');
+      return;
+    }
+
     setCreateBusy(true);
 
     const composedDescription = [createDraft.description.trim(), createDraft.instructions.trim()]
@@ -257,7 +262,7 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
       dueDate: createDraft.dueDate || null,
       modelId: createDraft.modelId,
       puzzlePieces: createDraft.puzzlePieces,
-      rubricId: createDraft.rubricId || null,
+      rubricId: createDraft.rubricId,
       allowedObjectIds: ['cube', 'sphere', 'cone', 'cylinder'],
     });
 
@@ -610,9 +615,10 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
                 </label>
 
                 <label className="dash-field">
-                  <span>Rubric (Optional)</span>
+                  <span>Rubric</span>
                   <select
                     className="dash-input"
+                    required
                     value={createDraft.rubricId}
                     onChange={(event) =>
                       setCreateDraft((prev) => ({
@@ -623,7 +629,7 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
                     disabled={rubricOptionsLoading || Boolean(rubricOptionsError)}
                   >
                     <option value="">
-                      {rubricOptionsLoading ? 'Loading rubrics...' : 'No rubric'}
+                      {rubricOptionsLoading ? 'Loading rubrics...' : 'Select a rubric'}
                     </option>
                     {rubricOptions.map((rubric) => (
                       <option key={rubric.id} value={rubric.id}>
@@ -632,7 +638,7 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
                     ))}
                   </select>
                   <small className={rubricOptionsError ? 'dash-field-error' : 'dash-field-help'}>
-                    {rubricOptionsError || 'Only rubrics created by the selected class teacher are available.'}
+                    {rubricOptionsError || 'Required. Only rubrics created by the selected class teacher are available.'}
                   </small>
                 </label>
 
@@ -716,7 +722,7 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
                 className="btn primary"
                 type="button"
                 onClick={submitCreate}
-                disabled={createBusy || !createDraft.title.trim() || !createDraft.classId}
+                disabled={createBusy || !createDraft.title.trim() || !createDraft.classId || !createDraft.rubricId}
               >
                 {createBusy ? 'Creating...' : 'Create Activity'}
               </button>

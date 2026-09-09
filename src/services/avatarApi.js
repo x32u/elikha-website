@@ -156,3 +156,26 @@ export const resolveAvatarUrl = async (storedPath = '') => {
     return '';
   }
 };
+
+// Teacher-facing lists may be allowed to read an enrolled learner's avatar
+// object while RLS intentionally hides the learner's full `users` row. Resolve
+// the saved path when available, then safely discover the deterministic avatar
+// file inside that user's private-bucket folder.
+export const resolveUserAvatarUrl = async (userId, storedPath = '') => {
+  const directUrl = await resolveAvatarUrl(storedPath);
+  if (directUrl) return directUrl;
+
+  const id = String(userId || '').trim();
+  if (!id) return '';
+  try {
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .list(id, { limit: 10, search: 'avatar.' });
+    if (error) return '';
+    const avatar = (data || []).find((item) => String(item?.name || '').startsWith('avatar.'));
+    if (!avatar?.name) return '';
+    return resolveAvatarUrl(`${BUCKET}/${id}/${avatar.name}`);
+  } catch {
+    return '';
+  }
+};

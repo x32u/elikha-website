@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import ExcelJS from 'exceljs';
 import Navbar from '../../components/Navbar';
 import { fetchTeacherAnalytics } from '../../services/teacherAnalyticsApi';
 import {
@@ -313,6 +314,17 @@ const downloadCsv = (csv, fileName) => {
   URL.revokeObjectURL(url);
 };
 
+const downloadBlob = (blob, fileName) => {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
+
 const Reports = () => {
   const requestSequence = useRef(0);
   const reduceMotion = useReducedMotion();
@@ -333,6 +345,18 @@ const Reports = () => {
   const [error, setError] = useState('');
   const [activeSection, setActiveSection] = useState('overview');
   const [selectedInsight, setSelectedInsight] = useState(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const exportMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!exportMenuOpen) return undefined;
+    const closeMenu = (event) => {
+      if (!exportMenuRef.current?.contains(event.target)) setExportMenuOpen(false);
+    };
+    document.addEventListener('mousedown', closeMenu);
+    return () => document.removeEventListener('mousedown', closeMenu);
+  }, [exportMenuOpen]);
 
   const loadReport = useCallback(async () => {
     const requestId = requestSequence.current + 1;
@@ -444,8 +468,11 @@ const Reports = () => {
       .filter((item) => item.value > 0);
   }, [report]);
 
-  const exportReport = () => {
+  const exportReport = async (format = 'csv') => {
     if (!report) return;
+
+    setExporting(true);
+    setExportMenuOpen(false);
 
     const rows = [
       serializeCsvRow(['E-Likha Teacher Reports & Analytics']),
@@ -509,10 +536,81 @@ const Reports = () => {
     ];
 
     const datePart = new Date().toISOString().slice(0, 10);
-    downloadCsv(
-      rows.join('\r\n'),
-      `E-Likha_Teacher_Report_${safeFilePart(selectedClassLabel)}_${days}d_${datePart}.csv`
-    );
+    const fileBase = `E-Likha_Teacher_Report_${safeFilePart(selectedClassLabel)}_${days}d_${datePart}`;
+
+    try {
+      if (format === 'csv') {
+        downloadCsv(rows.join('\r\n'), `${fileBase}.csv`);
+        return;
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'E-Likha';
+      workbook.created = new Date();
+      const addSheet = (name, headers, data, widths = []) => {
+        const sheet = workbook.addWorksheet(name);
+        sheet.views = [{ state: 'frozen', ySplit: 1 }];
+        sheet.addTable({
+          name: `${name.replace(/[^a-z0-9]/gi, '')}Table`,
+          ref: 'A1',
+          headerRow: true,
+          style: { theme: 'TableStyleMedium2', showRowStripes: true },
+          columns: headers.map((header) => ({ name: header, filterButton: true })),
+          rows: data,
+        });
+        headers.forEach((_, index) => { sheet.getColumn(index + 1).width = widths[index] || 20; });
+        sheet.getRow(1).height = 26;
+        sheet.eachRow((row) => { row.alignment = { vertical: 'top', wrapText: true }; });
+      };
+
+      addSheet('Summary', ['Metric', 'Value'], [
+        ['Teacher', userInfo.name || 'Teacher'],
+        ['Class', selectedClassLabel],
+        ['Submission trend period', `Last ${days} days`],
+        ['Generated', new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' })],
+        ['Total students', summary.totalStudents],
+        ['Total activities', summary.totalActivities],
+        ['Assignments', summary.assigned],
+        ['Submitted', summary.submitted],
+        ['Reviewed', summary.reviewed],
+        ['Pending review', summary.pendingReview],
+        ['Missing', summary.missing],
+        ['Not due yet', summary.pending],
+        ['Late submissions', summary.lateSubmissions],
+        ['Completion rate', formatRate(summary.completionRate)],
+        ['Review rate', formatRate(summary.reviewRate)],
+        ['On-time rate', formatRate(summary.onTimeRate)],
+        ['Average score', formatScore(summary.averageScore)],
+      ], [28, 36]);
+      addSheet('Activities', [
+        'Activity', 'Class', 'Due date', 'Assigned', 'Submitted', 'Pending review',
+        'Missing', 'Late submissions', 'Completion rate', 'Average score',
+      ], report.activityPerformance.map((activity) => [
+        activity.activity_title, activity.class_name || 'No class', formatDate(activity.due_date),
+        activity.assigned, activity.submissions, activity.pending_review, activity.missing,
+        activity.late_submissions, formatRate(activity.completion_rate), formatScore(activity.average_score),
+      ]), [34, 24, 18, 13, 13, 18, 13, 18, 18, 18]);
+      addSheet('Needs Support', ['Student', 'Class', 'Missing', 'Pending review', 'Late submissions', 'Average score'],
+        report.studentAttention.map((student) => [
+          student.student_name, student.class_name || 'No class', student.missing,
+          student.pending_review, student.late_submissions, formatScore(student.average_score),
+        ]), [28, 24, 13, 18, 18, 18]);
+      addSheet('Insights', ['Category', 'Student', 'Result', 'Evidence count', 'Method'],
+        report.studentInsights.map((insight) => [
+          insight.title, insight.student_name || 'Not enough data', insight.value || '',
+          insight.evidence || 0, insight.detail || '',
+        ]), [28, 28, 18, 18, 52]);
+      addSheet('Trend', ['Period', 'Submissions'],
+        report.submissionTrend.map((item) => [item.label, item.count]), [24, 18]);
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      downloadBlob(
+        new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+        `${fileBase}.xlsx`
+      );
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -527,14 +625,24 @@ const Reports = () => {
               Track completion, reviews, ratings, and learners who may need support.
             </p>
           </div>
-          <button
-            type="button"
-            className="teacher-reports-export"
-            onClick={exportReport}
-            disabled={loading || !report}
-          >
-            Export CSV
-          </button>
+          <div className="teacher-reports-export-wrap" ref={exportMenuRef}>
+            <button
+              type="button"
+              className="teacher-reports-export"
+              onClick={() => setExportMenuOpen((open) => !open)}
+              disabled={loading || !report || exporting}
+              aria-haspopup="menu"
+              aria-expanded={exportMenuOpen}
+            >
+              {exporting ? 'Preparing export…' : 'Export report'} <span aria-hidden="true">▾</span>
+            </button>
+            {exportMenuOpen && (
+              <div className="teacher-reports-export-menu" role="menu">
+                <button type="button" role="menuitem" onClick={() => exportReport('csv')}>Export as CSV</button>
+                <button type="button" role="menuitem" onClick={() => exportReport('xlsx')}>Export as Excel</button>
+              </div>
+            )}
+          </div>
         </header>
 
         <section className="teacher-reports-filters" aria-label="Report filters">

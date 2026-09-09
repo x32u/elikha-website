@@ -10,7 +10,7 @@
 }
 
 .settings-page {
-  width: min(100%, 1180px);
+  width: min(100%, 1440px);
   max-width: none;
   margin: 0 auto;
   padding: 24px clamp(14px, 3.4vw, 30px) 110px;

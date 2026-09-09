@@ -12,7 +12,7 @@
   --sa-primary: #1800ad;
   --sa-panel: #ffffff;
   --sa-shadow: 0 8px 24px rgba(20, 47, 82, 0.055);
-  --adm-content-max: 1120px;
+  --adm-content-max: 1280px;
 }
 
 .page-superadmin .dash-main {
@@ -20,11 +20,11 @@
 }
 
 .page-superadmin .dash-content {
-  width: min(100%, 1120px);
+  width: min(100%, var(--adm-content-max));
   margin-inline: auto;
 }
 
-/* Every major block now starts and ends on the same 1120px content rail. */
+/* Every major block starts and ends on the same responsive content rail. */
 .page-superadmin :is(
   .dash-header,
   .dash-stats,
@@ -48,6 +48,7 @@
   .rpt-h2,
   .rpt-summary-grid,
   .rpt-grid2,
+  .rpt-table-section,
   .rpt-tablewrap,
   .set-container,
   .saud-header,

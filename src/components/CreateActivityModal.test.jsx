@@ -58,7 +58,7 @@ describe('CreateActivityModal', () => {
           isOpen
           preselectedClassId="class-1"
           classes={[]}
-          rubrics={[]}
+          rubrics={[{ id: 'rubric-1', title: 'Creative work' }]}
           onCreated={onCreated}
         />
       );
@@ -66,10 +66,14 @@ describe('CreateActivityModal', () => {
 
     expect(container.querySelector('#activity-class')).toBeNull();
     const title = container.querySelector('#activity-title');
+    const rubric = container.querySelector('#activity-rubric');
     await act(async () => {
       const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
       setter.call(title, 'Color study');
       title.dispatchEvent(new Event('input', { bubbles: true }));
+      const selectSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+      selectSetter.call(rubric, 'rubric-1');
+      rubric.dispatchEvent(new Event('change', { bubbles: true }));
     });
 
     await act(async () => {
@@ -80,7 +84,32 @@ describe('CreateActivityModal', () => {
     const payload = mockCreateActivity.mock.calls[0][0];
     expect(payload.class_id).toBe('class-1');
     expect(payload.title).toBe('Color study');
+    expect(payload.rubric_id).toBe('rubric-1');
     expect(payload).not.toHaveProperty('materials');
     expect(onCreated).toHaveBeenCalledWith({ id: 'activity-1' });
+  });
+
+  test('requires a rubric before creating an activity', async () => {
+    await act(async () => {
+      root.render(
+        <CreateActivityModal
+          isOpen
+          preselectedClassId="class-1"
+          rubrics={[]}
+        />
+      );
+    });
+
+    expect(container.querySelector('#activity-rubric').required).toBe(true);
+    const title = container.querySelector('#activity-title');
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      setter.call(title, 'Color study');
+      title.dispatchEvent(new Event('input', { bubbles: true }));
+      container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+
+    expect(mockCreateActivity).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Select a rubric before creating the activity.');
   });
 });

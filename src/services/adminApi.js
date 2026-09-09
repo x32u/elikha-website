@@ -972,6 +972,9 @@ export const createAdminActivity = async ({
     if (!title || !classId) {
       return { success: false, error: 'Title and class are required' };
     }
+    if (!rubricId) {
+      return { success: false, error: 'A rubric is required to create an activity.' };
+    }
 
     const { data: classRow, error: classError } = await supabase
       .from('classes')
@@ -1006,7 +1009,7 @@ export const createAdminActivity = async ({
         p_due_date: dueDate ? toIso(dueDate) : null,
         p_status: 'active',
         p_image_url: imageUrl || null,
-        p_rubric_id: rubricId || null,
+        p_rubric_id: rubricId,
       }
     );
 
