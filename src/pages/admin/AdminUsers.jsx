@@ -774,7 +774,7 @@ function AdminUsers({ onNavigate, role }) {
                       </button>
                     )}
                   </div>
-                  <span className="um-avatar-hint">PNG, JPG, or WebP up to 2 MB.</span>
+                  <span className="um-avatar-hint">PNG, JPG, or WebP up to 20 MB.</span>
                 </div>
               </div>
 
@@ -907,7 +907,7 @@ function AdminUsers({ onNavigate, role }) {
                       </button>
                     )}
                   </div>
-                  <span className="um-avatar-hint">PNG, JPG, or WebP up to 2 MB.</span>
+                  <span className="um-avatar-hint">PNG, JPG, or WebP up to 20 MB.</span>
                 </div>
               </div>
 

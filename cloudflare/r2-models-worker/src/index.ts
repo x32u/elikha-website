@@ -33,7 +33,8 @@ interface ModelMetadata {
 
 interface AuthenticatedUser {
   id: string;
-  role: "teacher" | "admin" | "superadmin";
+  role: "student" | "teacher" | "admin" | "superadmin";
+  token: string;
 }
 
 const METADATA_PREFIX = "metadata/";
@@ -43,6 +44,9 @@ const MUTATION_ROLES = new Set(["teacher", "admin", "superadmin"]);
 const DEFAULT_CAPACITY_BYTES = 10_000_000_000;
 const DEFAULT_MAX_FILE_BYTES = 50 * 1024 * 1024;
 const MAX_METADATA_BYTES = 16 * 1024;
+const MEDIA_PREFIX = "media/";
+const MAX_MEDIA_FILE_BYTES = 20 * 1024 * 1024;
+const SUPPORTED_MEDIA_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 class ApiError extends Error {
   readonly status: number;
@@ -161,7 +165,7 @@ const handleOptions = (request: Request, env: Env): Response => {
   const headers = new Headers({
     "Access-Control-Allow-Methods": "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers":
-      "Authorization, Content-Type, Content-Length, X-Model-Name, X-Model-Description, X-Model-File-Name",
+      "Authorization, Content-Type, Content-Length, X-Model-Name, X-Model-Description, X-Model-File-Name, X-Legacy-Path",
     "Access-Control-Max-Age": "86400",
   });
   applyCors(request, env, headers);
@@ -179,12 +183,12 @@ const readBearerToken = (request: Request): string => {
   const authorization = request.headers.get("Authorization") ?? "";
   const [scheme, token] = authorization.split(/\s+/, 2);
   if (scheme?.toLowerCase() !== "bearer" || !token) {
-    throw new ApiError(401, "AUTH_REQUIRED", "Sign in before managing 3D models.");
+    throw new ApiError(401, "AUTH_REQUIRED", "Sign in before accessing this resource.");
   }
   return token;
 };
 
-const authenticateMutation = async (request: Request, env: Env): Promise<AuthenticatedUser> => {
+const authenticateRequest = async (request: Request, env: Env): Promise<AuthenticatedUser> => {
   requireAllowedOrigin(request, env);
   const token = readBearerToken(request);
   const authHeaders = {
@@ -218,11 +222,208 @@ const authenticateMutation = async (request: Request, env: Env): Promise<Authent
 
   const profiles = (await profileResponse.json()) as Array<{ role?: unknown }>;
   const role = normalizeRole(profiles[0]?.role);
-  if (!MUTATION_ROLES.has(role)) {
-    throw new ApiError(403, "ROLE_NOT_ALLOWED", "Only teachers and administrators can manage 3D models.");
+  if (!["student", "teacher", "admin", "superadmin"].includes(role)) {
+    throw new ApiError(403, "ROLE_NOT_ALLOWED", "Your account cannot access this resource.");
   }
 
-  return { id: userId, role: role as AuthenticatedUser["role"] };
+  return { id: userId, role: role as AuthenticatedUser["role"], token };
+};
+
+const authenticateMutation = async (request: Request, env: Env): Promise<AuthenticatedUser> => {
+  const user = await authenticateRequest(request, env);
+  if (!MUTATION_ROLES.has(user.role)) {
+    throw new ApiError(403, "ROLE_NOT_ALLOWED", "Only teachers and administrators can manage 3D models.");
+  }
+  return user;
+};
+
+const isAdministrator = (user: AuthenticatedUser): boolean =>
+  user.role === "admin" || user.role === "superadmin";
+
+const mediaObjectKey = (kind: "avatars" | "classes", ownerId: string): string =>
+  `${MEDIA_PREFIX}${kind}/${ownerId}`;
+
+const parseMediaRoute = (path: string): { kind: "avatars" | "classes"; ownerId: string } | null => {
+  const match = path.match(/^\/media\/(avatars|classes)\/([^/]+)$/);
+  if (!match) return null;
+  const ownerId = decodeURIComponent(match[2]).trim();
+  if (!ownerId || ownerId.length > 100 || !/^[a-zA-Z0-9_-]+$/.test(ownerId)) {
+    throw new ApiError(400, "INVALID_MEDIA_OWNER", "The image owner is invalid.");
+  }
+  return { kind: match[1] as "avatars" | "classes", ownerId };
+};
+
+const fetchVisibleClass = async (
+  env: Env,
+  user: AuthenticatedUser,
+  classId: string,
+): Promise<{ id: string; teacher_id: string | null; is_active: boolean | null }> => {
+  const url = new URL(`${env.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/classes`);
+  url.searchParams.set("id", `eq.${classId}`);
+  url.searchParams.set("select", "id,teacher_id,is_active");
+  url.searchParams.set("limit", "1");
+  const response = await fetch(url, {
+    headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${user.token}` },
+  });
+  if (!response.ok) {
+    console.error("Supabase class authorization lookup failed", response.status);
+    throw new ApiError(403, "CLASS_LOOKUP_FAILED", "Unable to confirm access to this class.");
+  }
+  const rows = (await response.json()) as Array<{
+    id?: unknown;
+    teacher_id?: unknown;
+    is_active?: unknown;
+  }>;
+  const row = rows[0];
+  if (!row?.id) throw new ApiError(404, "CLASS_NOT_FOUND", "Class not found or access is not allowed.");
+  return {
+    id: String(row.id),
+    teacher_id: row.teacher_id ? String(row.teacher_id) : null,
+    is_active: typeof row.is_active === "boolean" ? row.is_active : null,
+  };
+};
+
+const authorizeMedia = async (
+  request: Request,
+  env: Env,
+  route: { kind: "avatars" | "classes"; ownerId: string },
+  mutation: boolean,
+): Promise<AuthenticatedUser> => {
+  const user = await authenticateRequest(request, env);
+  if (route.kind === "avatars") {
+    if (mutation && user.id !== route.ownerId && !isAdministrator(user)) {
+      throw new ApiError(403, "AVATAR_NOT_ALLOWED", "You cannot change this profile picture.");
+    }
+    return user;
+  }
+
+  const classRow = await fetchVisibleClass(env, user, route.ownerId);
+  if (mutation) {
+    const ownsClass = user.role === "teacher" && classRow.teacher_id === user.id;
+    if (!isAdministrator(user) && !ownsClass) {
+      throw new ApiError(403, "CLASS_IMAGE_NOT_ALLOWED", "You cannot change this class image.");
+    }
+  }
+  return user;
+};
+
+const legacyMediaLocation = (
+  route: { kind: "avatars" | "classes"; ownerId: string },
+  rawPath: string,
+): { bucket: string; key: string } | null => {
+  const clean = rawPath.trim().replace(/^\/+/, "");
+  const bucket = route.kind === "avatars" ? "avatars" : "class-images";
+  const prefix = `${bucket}/${route.ownerId}/`;
+  if (!clean.startsWith(prefix) || clean.includes("..")) return null;
+  const key = clean.slice(bucket.length + 1);
+  return key ? { bucket, key } : null;
+};
+
+const mediaResponse = (request: Request, env: Env, object: R2ObjectBody): Response => {
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("Content-Type", headers.get("Content-Type") ?? "application/octet-stream");
+  headers.set("Content-Length", String(object.size));
+  headers.set("ETag", object.httpEtag);
+  headers.set("Cache-Control", "private, max-age=3600");
+  headers.set("X-Content-Type-Options", "nosniff");
+  applyCors(request, env, headers);
+  return new Response(request.method === "HEAD" ? null : object.body, { headers });
+};
+
+const serveMedia = async (
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  route: { kind: "avatars" | "classes"; ownerId: string },
+): Promise<Response> => {
+  const user = await authorizeMedia(request, env, route, false);
+  const key = mediaObjectKey(route.kind, route.ownerId);
+  const stored = await env.MODEL_BUCKET.get(key);
+  if (stored) return mediaResponse(request, env, stored);
+
+  const suppliedLegacyPath = request.headers.get("X-Legacy-Path") ?? "";
+  const legacy = legacyMediaLocation(
+    route,
+    suppliedLegacyPath || (route.kind === "avatars" ? `avatars/${route.ownerId}/avatar.webp` : ""),
+  );
+  if (!legacy || request.method === "HEAD") {
+    throw new ApiError(404, "MEDIA_NOT_FOUND", "Image not found.");
+  }
+
+  const sourceUrl = `${env.SUPABASE_URL.replace(/\/$/, "")}/storage/v1/object/authenticated/${legacy.bucket}/${legacy.key
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/")}`;
+  const source = await fetch(sourceUrl, {
+    headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${user.token}` },
+  });
+  if (!source.ok || !source.body) {
+    throw new ApiError(404, "LEGACY_MEDIA_NOT_FOUND", "Image not found in legacy storage.");
+  }
+  const contentType = (source.headers.get("Content-Type") ?? "").split(";")[0].trim().toLowerCase();
+  if (!SUPPORTED_MEDIA_TYPES.has(contentType)) {
+    throw new ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "Stored image type is not supported.");
+  }
+  const [storageBody, responseBody] = source.body.tee();
+  ctx.waitUntil(
+    env.MODEL_BUCKET.put(key, storageBody, {
+      httpMetadata: { contentType, cacheControl: "private, max-age=3600" },
+      customMetadata: { migratedFrom: `${legacy.bucket}/${legacy.key}` },
+    }),
+  );
+  const headers = new Headers({
+    "Content-Type": contentType,
+    "Cache-Control": "private, max-age=3600",
+    "X-Content-Type-Options": "nosniff",
+    "X-E-Likha-Migrated": "supabase-to-r2",
+  });
+  applyCors(request, env, headers);
+  return new Response(responseBody, { headers });
+};
+
+const uploadMedia = async (
+  request: Request,
+  env: Env,
+  route: { kind: "avatars" | "classes"; ownerId: string },
+): Promise<Response> => {
+  await authorizeMedia(request, env, route, true);
+  const size = Number(request.headers.get("Content-Length"));
+  if (!Number.isFinite(size) || size <= 0) {
+    throw new ApiError(411, "CONTENT_LENGTH_REQUIRED", "The image file size is required.");
+  }
+  if (size > MAX_MEDIA_FILE_BYTES) {
+    throw new ApiError(413, "FILE_TOO_LARGE", "Image is too large. Maximum size is 20 MB.");
+  }
+  const contentType = (request.headers.get("Content-Type") ?? "").split(";")[0].trim().toLowerCase();
+  if (!SUPPORTED_MEDIA_TYPES.has(contentType)) {
+    throw new ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "Use a PNG, JPG, or WebP image.");
+  }
+  if (!request.body) throw new ApiError(400, "FILE_REQUIRED", "Choose an image to upload.");
+
+  const key = mediaObjectKey(route.kind, route.ownerId);
+  const object = await env.MODEL_BUCKET.put(key, request.body, {
+    httpMetadata: { contentType, cacheControl: "private, max-age=3600" },
+    customMetadata: { ownerId: route.ownerId, kind: route.kind },
+  });
+  if (object.size > MAX_MEDIA_FILE_BYTES) {
+    await env.MODEL_BUCKET.delete(key);
+    throw new ApiError(413, "FILE_TOO_LARGE", "Image is too large. Maximum size is 20 MB.");
+  }
+  return jsonResponse(request, env, {
+    success: true,
+    data: { path: `r2-media/${route.kind}/${route.ownerId}`, size: object.size },
+  });
+};
+
+const deleteMedia = async (
+  request: Request,
+  env: Env,
+  route: { kind: "avatars" | "classes"; ownerId: string },
+): Promise<Response> => {
+  await authorizeMedia(request, env, route, true);
+  await env.MODEL_BUCKET.delete(mediaObjectKey(route.kind, route.ownerId));
+  return jsonResponse(request, env, { success: true });
 };
 
 const listAllObjects = async (bucket: R2Bucket, prefix: string): Promise<R2Object[]> => {
@@ -844,7 +1045,7 @@ const deleteModel = async (request: Request, env: Env, id: string): Promise<Resp
   return jsonResponse(request, env, { success: true });
 };
 
-const handleRequest = async (request: Request, env: Env): Promise<Response> => {
+const handleRequest = async (request: Request, env: Env, ctx: ExecutionContext): Promise<Response> => {
   if (request.method === "OPTIONS") return handleOptions(request, env);
 
   const url = new URL(request.url);
@@ -856,6 +1057,13 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   if (request.method === "GET" && path === "/models") return listModels(request, env);
   if (request.method === "GET" && path === "/models/search") return searchRemoteCatalog(request, env);
   if (request.method === "GET" && path === "/storage") return storageUsage(request, env);
+
+  const mediaRoute = parseMediaRoute(path);
+  if (mediaRoute && (request.method === "GET" || request.method === "HEAD")) {
+    return serveMedia(request, env, ctx, mediaRoute);
+  }
+  if (mediaRoute && request.method === "PUT") return uploadMedia(request, env, mediaRoute);
+  if (mediaRoute && request.method === "DELETE") return deleteMedia(request, env, mediaRoute);
 
   const fileMatch = path.match(/^\/models\/files\/([^/]+)(?:\/.*)?$/);
   if ((request.method === "GET" || request.method === "HEAD") && fileMatch) {
@@ -882,9 +1090,9 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
 };
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
-      return await handleRequest(request, env);
+      return await handleRequest(request, env, ctx);
     } catch (error) {
       return errorResponse(request, env, error);
     }

@@ -1,8 +1,10 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
+import ClassImagePicker from '../../components/ClassImagePicker';
 import './Classes.css';
 import { getTeacherClasses, createClass } from '../../services/teacherApi';
+import { resolveClassImageUrl, uploadClassImage } from '../../services/classImageApi';
 import { formatClassLabel } from '../../utils/classLabels';
 
 const CLASS_COLORS = ['#1800AD', '#8A7861', '#1C170D', '#6B5A4D', '#AD5900'];
@@ -12,8 +14,12 @@ const Classes = () => {
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newClassName, setNewClassName] = useState('');
   const [newClassGrade, setNewClassGrade] = useState('');
+  const [newClassSection, setNewClassSection] = useState('');
+  const [newClassSubject, setNewClassSubject] = useState('');
+  const [newClassImage, setNewClassImage] = useState(null);
+  const [newClassImageError, setNewClassImageError] = useState('');
+  const [pageError, setPageError] = useState('');
   const [creating, setCreating] = useState(false);
 
   const loadClasses = useCallback(async () => {
@@ -24,13 +30,14 @@ const Classes = () => {
       
       if (result.success) {
         // Transform the data to include pending count and color
-        const transformedClasses = result.data.map((klass, index) => ({
+        const transformedClasses = await Promise.all(result.data.map(async (klass, index) => ({
           ...klass,
           icon: formatClassLabel(klass).charAt(0),
           label: formatClassLabel(klass),
-          color: CLASS_COLORS[index % CLASS_COLORS.length],
+          color: klass.color || CLASS_COLORS[index % CLASS_COLORS.length],
+          imageSrc: await resolveClassImageUrl(klass.image_url),
           pending: klass.pending_assignments || 0
-        }));
+        })));
         setClasses(transformedClasses);
       } else {
         console.error('Failed to load classes:', result.error);
@@ -47,8 +54,8 @@ const Classes = () => {
   }, [loadClasses]);
 
   const handleCreateClass = async () => {
-    if (!newClassName.trim() || !newClassGrade) {
-      alert('Please enter both class name and select a grade');
+    if (!newClassGrade.trim() || !newClassSection.trim() || !newClassSubject.trim()) {
+      setPageError('Grade level, section, and subject are required.');
       return;
     }
 
@@ -56,21 +63,32 @@ const Classes = () => {
     try {
       const userInfo = JSON.parse(sessionStorage.getItem('userInfo') || '{}');
       const result = await createClass(userInfo.id, {
-        name: newClassName,
-        grade: newClassGrade
+        grade: newClassGrade,
+        section: newClassSection,
+        subject: newClassSubject,
       });
 
       if (result.success) {
+        if (newClassImage) {
+          try {
+            await uploadClassImage(result.data.id, newClassImage);
+          } catch (error) {
+            setPageError(`Class created, but its image could not be uploaded: ${error.message}`);
+          }
+        }
         setShowCreateModal(false);
-        setNewClassName('');
         setNewClassGrade('');
+        setNewClassSection('');
+        setNewClassSubject('');
+        setNewClassImage(null);
+        setNewClassImageError('');
         await loadClasses(); // Reload classes
       } else {
-        alert('Failed to create class: ' + result.error);
+        setPageError(`Failed to create class: ${result.error}`);
       }
     } catch (error) {
       console.error('Error creating class:', error);
-      alert('Failed to create class');
+      setPageError('Failed to create class. Check your connection and try again.');
     } finally {
       setCreating(false);
     }
@@ -91,13 +109,18 @@ const Classes = () => {
             <p className="lede">View and manage your classes, students, and activities.</p>
           </div>
           <div className="classes-header__actions">
-            <button className="btn primary" onClick={() => setShowCreateModal(true)}>+ New Class</button>
+            <button className="btn primary" onClick={() => {
+              setPageError('');
+              setShowCreateModal(true);
+            }}>+ New Class</button>
           </div>
         </header>
 
+        {pageError && <div className="classes-alert" role="alert">{pageError}</div>}
+
         {loading ? (
           <div style={{ padding: '40px', textAlign: 'center', color: '#6B5A4D' }}>
-            Loading classes...
+            Loading classes…
           </div>
         ) : (
           <div className="classes-list">
@@ -107,13 +130,16 @@ const Classes = () => {
                 </div>
               ) : (
                 classes.map((klass) => (
-                  <div
+                  <button
+                    type="button"
                     key={klass.id}
                     className="class-list-item"
                     onClick={() => handleClassClick(klass.id)}
                   >
                     <div className="class-list-avatar" style={{ background: klass.color }}>
-                      {klass.icon}
+                      {klass.imageSrc
+                        ? <img src={klass.imageSrc} alt="" width="56" height="56" loading="lazy" />
+                        : klass.icon}
                     </div>
                     <div className="class-list-content">
                       <div className="class-list-name">{klass.label}</div>
@@ -122,7 +148,7 @@ const Classes = () => {
                     <div className="class-list-action">
                       <span className="arrow-icon">→</span>
                     </div>
-                  </div>
+                  </button>
                 ))
               )}
           </div>
@@ -131,51 +157,61 @@ const Classes = () => {
         {/* Create Class Modal */}
         {showCreateModal && (
           <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <h2>Create New Class</h2>
-              <div style={{ marginTop: '20px' }}>
-                <label style={{ display: 'block', marginBottom: '8px', color: '#1C170D', fontWeight: '500' }}>
-                  Class Name
-                </label>
+            <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="create-class-title" onClick={(e) => e.stopPropagation()}>
+              <h2 id="create-class-title">Create New Class</h2>
+              <div className="teacher-class-form">
+                <label>
+                  <span>Grade Level</span>
                 <input
                   type="text"
-                  placeholder="e.g., Grade 4 - 101"
-                  value={newClassName}
-                  onChange={(e) => setNewClassName(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #D4C5B9',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    marginBottom: '16px'
-                  }}
-                />
-                <label style={{ display: 'block', marginBottom: '8px', color: '#1C170D', fontWeight: '500' }}>
-                  Grade Level
-                </label>
-                <select
+                  name="classGrade"
+                  autoComplete="off"
+                  list="teacher-grade-suggestions"
+                  placeholder="Kindergarten, Grade 6…"
                   value={newClassGrade}
                   onChange={(e) => setNewClassGrade(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #D4C5B9',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    marginBottom: '24px',
-                    backgroundColor: 'white'
+                  required
+                />
+                </label>
+                <datalist id="teacher-grade-suggestions">
+                  <option value="Kindergarten" />
+                  <option value="Grade 4" />
+                  <option value="Grade 5" />
+                  <option value="Grade 6" />
+                </datalist>
+                <label>
+                  <span>Section</span>
+                  <input type="text" name="classSection" autoComplete="off" placeholder="Ruby, Sunflower…" value={newClassSection} onChange={(event) => setNewClassSection(event.target.value)} required />
+                </label>
+                <label>
+                  <span>Subject</span>
+                  <input type="text" name="classSubject" autoComplete="off" placeholder="Arts, MAPEH…" value={newClassSubject} onChange={(event) => setNewClassSubject(event.target.value)} required />
+                </label>
+                <ClassImagePicker
+                  file={newClassImage}
+                  onFileChange={(file, validation) => {
+                    if (!validation.valid) {
+                      setNewClassImage(null);
+                      setNewClassImageError(validation.error);
+                      return;
+                    }
+                    setNewClassImage(file);
+                    setNewClassImageError('');
                   }}
-                >
-                  <option value="">Select a grade</option>
-                  <option value="Grade 4">Grade 4</option>
-                  <option value="Grade 5">Grade 5</option>
-                  <option value="Grade 6">Grade 6</option>
-                </select>
-                <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                  <button 
-                    className="btn secondary" 
-                    onClick={() => setShowCreateModal(false)}
+                  onRemove={() => {
+                    setNewClassImage(null);
+                    setNewClassImageError('');
+                  }}
+                  error={newClassImageError}
+                />
+                <div className="teacher-class-form__actions">
+                  <button
+                    className="btn secondary"
+                    onClick={() => {
+                      setShowCreateModal(false);
+                      setNewClassImage(null);
+                      setNewClassImageError('');
+                    }}
                     disabled={creating}
                   >
                     Cancel
@@ -185,7 +221,7 @@ const Classes = () => {
                     onClick={handleCreateClass}
                     disabled={creating}
                   >
-                    {creating ? 'Creating...' : 'Create Class'}
+                    {creating ? 'Creating…' : 'Create Class'}
                   </button>
                 </div>
               </div>

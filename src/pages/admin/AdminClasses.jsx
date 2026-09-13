@@ -1,6 +1,7 @@
 import React from 'react';
 import './styles/AdminClasses.css';
 import AdminShell from './components/AdminShell';
+import ClassImagePicker from '../../components/ClassImagePicker';
 import {
   createAdminClassSection,
   deleteAdminClassSection,
@@ -13,6 +14,11 @@ import {
 } from '../../services/adminApi';
 import { formatClassLabel } from '../../utils/classLabels';
 import { normalizeHexColor } from '../../utils/arColorPalette';
+import {
+  removeClassImage,
+  resolveClassImageUrl,
+  uploadClassImage,
+} from '../../services/classImageApi';
 
 const DEFAULT_GRADE_SUGGESTIONS = [
   'Kindergarten',
@@ -29,6 +35,11 @@ const emptyDraft = {
   subject: '',
   teacherId: '',
   color: COLOR_OPTIONS[0],
+  imageFile: null,
+  imagePath: '',
+  imageUrl: '',
+  removeImage: false,
+  imageError: '',
 };
 
 const normalizeDraftFromClass = (classInfo) => ({
@@ -37,6 +48,11 @@ const normalizeDraftFromClass = (classInfo) => ({
   subject: classInfo?.subject || '',
   teacherId: classInfo?.teacher_id || '',
   color: normalizeHexColor(classInfo?.color) || COLOR_OPTIONS[0],
+  imageFile: null,
+  imagePath: classInfo?.image_url || '',
+  imageUrl: classInfo?.image_src || '',
+  removeImage: false,
+  imageError: '',
 });
 
 const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, value));
@@ -236,7 +252,11 @@ function AdminClasses({ onNavigate }) {
       setError(classesResult.error || 'Failed to load classes.');
       setClasses([]);
     } else {
-      setClasses(classesResult.data || []);
+      const hydratedClasses = await Promise.all((classesResult.data || []).map(async (classInfo) => ({
+        ...classInfo,
+        image_src: await resolveClassImageUrl(classInfo.image_url),
+      })));
+      setClasses(hydratedClasses);
     }
 
     if (!teachersResult.success) {
@@ -346,6 +366,26 @@ function AdminClasses({ onNavigate }) {
 
     if (!result.success) {
       setSaveError(result.error || 'Failed to save class.');
+      return;
+    }
+
+    const savedClass = result.data;
+    try {
+      if (draft.imageFile) {
+        await uploadClassImage(savedClass.id, draft.imageFile, draft.imagePath);
+      } else if (draft.removeImage && draft.imagePath) {
+        await removeClassImage(savedClass.id, draft.imagePath);
+      }
+    } catch (imageError) {
+      setEditingClass(savedClass);
+      setModalMode('edit');
+      setDraft((current) => ({
+        ...current,
+        imageFile: null,
+        imagePath: savedClass.image_url || current.imagePath,
+        imageError: `Class details were saved, but the image could not be updated: ${imageError.message}`,
+      }));
+      await loadData();
       return;
     }
 
@@ -468,7 +508,9 @@ function AdminClasses({ onNavigate }) {
                 <tr key={classInfo.id} className={classInfo.is_active === false ? 'is-inactive' : ''}>
                   <td>
                     <div className="ac-class-cell">
-                      <span className="ac-color" style={{ background: classInfo.color || '#1800AD' }} />
+                      <span className={`ac-color ${classInfo.image_src ? 'has-image' : ''}`} style={{ background: classInfo.color || '#1800AD' }}>
+                        {classInfo.image_src && <img src={classInfo.image_src} alt="" width="42" height="42" loading="lazy" />}
+                      </span>
                       <div>
                         <strong>
                           {formatClassLabel(classInfo)}
@@ -571,6 +613,26 @@ function AdminClasses({ onNavigate }) {
                 <span>Color</span>
                 <small className="ac-field-hint">Pick any color for class cards and labels.</small>
                 <ClassColorPicker value={draft.color} onChange={(color) => updateDraft('color', color)} />
+              </div>
+
+              <div className="ac-field ac-field--full">
+                <ClassImagePicker
+                  imageUrl={draft.removeImage ? '' : draft.imageUrl}
+                  file={draft.imageFile}
+                  onFileChange={(file, validation) => {
+                    updateDraft('imageError', validation.valid ? '' : validation.error);
+                    updateDraft('imageFile', validation.valid ? file : null);
+                    if (validation.valid) updateDraft('removeImage', false);
+                  }}
+                  onRemove={() => setDraft((current) => ({
+                    ...current,
+                    imageFile: null,
+                    imageUrl: '',
+                    removeImage: Boolean(current.imagePath),
+                    imageError: '',
+                  }))}
+                  error={draft.imageError}
+                />
               </div>
 
               <div className="ac-preview">

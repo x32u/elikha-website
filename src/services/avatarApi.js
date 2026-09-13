@@ -1,19 +1,17 @@
 import { supabase } from '../lib/supabase';
+import { deleteR2Media, resolveR2MediaUrl, uploadR2Media } from './r2MediaApi';
 
 // Profile-picture (avatar) service.
 //
-// Avatars live in a PRIVATE Supabase Storage bucket, so images are rendered
-// through short-lived signed URLs, never a public link. `users.avatar_url`
-// stores the object PATH (e.g. "avatars/<uid>/<file>"), not a URL — call
-// resolveAvatarUrl(path) to get a displayable src.
+// Avatars live in private Cloudflare R2 storage and are fetched with the current
+// Supabase session. Legacy `avatars/...` paths are copied into R2 on first read.
 //
 // Row Level Security (see migration 20260831190000_user_avatars.sql) lets a
 // user write their own folder and lets admins/superadmins write anyone's, so
 // the same upload path serves self-service edits and admin management.
 
 const BUCKET = 'avatars';
-const SIGNED_URL_TTL_SECONDS = 60 * 60; // 1 hour
-const MAX_UPLOAD_BYTES = 2 * 1024 * 1024; // 2 MiB, matches the bucket limit
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20 MiB source limit, matches the bucket limit
 const TARGET_DIMENSION = 512; // square, downscaled before upload
 const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 
@@ -28,7 +26,7 @@ export const validateAvatarFile = (file) => {
     return { valid: false, error: 'Use a PNG, JPG, or WebP image.' };
   }
   if (file.size > MAX_UPLOAD_BYTES) {
-    return { valid: false, error: 'Image is too large. Maximum size is 2 MB.' };
+    return { valid: false, error: 'Image is too large. Maximum size is 20 MB.' };
   }
   return { valid: true };
 };
@@ -89,28 +87,21 @@ export const uploadUserAvatar = async (userId, file) => {
   const validation = validateAvatarFile(file);
   if (!validation.valid) throw new Error(validation.error);
 
-  const { blob, extension } = await normalizeImage(file);
+  const { blob } = await normalizeImage(file);
   // Deterministic single object per user keeps storage from accumulating one
   // file per edit; upsert overwrites the previous photo in place.
-  const path = `${id}/avatar.${extension}`;
-
-  const { error: uploadError } = await supabase.storage
-    .from(BUCKET)
-    .upload(path, blob, {
-      upsert: true,
-      contentType: blob.type || `image/${extension}`,
-      cacheControl: '3600',
-    });
-  if (uploadError) throw uploadError;
-
-  const objectPath = `${BUCKET}/${path}`;
+  const objectPath = `r2-media/avatars/${id}`;
+  await uploadR2Media('avatars', id, blob);
   const { error: profileError } = await supabase
     .from('users')
     .update({ avatar_url: objectPath })
     .eq('id', id);
-  if (profileError) throw profileError;
+  if (profileError) {
+    await deleteR2Media('avatars', id).catch(() => {});
+    throw profileError;
+  }
 
-  const signedUrl = await resolveAvatarUrl(objectPath);
+  const signedUrl = await resolveR2MediaUrl('avatars', id);
   return { path: objectPath, signedUrl };
 };
 
@@ -125,36 +116,18 @@ export const removeUserAvatar = async (userId, storedPath = '') => {
     .eq('id', id);
   if (profileError) throw profileError;
 
-  const key = stripBucketPrefix(storedPath);
-  if (key) {
-    // Deleting the object is best-effort: the profile no longer references it,
-    // so a failed delete leaves an orphan but never a broken display.
-    await supabase.storage.from(BUCKET).remove([key]).catch(() => {});
-  }
+  await deleteR2Media('avatars', id).catch(() => {});
   return true;
 };
 
-const stripBucketPrefix = (stored = '') => {
-  const value = String(stored || '').trim();
-  if (!value) return '';
-  return value.startsWith(`${BUCKET}/`) ? value.slice(BUCKET.length + 1) : value;
-};
-
-// Turn a stored avatar_url (an object path) into a displayable signed URL.
-// Returns '' when there is no avatar or the sign fails, so callers can fall
-// back to initials.
+// Turn either a new R2 path or a legacy Supabase path into a displayable local
+// object URL. Legacy files are copied to R2 by the Worker during this request.
 export const resolveAvatarUrl = async (storedPath = '') => {
-  const key = stripBucketPrefix(storedPath);
-  if (!key) return '';
-  try {
-    const { data, error } = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrl(key, SIGNED_URL_TTL_SECONDS);
-    if (error) return '';
-    return data?.signedUrl || '';
-  } catch {
-    return '';
-  }
+  const value = String(storedPath || '').trim();
+  const parts = value.split('/');
+  const id = value.startsWith('r2-media/avatars/') ? parts[2] : value.startsWith(`${BUCKET}/`) ? parts[1] : parts[0];
+  if (!id) return '';
+  return resolveR2MediaUrl('avatars', id, value.startsWith(`${BUCKET}/`) ? value : '');
 };
 
 // Teacher-facing lists may be allowed to read an enrolled learner's avatar
@@ -167,6 +140,8 @@ export const resolveUserAvatarUrl = async (userId, storedPath = '') => {
 
   const id = String(userId || '').trim();
   if (!id) return '';
+  const r2Url = await resolveR2MediaUrl('avatars', id);
+  if (r2Url) return r2Url;
   try {
     const { data, error } = await supabase.storage
       .from(BUCKET)
@@ -174,7 +149,7 @@ export const resolveUserAvatarUrl = async (userId, storedPath = '') => {
     if (error) return '';
     const avatar = (data || []).find((item) => String(item?.name || '').startsWith('avatar.'));
     if (!avatar?.name) return '';
-    return resolveAvatarUrl(`${BUCKET}/${id}/${avatar.name}`);
+    return resolveR2MediaUrl('avatars', id, `${BUCKET}/${id}/${avatar.name}`);
   } catch {
     return '';
   }

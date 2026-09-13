@@ -445,7 +445,6 @@ const Student = () => {
               <div className="student-info">
                 <h1 className="student-name">{selectedStudent.name}</h1>
                 <p className="student-grade">{selectedStudent.grade} - Section {selectedStudent.section}</p>
-                <p className="student-id">Student ID: {selectedStudent.id}</p>
               </div>
             </div>
           </section>

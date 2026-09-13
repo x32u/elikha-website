@@ -234,7 +234,7 @@ function Settings({ onNavigate, role, onLogout }) {
                   </button>
                 )}
               </div>
-              <div className="set-help">PNG, JPG, or WebP up to 2 MB.</div>
+              <div className="set-help">PNG, JPG, or WebP up to 20 MB.</div>
             </div>
           </div>
 

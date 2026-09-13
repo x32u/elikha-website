@@ -37,7 +37,7 @@ describe('Class activity rubric selector', () => {
     sessionStorage.setItem('userInfo', JSON.stringify({ id: 'teacher-1', role: 'teacher' }));
     mockGetClassById.mockResolvedValue({
       success: true,
-      data: { id: 'class-1', name: 'Diamond', grade: 'Grade 6', section: 'A' },
+      data: { id: 'class-1', name: 'Grade 6 - A', grade: 'Grade 6', section: 'A', subject: 'Arts' },
     });
     mockGetClassStudents.mockResolvedValue({ success: true, data: [] });
     mockGetClassActivities.mockResolvedValue({
@@ -52,7 +52,7 @@ describe('Class activity rubric selector', () => {
     });
     mockUpdateClass.mockResolvedValue({
       success: true,
-      data: { id: 'class-1', name: 'Emerald', grade: 'Grade 6', section: 'A' },
+      data: { id: 'class-1', name: 'Kindergarten 2 - A', grade: 'Kindergarten 2', section: 'A', subject: 'Arts' },
     });
     mockGetActivityRubricOptions.mockResolvedValue({
       success: true,
@@ -136,13 +136,13 @@ describe('Class activity rubric selector', () => {
     expect(document.body.textContent).toContain('This rubric is locked because student work depends on it.');
   });
 
-  test('lets the teacher rename the class without recreating it', async () => {
+  test('lets the teacher edit the grade level without recreating the class', async () => {
     await act(async () => {
       root.render(<ClassDetails />);
     });
 
     const editButton = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent.trim() === 'Edit class name'
+      (button) => button.textContent.trim() === 'Edit class'
     );
     expect(editButton).toBeDefined();
 
@@ -150,18 +150,23 @@ describe('Class activity rubric selector', () => {
       editButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
-    const nameInput = container.querySelector('#edit-class-name');
-    expect(nameInput.value).toBe('Diamond');
+    const gradeInput = container.querySelector('#edit-class-grade');
+    expect(gradeInput.value).toBe('Grade 6');
     await act(async () => {
       const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-      setter.call(nameInput, 'Emerald');
-      nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+      setter.call(gradeInput, 'Kindergarten 2');
+      gradeInput.dispatchEvent(new Event('input', { bubbles: true }));
     });
     await act(async () => {
       container.querySelector('.edit-class-modal').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     });
 
-    expect(mockUpdateClass).toHaveBeenCalledWith('class-1', { name: 'Emerald' });
+    expect(mockUpdateClass).toHaveBeenCalledWith('class-1', {
+      name: 'Kindergarten 2 - A',
+      grade: 'Kindergarten 2',
+      section: 'A',
+      subject: 'Arts',
+    });
     expect(container.querySelector('.edit-class-modal')).toBeNull();
   });
 });

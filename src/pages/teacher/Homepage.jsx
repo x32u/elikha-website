@@ -8,6 +8,7 @@ import {
 } from '../../services/teacherApi';
 import { formatClassLabel } from '../../utils/classLabels';
 import { formatTimeAgo } from '../../utils/dateDisplay';
+import { resolveClassImageUrl } from '../../services/classImageApi';
 import './Homepage.css';
 
 const Homepage = () => {
@@ -22,12 +23,13 @@ const Homepage = () => {
     const result = await getTeacherClasses(tid);
     if (result.success) {
       // Add pending count (would need to calculate from submissions)
-      const classesWithPending = result.data.map(c => ({
+      const classesWithPending = await Promise.all(result.data.map(async (c) => ({
         ...c,
         label: formatClassLabel(c),
+        imageSrc: await resolveClassImageUrl(c.image_url),
         students: c.student_count || 0,
         pending: 0 // TODO: Calculate from submissions
-      }));
+      })));
       setClasses(classesWithPending);
     }
   }, []);
@@ -93,7 +95,7 @@ const Homepage = () => {
       <div className="teacher-homepage">
         <Navbar />
         <div className="page-shell">
-          <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>
+          <div style={{ padding: '40px', textAlign: 'center' }}>Loading…</div>
         </div>
       </div>
     );
@@ -124,14 +126,16 @@ const Homepage = () => {
                   </div>
                 ) : (
                   classes.map((klass) => (
-                    <div 
-                      key={klass.id} 
+                    <button
+                      type="button"
+                      key={klass.id}
                       className="class-card"
                       onClick={() => navigate(`/class/${klass.id}`)}
-                      style={{ cursor: 'pointer' }}
                     >
                       <div className="class-avatar" style={{ background: klass.color }}>
-                        {klass.label.charAt(0)}
+                        {klass.imageSrc
+                          ? <img src={klass.imageSrc} alt="" width="48" height="48" loading="lazy" />
+                          : klass.label.charAt(0)}
                       </div>
                       <div className="class-meta">
                         <div className="class-name">{klass.label}</div>
@@ -140,7 +144,7 @@ const Homepage = () => {
                       {klass.pending > 0 && (
                         <span className="status-pill warn">{klass.pending} pending</span>
                       )}
-                    </div>
+                    </button>
                   ))
                 )}
               </div>

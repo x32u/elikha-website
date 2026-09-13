@@ -249,7 +249,7 @@ const Settings = () => {
                     </button>
                   )}
                 </div>
-                <p className="settings-help">PNG, JPG, or WebP up to 2 MB. Shown across your profile.</p>
+                <p className="settings-help">PNG, JPG, or WebP up to 20 MB. Shown across your profile.</p>
               </div>
             </div>
           </div>

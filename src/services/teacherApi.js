@@ -253,14 +253,18 @@ export const getClassById = async (classId) => {
 
 export const createClass = async (teacherId, classData) => {
   try {
+    const grade = String(classData.grade || '').trim();
+    const section = String(classData.section || '').trim();
+    const subject = String(classData.subject || '').trim();
+    const name = String(classData.name || '').trim() || [grade, section].filter(Boolean).join(' - ');
     const { data, error } = await supabase
       .from('classes')
       .insert([{
         teacher_id: teacherId,
-        name: classData.name,
-        grade: classData.grade,
-        section: classData.section,
-        subject: classData.subject,
+        name,
+        grade,
+        section,
+        subject,
         color: classData.color || '#1800AD'
       }])
       .select()

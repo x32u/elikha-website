@@ -1,8 +1,9 @@
-# E-Likha R2 model Worker
+# E-Likha R2 storage Worker
 
-This Worker is the shared 3D-model service used by the E-Likha React app. It
-stores model binaries and small metadata records in the `elikha-3d-models` R2
-bucket.
+This Worker is the shared private storage service used by the E-Likha React
+app. It stores model binaries, profile pictures, and class images in the
+`elikha-3d-models` R2 bucket under separate prefixes. Image objects do not count
+toward the app's 3D-model capacity meter.
 
 ## API contract
 
@@ -24,12 +25,24 @@ bucket.
 - `PATCH /models/:id` edits custom-model metadata.
 - `PUT /models/:id/file` replaces a custom-model file.
 - `DELETE /models/:id` removes a custom model and its metadata.
+- `GET|HEAD /media/avatars/:userId` returns an authenticated profile picture.
+- `PUT|DELETE /media/avatars/:userId` replaces or removes a profile picture.
+- `GET|HEAD /media/classes/:classId` returns an image after checking class access.
+- `PUT|DELETE /media/classes/:classId` replaces or removes a class image after
+  confirming the caller is an administrator or the class's assigned teacher.
 
-The read routes are public so students can load assigned AR content. Mutations
+The model read routes are public so students can load assigned AR content. Media
+routes are private and require a valid Supabase session. Model mutations
 require a valid Supabase access token and a current `teacher`, `admin`, or
 `superadmin` role in `public.users`. Before release, apply and verify the latest
 Supabase authorization-hardening migrations so learners cannot change their own
 role.
+
+Legacy `avatars/...` and `class-images/...` references are supported during the
+cutover. When the browser supplies an authorized legacy path and the R2 object
+does not exist, the Worker streams the private Supabase object to the caller and
+copies it into R2 in the background. Supabase originals are retained as rollback
+copies until they are deliberately removed later.
 
 ## Storage rules
 
@@ -37,6 +50,8 @@ role.
 - `.blend` is accepted as a source/archive file, but browsers cannot render it
   directly. Convert it to `.glb` before selecting it for an AR activity.
 - Maximum file size defaults to 50 MiB (`MAX_MODEL_FILE_BYTES=52428800`).
+- Profile-picture and class-image uploads accept PNG, JPG, or WebP sources up to
+  20 MiB. The browser crops and compresses them before upload.
 - Application capacity defaults to 10 GB
   (`MODEL_STORAGE_CAPACITY_BYTES=10000000000`). This is an E-Likha limit, not the
   Cloudflare account's total R2 quota.
@@ -101,7 +116,8 @@ run deliberately when reseeding that bucket.
 5. Run `npm run check`, `npx wrangler deploy --dry-run`, and relevant contract
    tests before any deployment.
 6. Set the deployed Worker URL as `REACT_APP_R2_MODEL_API_URL` in the React
-   hosting environment and rebuild the web app.
+   hosting environment and rebuild the web app. The same URL serves models and
+   private app images.
 
 Never add a Supabase service-role key to this Worker. Role authorization is
 performed with the signed-in user's access token and database Row Level

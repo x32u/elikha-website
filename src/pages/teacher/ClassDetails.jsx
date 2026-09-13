@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
+import ClassImagePicker from '../../components/ClassImagePicker';
 import CreateActivityModal from '../../components/CreateActivityModal';
 import {
   getClassById,
@@ -25,6 +26,11 @@ import {
 } from '../../utils/activityArConfig';
 import { createActivityThumbnailDataUrl } from '../../utils/activityThumbnail';
 import { uploadActivityThumbnail } from '../../services/activityThumbnailStorage';
+import {
+  removeClassImage,
+  resolveClassImageUrl,
+  uploadClassImage,
+} from '../../services/classImageApi';
 import { formatClassLabel } from '../../utils/classLabels';
 import {
   getActivityRubricManagementState,
@@ -37,6 +43,16 @@ import ActivityModelSelector from '../../components/ActivityModelSelector';
 import { sanitizeColorRequirements } from '../../utils/activityColorRequirements';
 
 const MAX_MODEL_QUANTITY = 12;
+const EMPTY_CLASS_DRAFT = {
+  grade: '',
+  section: '',
+  subject: '',
+  imageFile: null,
+  imagePath: '',
+  imageUrl: '',
+  removeImage: false,
+  imageError: '',
+};
 
 const ClassDetails = () => {
   const { classId } = useParams();
@@ -52,7 +68,8 @@ const ClassDetails = () => {
   const [enrollNotice, setEnrollNotice] = useState('');
   const [removeBusyId, setRemoveBusyId] = useState(null);
   const [showEditClassModal, setShowEditClassModal] = useState(false);
-  const [editClassName, setEditClassName] = useState('');
+  const [editClassDraft, setEditClassDraft] = useState(EMPTY_CLASS_DRAFT);
+  const [classImageSrc, setClassImageSrc] = useState('');
   const [editClassError, setEditClassError] = useState('');
   const [savingClassName, setSavingClassName] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
@@ -92,6 +109,7 @@ const ClassDetails = () => {
       const classResult = await getClassById(classId);
       if (classResult.success) {
         setClassData(classResult.data);
+        setClassImageSrc(await resolveClassImageUrl(classResult.data.image_url));
       }
 
       // Load students
@@ -202,7 +220,16 @@ const ClassDetails = () => {
   };
 
   const openEditClassModal = () => {
-    setEditClassName(classData?.name || '');
+    setEditClassDraft({
+      grade: classData?.grade || '',
+      section: classData?.section || '',
+      subject: classData?.subject || '',
+      imageFile: null,
+      imagePath: classData?.image_url || '',
+      imageUrl: classImageSrc,
+      removeImage: false,
+      imageError: '',
+    });
     setEditClassError('');
     setShowEditClassModal(true);
   };
@@ -211,32 +238,49 @@ const ClassDetails = () => {
     if (savingClassName) return;
     setShowEditClassModal(false);
     setEditClassError('');
+    setEditClassDraft(EMPTY_CLASS_DRAFT);
   };
 
   const handleSaveClassName = async (event) => {
     event.preventDefault();
-    const name = editClassName.trim();
-    if (!name) {
-      setEditClassError('Class name is required.');
-      return;
-    }
-
-    if (name === String(classData?.name || '').trim()) {
-      closeEditClassModal();
+    const grade = editClassDraft.grade.trim();
+    const section = editClassDraft.section.trim();
+    const subject = editClassDraft.subject.trim();
+    if (!grade || !section || !subject) {
+      setEditClassError('Grade level, section, and subject are required.');
       return;
     }
 
     setSavingClassName(true);
     setEditClassError('');
-    const result = await updateClass(classId, { name });
-    setSavingClassName(false);
+    const name = [grade, section].join(' - ');
+    const result = await updateClass(classId, { name, grade, section, subject });
 
     if (!result.success) {
+      setSavingClassName(false);
       setEditClassError(result.error || 'Failed to update the class name.');
       return;
     }
 
-    setClassData((current) => ({ ...current, ...(result.data || {}), name }));
+    try {
+      if (editClassDraft.imageFile) {
+        const image = await uploadClassImage(classId, editClassDraft.imageFile, editClassDraft.imagePath);
+        if (result.data) result.data.image_url = image.path;
+        setClassImageSrc(image.signedUrl);
+      } else if (editClassDraft.removeImage && editClassDraft.imagePath) {
+        await removeClassImage(classId, editClassDraft.imagePath);
+        if (result.data) result.data.image_url = null;
+        setClassImageSrc('');
+      }
+    } catch (error) {
+      setSavingClassName(false);
+      setClassData((current) => ({ ...current, ...(result.data || {}), name, grade, section, subject }));
+      setEditClassError(`Class details were saved, but the image could not be updated: ${error.message}`);
+      return;
+    }
+
+    setSavingClassName(false);
+    setClassData((current) => ({ ...current, ...(result.data || {}), name, grade, section, subject }));
     setShowEditClassModal(false);
   };
 
@@ -439,7 +483,7 @@ const ClassDetails = () => {
       <div className="page-container">
         <main className="page-content">
           <div className="class-details-shell">
-            <p>Loading...</p>
+            <p>Loading…</p>
           </div>
         </main>
         <Navbar />
@@ -480,8 +524,10 @@ const ClassDetails = () => {
           <header className="class-details-header">
             <button className="back-btn" onClick={() => navigate(-1)}>← Back</button>
             <div className="class-details-title">
-              <div className="class-badge" style={{ background: classData.color || '#1800AD' }}>
-                {classData.grade?.charAt(0) || 'C'}
+              <div className={`class-badge ${classImageSrc ? 'has-image' : ''}`} style={{ background: classData.color || '#1800AD' }}>
+                {classImageSrc
+                  ? <img src={classImageSrc} alt="" width="60" height="60" />
+                  : classData.grade?.charAt(0) || 'C'}
               </div>
               <div>
                 <h1>{classLabel}</h1>
@@ -489,7 +535,7 @@ const ClassDetails = () => {
               </div>
             </div>
             <button type="button" className="edit-class-button" onClick={openEditClassModal}>
-              Edit class name
+              Edit class
             </button>
           </header>
 
@@ -497,34 +543,69 @@ const ClassDetails = () => {
             <div className="edit-class-modal__overlay" onMouseDown={(event) => {
               if (event.target === event.currentTarget) closeEditClassModal();
             }}>
-              <form className="edit-class-modal" onSubmit={handleSaveClassName} aria-labelledby="edit-class-title">
+              <form className="edit-class-modal" role="dialog" aria-modal="true" onSubmit={handleSaveClassName} aria-labelledby="edit-class-title">
                 <div className="edit-class-modal__header">
-                  <div>
-                    <span className="edit-class-modal__eyebrow">Class settings</span>
-                    <h2 id="edit-class-title">Edit class name</h2>
-                  </div>
+                  <h2 id="edit-class-title">Edit Class</h2>
                   <button type="button" className="edit-class-modal__close" onClick={closeEditClassModal} aria-label="Close edit class form">×</button>
                 </div>
                 <div className="edit-class-modal__body">
-                  <label htmlFor="edit-class-name">Class Name</label>
-                  <input
-                    id="edit-class-name"
-                    className="form-input"
-                    value={editClassName}
-                    onChange={(event) => {
-                      setEditClassName(event.target.value);
-                      if (editClassError) setEditClassError('');
-                    }}
-                    autoFocus
-                    maxLength={120}
-                    required
+                  <div className="edit-class-modal__fields">
+                    <div className="edit-class-modal__field">
+                      <label htmlFor="edit-class-grade">Grade Level</label>
+                      <input
+                        id="edit-class-grade"
+                        className="form-input"
+                        name="classGrade"
+                        autoComplete="off"
+                        list="edit-teacher-grade-suggestions"
+                        value={editClassDraft.grade}
+                        onChange={(event) => {
+                          setEditClassDraft((current) => ({ ...current, grade: event.target.value }));
+                          if (editClassError) setEditClassError('');
+                        }}
+                        maxLength={60}
+                        required
+                      />
+                      <datalist id="edit-teacher-grade-suggestions">
+                        <option value="Kindergarten" />
+                        <option value="Grade 4" />
+                        <option value="Grade 5" />
+                        <option value="Grade 6" />
+                      </datalist>
+                      <p className="edit-class-modal__help">Choose a suggestion or enter another grade.</p>
+                    </div>
+                    <div className="edit-class-modal__field">
+                      <label htmlFor="edit-class-section">Section</label>
+                      <input id="edit-class-section" className="form-input" name="classSection" autoComplete="off" value={editClassDraft.section} onChange={(event) => setEditClassDraft((current) => ({ ...current, section: event.target.value }))} maxLength={80} required />
+                    </div>
+                    <div className="edit-class-modal__field edit-class-modal__field--full">
+                      <label htmlFor="edit-class-subject">Subject</label>
+                      <input id="edit-class-subject" className="form-input" name="classSubject" autoComplete="off" value={editClassDraft.subject} onChange={(event) => setEditClassDraft((current) => ({ ...current, subject: event.target.value }))} maxLength={80} required />
+                    </div>
+                  </div>
+                  <ClassImagePicker
+                    imageUrl={editClassDraft.removeImage ? '' : editClassDraft.imageUrl}
+                    file={editClassDraft.imageFile}
+                    onFileChange={(file, validation) => setEditClassDraft((current) => ({
+                      ...current,
+                      imageFile: validation.valid ? file : null,
+                      removeImage: validation.valid ? false : current.removeImage,
+                      imageError: validation.valid ? '' : validation.error,
+                    }))}
+                    onRemove={() => setEditClassDraft((current) => ({
+                      ...current,
+                      imageFile: null,
+                      imageUrl: '',
+                      removeImage: Boolean(current.imagePath),
+                      imageError: '',
+                    }))}
+                    error={editClassDraft.imageError}
                   />
-                  <p className="edit-class-modal__help">This changes the class name everywhere. Students, activities, and submissions stay connected.</p>
                   {editClassError && <p className="edit-class-modal__error" role="alert">{editClassError}</p>}
                 </div>
                 <div className="edit-class-modal__actions">
                   <button type="button" className="btn-cancel" onClick={closeEditClassModal} disabled={savingClassName}>Cancel</button>
-                  <button type="submit" className="btn-submit" disabled={savingClassName}>{savingClassName ? 'Saving…' : 'Save name'}</button>
+                  <button type="submit" className="btn-submit" disabled={savingClassName}>{savingClassName ? 'Saving…' : 'Save Changes'}</button>
                 </div>
               </form>
             </div>
