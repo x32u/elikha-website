@@ -8,6 +8,7 @@ const mockGetClassActivities = jest.fn();
 const mockUpdateClass = jest.fn();
 const mockGetActivityRubricOptions = jest.fn();
 const mockGetActivityRubricManagementState = jest.fn();
+const mockResolveUserAvatarUrl = jest.fn();
 
 jest.mock('react-router-dom', () => ({
   useNavigate: () => jest.fn(),
@@ -28,6 +29,9 @@ jest.mock('../../services/rubricApi', () => ({
   getActivityRubricOptions: (...args) => mockGetActivityRubricOptions(...args),
   getActivityRubricManagementState: (...args) => mockGetActivityRubricManagementState(...args),
 }));
+jest.mock('../../services/avatarApi', () => ({
+  resolveUserAvatarUrl: (...args) => mockResolveUserAvatarUrl(...args),
+}));
 
 describe('Class activity rubric selector', () => {
   let container;
@@ -40,6 +44,7 @@ describe('Class activity rubric selector', () => {
       data: { id: 'class-1', name: 'Grade 6 - A', grade: 'Grade 6', section: 'A', subject: 'Arts' },
     });
     mockGetClassStudents.mockResolvedValue({ success: true, data: [] });
+    mockResolveUserAvatarUrl.mockResolvedValue('');
     mockGetClassActivities.mockResolvedValue({
       success: true,
       data: [{
@@ -168,5 +173,31 @@ describe('Class activity rubric selector', () => {
       subject: 'Arts',
     });
     expect(container.querySelector('.edit-class-modal')).toBeNull();
+  });
+
+  test('renders a student profile picture inside the class roster', async () => {
+    mockGetClassStudents.mockResolvedValue({
+      success: true,
+      data: [{
+        id: 'student-1',
+        name: 'Sophia Lei Torrefiel',
+        email: 'sophia@example.com',
+        avatar_url: 'r2-media/avatars/student-1',
+      }],
+    });
+    mockResolveUserAvatarUrl.mockResolvedValue('blob:sophia-avatar');
+
+    await act(async () => {
+      root.render(<ClassDetails />);
+    });
+
+    expect(mockResolveUserAvatarUrl).toHaveBeenCalledWith(
+      'student-1',
+      'r2-media/avatars/student-1'
+    );
+    const avatar = container.querySelector('.student-avatar img');
+    expect(avatar).not.toBeNull();
+    expect(avatar.getAttribute('src')).toBe('blob:sophia-avatar');
+    expect(avatar.getAttribute('alt')).toBe('Sophia Lei Torrefiel profile');
   });
 });

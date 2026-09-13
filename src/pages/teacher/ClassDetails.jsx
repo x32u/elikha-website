@@ -31,6 +31,7 @@ import {
   resolveClassImageUrl,
   uploadClassImage,
 } from '../../services/classImageApi';
+import { resolveUserAvatarUrl } from '../../services/avatarApi';
 import { formatClassLabel } from '../../utils/classLabels';
 import {
   getActivityRubricManagementState,
@@ -115,7 +116,13 @@ const ClassDetails = () => {
       // Load students
       const studentsResult = await getClassStudents(classId);
       if (studentsResult.success) {
-        setStudents(studentsResult.data);
+        const studentsWithAvatars = await Promise.all(
+          studentsResult.data.map(async (student) => ({
+            ...student,
+            avatarSrc: await resolveUserAvatarUrl(student.id, student.avatar_url || ''),
+          }))
+        );
+        setStudents(studentsWithAvatars);
       }
 
       // Load activities
@@ -645,7 +652,14 @@ const ClassDetails = () => {
                   students.map((student) => (
                     <div key={student.id} className="student-item">
                       <div className="student-avatar">
-                        {student.name?.charAt(0) || 'S'}
+                        {student.avatarSrc ? (
+                          <img
+                            src={student.avatarSrc}
+                            alt={`${student.name || 'Student'} profile`}
+                          />
+                        ) : (
+                          student.name?.charAt(0) || 'S'
+                        )}
                       </div>
                       <div className="student-info">
                         <div className="student-name">{student.name}</div>

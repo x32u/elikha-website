@@ -335,6 +335,7 @@ export const getClassStudents = async (classId) => {
           id: enrollment.student_id,
           name: student?.name || enrollment.student_name || 'Student',
           email: student?.email || enrollment.student_email || '',
+          avatar_url: student?.avatar_url || '',
           enrolled_at: enrollment.enrolled_at
         };
       })

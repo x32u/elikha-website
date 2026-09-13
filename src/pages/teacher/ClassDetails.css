@@ -428,6 +428,14 @@ body:has(.class-details-shell)::-webkit-scrollbar {
 
 .student-actions {
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.student-avatar img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 
 .btn-remove-student {
