@@ -87,4 +87,20 @@ describe('ActivityModelSelector', () => {
     expect(container.querySelector('[data-testid="selected-model-ids"]').textContent).toBe('elephant');
     expect(container.textContent).not.toContain('Cactus');
   });
+
+  it('closes only the nested model library on Escape and keeps the draft selection unchanged', async () => {
+    const openButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.trim() === 'Add 3D Models');
+    await act(async () => openButton.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    const dialog = document.querySelector('.model-library-modal');
+    const elephantCheckbox = Array.from(dialog.querySelectorAll('label'))
+      .find((label) => label.textContent.includes('Elephant'))
+      .querySelector('input');
+    await act(async () => elephantCheckbox.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+
+    expect(document.querySelector('.model-library-modal')).toBeNull();
+    expect(container.querySelector('[data-testid="selected-model-ids"]').textContent).toBe('cactus');
+    expect(document.activeElement).toBe(openButton);
+  });
 });

@@ -45,6 +45,7 @@ const DEFAULT_CAPACITY_BYTES = 10_000_000_000;
 const DEFAULT_MAX_FILE_BYTES = 50 * 1024 * 1024;
 const MAX_METADATA_BYTES = 16 * 1024;
 const MEDIA_PREFIX = "media/";
+const ACTIVITY_THUMBNAIL_PREFIX = "activity-thumbnails/";
 const MAX_MEDIA_FILE_BYTES = 20 * 1024 * 1024;
 const SUPPORTED_MEDIA_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
@@ -329,6 +330,92 @@ const mediaResponse = (request: Request, env: Env, object: R2ObjectBody): Respon
   headers.set("X-Content-Type-Options", "nosniff");
   applyCors(request, env, headers);
   return new Response(request.method === "HEAD" ? null : object.body, { headers });
+};
+
+const activityThumbnailObjectKey = (id: string): string => `${ACTIVITY_THUMBNAIL_PREFIX}${id}`;
+
+const parseActivityThumbnailId = (path: string): string | null => {
+  const match = path.match(/^\/activity-thumbnails\/([^/]+)$/);
+  if (!match) return null;
+  const id = decodeURIComponent(match[1]).trim().toLowerCase();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id)) {
+    throw new ApiError(400, "INVALID_THUMBNAIL_ID", "The activity thumbnail id is invalid.");
+  }
+  return id;
+};
+
+const activityThumbnailResponse = (
+  request: Request,
+  env: Env,
+  object: R2ObjectBody,
+): Response => {
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("Content-Type", headers.get("Content-Type") ?? "application/octet-stream");
+  headers.set("Content-Length", String(object.size));
+  headers.set("ETag", object.httpEtag);
+  headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  headers.set("X-Content-Type-Options", "nosniff");
+  applyCors(request, env, headers);
+  return new Response(request.method === "HEAD" ? null : object.body, { headers });
+};
+
+const serveActivityThumbnail = async (
+  request: Request,
+  env: Env,
+  id: string,
+): Promise<Response> => {
+  const object = await env.MODEL_BUCKET.get(activityThumbnailObjectKey(id));
+  if (!object) throw new ApiError(404, "THUMBNAIL_NOT_FOUND", "Activity thumbnail not found.");
+  return activityThumbnailResponse(request, env, object);
+};
+
+const uploadActivityThumbnail = async (request: Request, env: Env): Promise<Response> => {
+  const user = await authenticateMutation(request, env);
+  const size = Number(request.headers.get("Content-Length"));
+  if (!Number.isFinite(size) || size <= 0) {
+    throw new ApiError(411, "CONTENT_LENGTH_REQUIRED", "The thumbnail file size is required.");
+  }
+  if (size > MAX_MEDIA_FILE_BYTES) {
+    throw new ApiError(413, "FILE_TOO_LARGE", "Image is too large. Maximum size is 20 MB.");
+  }
+  const contentType = (request.headers.get("Content-Type") ?? "").split(";")[0].trim().toLowerCase();
+  if (!SUPPORTED_MEDIA_TYPES.has(contentType)) {
+    throw new ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "Use a PNG, JPG, or WebP image.");
+  }
+  if (!request.body) throw new ApiError(400, "FILE_REQUIRED", "Choose an image to upload.");
+
+  const id = crypto.randomUUID();
+  const key = activityThumbnailObjectKey(id);
+  const object = await env.MODEL_BUCKET.put(key, request.body, {
+    httpMetadata: { contentType, cacheControl: "public, max-age=31536000, immutable" },
+    customMetadata: { uploadedBy: user.id, uploadedByRole: user.role, kind: "activity-thumbnail" },
+  });
+  if (object.size > MAX_MEDIA_FILE_BYTES) {
+    await env.MODEL_BUCKET.delete(key);
+    throw new ApiError(413, "FILE_TOO_LARGE", "Image is too large. Maximum size is 20 MB.");
+  }
+
+  const url = `${new URL(request.url).origin}/activity-thumbnails/${id}?v=${encodeURIComponent(object.uploaded.toISOString())}`;
+  return jsonResponse(request, env, { success: true, data: { id, url, size: object.size } }, 201);
+};
+
+const deleteActivityThumbnail = async (
+  request: Request,
+  env: Env,
+  id: string,
+): Promise<Response> => {
+  const user = await authenticateMutation(request, env);
+  const key = activityThumbnailObjectKey(id);
+  const object = await env.MODEL_BUCKET.head(key);
+  if (!object) return jsonResponse(request, env, { success: true });
+
+  const uploadedBy = String(object.customMetadata?.uploadedBy ?? "");
+  if (!isAdministrator(user) && uploadedBy !== user.id) {
+    throw new ApiError(403, "THUMBNAIL_DELETE_NOT_ALLOWED", "You cannot delete this activity thumbnail.");
+  }
+  await env.MODEL_BUCKET.delete(key);
+  return jsonResponse(request, env, { success: true });
 };
 
 const serveMedia = async (
@@ -1057,6 +1144,17 @@ const handleRequest = async (request: Request, env: Env, ctx: ExecutionContext):
   if (request.method === "GET" && path === "/models") return listModels(request, env);
   if (request.method === "GET" && path === "/models/search") return searchRemoteCatalog(request, env);
   if (request.method === "GET" && path === "/storage") return storageUsage(request, env);
+
+  if (request.method === "POST" && path === "/activity-thumbnails") {
+    return uploadActivityThumbnail(request, env);
+  }
+  const activityThumbnailId = parseActivityThumbnailId(path);
+  if (activityThumbnailId && (request.method === "GET" || request.method === "HEAD")) {
+    return serveActivityThumbnail(request, env, activityThumbnailId);
+  }
+  if (activityThumbnailId && request.method === "DELETE") {
+    return deleteActivityThumbnail(request, env, activityThumbnailId);
+  }
 
   const mediaRoute = parseMediaRoute(path);
   if (mediaRoute && (request.method === "GET" || request.method === "HEAD")) {

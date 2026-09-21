@@ -1,6 +1,6 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import Student from './Student';
+import Student, { getClassInitial } from './Student';
 
 const mockGetTeacherStudents = jest.fn();
 const mockResolveUserAvatarUrl = jest.fn();
@@ -58,5 +58,15 @@ describe('teacher student cards', () => {
     expect(avatar).not.toBeNull();
     expect(avatar.getAttribute('src')).toBe('https://signed.example/avatar.webp');
     expect(avatar.getAttribute('alt')).toBe('Nicos Raphael Nicolas profile');
+  });
+});
+
+describe('teacher student project identity', () => {
+  test('uses the class initial before the subject or assignment title', () => {
+    expect(getClassInitial({
+      className: 'Kindergarten 2 - Orange',
+      subject: 'Arts',
+      title: 'Elephant',
+    })).toBe('K');
   });
 });

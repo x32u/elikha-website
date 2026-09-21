@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { CameraFeed } from './components/CameraFeed';
 import {
   ARSceneV2,
+  type BaseArModelConfig,
   type ModelActionRequest,
   type ModelSelection,
   type SceneObjectActionRequest,
@@ -30,6 +31,10 @@ import { resolveActivityColorPalette } from '../../utils/arColorPalette';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { buildColorSelectionAnnouncement } from './utils/voiceGuidance';
 import { canUseArInteractions } from './utils/runtimeReadiness';
+import {
+  createRenderingRecoverySnapshot,
+  createStableModelConfigsKey,
+} from './utils/renderingRecovery';
 import './App.css';
 
 export type ARExitReason = 'exit' | 'submitted';
@@ -72,6 +77,13 @@ type ArHistorySnapshot = {
 
 type HydratedArState = ArHistorySnapshot & {
   version: number;
+};
+
+type RenderingRecoverySnapshot = {
+  arState: ArHistorySnapshot;
+  activeTool: PaintTool;
+  paintColor: string;
+  brushLevel: number;
 };
 
 type ColorSuggestion = {
@@ -285,6 +297,7 @@ function ARApp({
   const groupStateRef = useRef<SerializedArGroupTransform | null>(incomingInitialState.group || null);
   const undoStackRef = useRef<ArHistorySnapshot[]>([]);
   const redoStackRef = useRef<ArHistorySnapshot[]>([]);
+  const renderingRecoverySnapshotRef = useRef<RenderingRecoverySnapshot | null>(null);
   const lastUndoCaptureRef = useRef<{ source: string; at: number } | null>(null);
   const applyingUndoRef = useRef(false);
   const historyRestoreTimeoutRef = useRef<number | null>(null);
@@ -308,10 +321,15 @@ function ARApp({
     () => resolveArObjectDefinitions(allowedObjectIds),
     [allowedObjectIds]
   );
+  const modelConfigsKey = useMemo(
+    () => createStableModelConfigsKey(Array.isArray(modelConfigs) ? modelConfigs : []),
+    [modelConfigs]
+  );
   const sceneModelConfigs = useMemo(() => {
-    const validModels = Array.isArray(modelConfigs)
-      ? modelConfigs.filter((model) => typeof model?.modelUrl === 'string' && model.modelUrl.trim())
-      : [];
+    const parsedModels = JSON.parse(modelConfigsKey);
+    const validModels = parsedModels.filter(
+      (model: BaseArModelConfig) => typeof model?.modelUrl === 'string' && model.modelUrl.trim()
+    );
     const configuredModels = validModels.map((model, index) => ({
       instanceId: validModels.length > 1 ? `model-${index}` : '',
       id: model.id || `model-${index}`,
@@ -329,7 +347,7 @@ function ARApp({
       modelUrl: modelUrl || '/models/cute_cactus.glb',
       modelFileType,
     }];
-  }, [modelConfigs, modelFileType, modelUrl]);
+  }, [modelConfigsKey, modelFileType, modelUrl]);
   const normalizedPuzzlePieces = puzzlePieces === 3 || puzzlePieces === 4 ? puzzlePieces : 0;
   const modelToolbarControls = useMemo(() => {
     if (normalizedPuzzlePieces || sceneModelConfigs.length <= 1) return [];
@@ -486,6 +504,37 @@ function ARApp({
     model: cloneSerializedArray(modelStateRef.current),
     group: groupStateRef.current ? JSON.parse(JSON.stringify(groupStateRef.current)) : null,
   }), []);
+
+  const handleRenderingInterrupted = useCallback(() => {
+    renderingRecoverySnapshotRef.current = createRenderingRecoverySnapshot({
+      arState: getCurrentSnapshot(),
+      activeTool,
+      paintColor: `#${paintColor.getHexString()}`.toUpperCase(),
+      brushLevel,
+    });
+  }, [activeTool, brushLevel, getCurrentSnapshot, paintColor]);
+
+  const handleRenderingRestored = useCallback(() => {
+    const recoverySnapshot = renderingRecoverySnapshotRef.current;
+    const restoredState = cloneSnapshot(recoverySnapshot?.arState || getCurrentSnapshot());
+    renderingRecoverySnapshotRef.current = null;
+    paintStateRef.current = cloneSerializedArray(restoredState.paint);
+    sceneStateRef.current = cloneSerializedArray(restoredState.scene);
+    puzzleStateRef.current = cloneSerializedArray(restoredState.puzzle);
+    modelStateRef.current = cloneSerializedArray(restoredState.model);
+    groupStateRef.current = restoredState.group
+      ? JSON.parse(JSON.stringify(restoredState.group))
+      : null;
+    if (recoverySnapshot) {
+      setActiveTool(recoverySnapshot.activeTool);
+      setPaintColor(new THREE.Color(recoverySnapshot.paintColor));
+      setBrushLevel(recoverySnapshot.brushLevel);
+    }
+    setHydratedArState((current) => ({
+      ...restoredState,
+      version: current.version + 1,
+    }));
+  }, [getCurrentSnapshot]);
 
   const pushUndoSnapshot = useCallback((source: string, coalesceMs = 0) => {
     if (isViewMode || applyingUndoRef.current) return;
@@ -1382,9 +1431,11 @@ function ARApp({
         modelActionRequest={modelActionRequest}
         onModelSelectionChange={handleModelSelectionChange}
         onModelFeedback={handleSceneObjectFeedback}
-        renderQuality={userSettings.quality}
-        dataSaver={userSettings.dataSaver}
+        renderQuality="auto"
+        dataSaver={false}
         onModelLoadError={setModelLoadError}
+        onRenderingInterrupted={handleRenderingInterrupted}
+        onRenderingRestored={handleRenderingRestored}
         onCanvasReady={(canvas) => {
           sceneCanvasRef.current = canvas;
         }}
@@ -1786,9 +1837,6 @@ function ARApp({
             <span>
               • {selectedSceneObject.label} {selectedSceneObject.locked ? '🔒' : 'selected'}
             </span>
-          )}
-          {(userSettings.dataSaver || userSettings.quality === 'low') && (
-            <span>• Lite rendering</span>
           )}
           {historyRestoring && <span>• Restoring…</span>}
           {sandboxMode && (

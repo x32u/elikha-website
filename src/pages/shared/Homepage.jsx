@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ProfileSection from '../../components/ProfileSection';
 import ArtworkCarousel from '../../components/ArtworkCarousel';
@@ -7,10 +7,31 @@ import Navbar from '../../components/Navbar';
 import { getStudentPendingActivities, getStudentArtworks, getStudentDashboardStats, getStudentActivities, getStudentClasses, getStudentProfile } from '../../services/studentApi';
 import { resolveAvatarUrl } from '../../services/avatarApi';
 import { formatStudentClassLabel } from '../../utils/classLabels';
+import { readUserDataCache } from '../../utils/userDataCache';
 import './Homepage.css';
 
+const DEFAULT_VISIBLE_ACTIVITIES = 5;
+const formatPendingActivities = (items) => items
+  .filter((activity) => ['assigned', 'overdue'].includes(String(activity.status || '').toLowerCase()))
+  .map((a, index) => ({
+    id: a.id,
+    label: `Activity ${index + 1}`,
+    title: a.title,
+    description: a.description || 'Complete this activity',
+    arInstructions: a.ar_instructions || '',
+    image: a.image_url,
+    dueDate: a.due_date,
+    allowedObjectIds: a.allowed_object_ids || [],
+    modelId: a.model_id || undefined,
+    modelUrl: a.model_url || undefined,
+    modelFileType: a.model_file_type || undefined,
+    modelConfigs: a.model_configs || [],
+    puzzlePieces: a.puzzle_pieces || 0,
+    colorRequirements: a.color_requirements || [],
+    allowedColors: a.allowed_colors || [],
+  }));
+
 const Homepage = () => {
-  const DEFAULT_VISIBLE_ACTIVITIES = 5;
   const navigate = useNavigate();
   const [user, setUser] = useState({ name: 'Student', classLabel: 'Loading class...' });
   const [artworks, setArtworks] = useState([]);
@@ -21,32 +42,19 @@ const Homepage = () => {
   const [avatarUrl, setAvatarUrl] = useState('');
 
   useEffect(() => {
-    const userInfo = sessionStorage.getItem('userInfo');
-    if (userInfo) {
-      const parsedUser = JSON.parse(userInfo);
-      setUser({
-        id: parsedUser.id,
-        name: parsedUser.name || 'Student',
-        classLabel: 'Loading class...'
-      });
-      loadStudentData(parsedUser.id);
-    }
-  }, []);
-
-  useEffect(() => {
     if (activities.length <= DEFAULT_VISIBLE_ACTIVITIES && showAllActivities) {
       setShowAllActivities(false);
     }
-  }, [activities, showAllActivities, DEFAULT_VISIBLE_ACTIVITIES]);
+  }, [activities, showAllActivities]);
 
-  const loadStudentData = async (studentId) => {
-    setLoading(true);
+  const loadStudentData = useCallback(async (studentId) => {
+    if (!readUserDataCache(studentId, 'activities')) setLoading(true);
     try {
       const [activitiesResult, artworksResult, statsResult, allActivitiesResult, classesResult, profileResult] = await Promise.all([
         getStudentPendingActivities(studentId),
         getStudentArtworks(studentId),
         getStudentDashboardStats(studentId),
-        getStudentActivities(studentId),
+        getStudentActivities(studentId, { forceRefresh: true }),
         getStudentClasses(studentId),
         getStudentProfile(studentId)
       ]);
@@ -62,24 +70,9 @@ const Homepage = () => {
         setUser((prev) => ({ ...prev, classLabel: 'Unable to load class' }));
       }
 
-      if (activitiesResult.success) {
-        const formattedActivities = activitiesResult.data.map((a, index) => ({
-          id: a.id,
-          label: `Activity ${index + 1}`,
-          title: a.title,
-          description: a.description || 'Complete this activity',
-          arInstructions: a.ar_instructions || '',
-          image: a.image_url,
-          dueDate: a.due_date,
-          allowedObjectIds: a.allowed_object_ids || [],
-          modelId: a.model_id || undefined,
-          modelUrl: a.model_url || undefined,
-          modelFileType: a.model_file_type || undefined,
-          modelConfigs: a.model_configs || [],
-          puzzlePieces: a.puzzle_pieces || 0,
-          colorRequirements: a.color_requirements || [],
-          allowedColors: a.allowed_colors || [],
-        }));
+      const freshestActivitiesResult = allActivitiesResult.success ? allActivitiesResult : activitiesResult;
+      if (freshestActivitiesResult.success) {
+        const formattedActivities = formatPendingActivities(freshestActivitiesResult.data || []);
         setActivities(formattedActivities);
       }
 
@@ -139,14 +132,43 @@ const Homepage = () => {
       }
 
       if (statsResult.success) {
-        setStats(statsResult.data);
+        const latestActivities = allActivitiesResult.success ? allActivitiesResult.data || [] : null;
+        const completedCount = latestActivities?.filter((activity) => ['submitted', 'reviewed'].includes(activity.status)).length;
+        const pendingCount = latestActivities?.filter((activity) => ['assigned', 'overdue'].includes(activity.status)).length;
+        setStats({
+          ...statsResult.data,
+          ...(latestActivities ? {
+            totalActivities: latestActivities.length,
+            completedCount,
+            pendingCount,
+            overdueCount: latestActivities.filter((activity) => activity.status === 'overdue').length,
+            completionRate: latestActivities.length > 0 ? Math.round((completedCount / latestActivities.length) * 100) : 0,
+          } : {}),
+        });
       }
     } catch (error) {
       console.error('Error loading student data:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const userInfo = sessionStorage.getItem('userInfo');
+    if (!userInfo) return;
+    const parsedUser = JSON.parse(userInfo);
+    setUser({
+      id: parsedUser.id,
+      name: parsedUser.name || 'Student',
+      classLabel: 'Loading class...'
+    });
+    const cachedActivities = readUserDataCache(parsedUser.id, 'activities');
+    if (cachedActivities) {
+      setActivities(formatPendingActivities(cachedActivities.data || []));
+      setLoading(false);
+    }
+    loadStudentData(parsedUser.id);
+  }, [loadStudentData]);
 
   const handleActivityClick = (activity) => {
     navigate(`/activity/${activity.id}/start`, {

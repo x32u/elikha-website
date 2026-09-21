@@ -9,6 +9,7 @@ import React, {
 } from 'react';
 import { supabase } from '../lib/supabase';
 import { resolveAuthenticatedProfile } from '../utils/authState';
+import { invalidateUserDataCache } from '../utils/userDataCache';
 
 const AuthContext = createContext(null);
 
@@ -21,15 +22,26 @@ const publishUserInfo = (userInfo) => {
   window.dispatchEvent(new Event('elikha-auth-changed'));
 };
 
+const readPublishedUserInfo = () => {
+  try {
+    return JSON.parse(window.sessionStorage.getItem('userInfo') || 'null');
+  } catch {
+    return null;
+  }
+};
+
 export const AuthProvider = ({ children }) => {
   const [authState, setAuthState] = useState({
     status: 'loading',
     userInfo: null,
   });
   const requestSequence = useRef(0);
+  const lastSuccessfulCheckRef = useRef(0);
 
   const setAnonymous = useCallback(() => {
     requestSequence.current += 1;
+    const currentUser = readPublishedUserInfo();
+    if (currentUser?.id) invalidateUserDataCache(currentUser.id);
     publishUserInfo(null);
     setAuthState({ status: 'anonymous', userInfo: null });
   }, []);
@@ -52,6 +64,12 @@ export const AuthProvider = ({ children }) => {
     if (requestId !== requestSequence.current) return result;
 
     if (!result.success) {
+      const cachedUser = readPublishedUserInfo();
+      const isTemporaryFailure = result.reason === 'transient' || result.reason === 'profile-unavailable' || result.reason === 'verification-failed';
+      if (isTemporaryFailure && cachedUser?.id && (!result.userId || result.userId === cachedUser.id)) {
+        setAuthState({ status: 'authenticated', userInfo: cachedUser });
+        return result;
+      }
       if (result.reason === 'inactive') {
         try {
           await supabase.auth.signOut({ scope: 'local' });
@@ -60,25 +78,26 @@ export const AuthProvider = ({ children }) => {
           // network drops while the server-side Auth ban is being enforced.
         }
       }
-      publishUserInfo(null);
-      setAuthState({ status: 'anonymous', userInfo: null });
+      setAnonymous();
       return result;
     }
 
+    lastSuccessfulCheckRef.current = Date.now();
     publishUserInfo(result.user);
     setAuthState({ status: 'authenticated', userInfo: result.user });
     return result;
-  }, []);
+  }, [setAnonymous]);
 
   useEffect(() => {
     const scheduledRefreshes = new Set();
     refreshAuth();
 
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT' || event === 'USER_DELETED' || !session) {
+      if (event === 'SIGNED_OUT' || event === 'USER_DELETED' || (event === 'INITIAL_SESSION' && !session)) {
         setAnonymous();
         return;
       }
+      if (!session) return;
 
       // Supabase advises deferring additional client calls until its auth callback
       // has returned. This also coalesces session restoration with route rendering.
@@ -98,13 +117,14 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     if (authState.status !== 'authenticated') return undefined;
-    const recheck = () => refreshAuth({ showLoading: false });
+    const recheck = () => {
+      if (Date.now() - lastSuccessfulCheckRef.current < 5 * 60 * 1000) return;
+      refreshAuth({ showLoading: false });
+    };
     const onVisibility = () => { if (document.visibilityState === 'visible') recheck(); };
-    const intervalId = window.setInterval(recheck, 30_000);
     window.addEventListener('focus', recheck);
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
-      window.clearInterval(intervalId);
       window.removeEventListener('focus', recheck);
       document.removeEventListener('visibilitychange', onVisibility);
     };

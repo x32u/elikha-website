@@ -303,12 +303,20 @@
 
 .already-submitted h3 {
   color: #21552a;
-  margin: 0 0 6px 0;
+  margin: 0;
 }
 
 .already-submitted p {
   color: #2e5d36;
   margin: 4px 0;
+}
+
+.already-submitted-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  text-align: left;
 }
 
 .view-ar-button {
@@ -416,6 +424,51 @@
   color: #3156e0;
   font-size: 12px;
   font-weight: 900;
+}
+
+.activity-section-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-collapse-toggle {
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid #cbd8f8;
+  border-radius: 10px;
+  background: #f1f5ff;
+  color: #3156e0;
+  font: inherit;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.section-collapse-toggle:hover {
+  border-color: #3156e0;
+  background: #e8eeff;
+}
+
+.section-collapse-toggle:focus-visible {
+  outline: 3px solid rgba(49, 86, 224, 0.28);
+  outline-offset: 2px;
+}
+
+.section-collapse-toggle-success {
+  border-color: #acd9ba;
+  background: #e4f5e9;
+  color: #21552a;
+}
+
+.section-collapse-toggle-success:hover {
+  border-color: #438f59;
+  background: #d8efdf;
 }
 
 .activity-rubric-intro {
@@ -730,6 +783,11 @@
   .activity-rubric-criterion dl {
     grid-template-columns: 1fr;
   }
+
+  .section-collapse-toggle {
+    width: 40px;
+    height: 40px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -745,6 +803,11 @@
   .final-review-heading,
   .final-criterion-heading {
     flex-direction: column;
+  }
+
+  .activity-section-heading-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .activity-rubric-error {

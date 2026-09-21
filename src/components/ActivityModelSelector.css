@@ -120,11 +120,12 @@
 .model-library-modal__overlay {
   position: fixed;
   inset: 0;
-  z-index: 1300;
+  z-index: 10000;
   display: grid;
   place-items: center;
   padding: 20px;
   background: rgba(17, 24, 45, 0.64);
+  isolation: isolate;
 }
 
 .model-library-modal {

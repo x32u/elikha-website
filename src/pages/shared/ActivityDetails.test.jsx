@@ -124,10 +124,28 @@ describe('student ActivityDetails AR guide', () => {
     expect(heroPreview).not.toBeNull();
     expect(heroPreview.getAttribute('src')).toBe('https://example.com/submitted-lantern.png');
 
-    const viewButton = Array.from(container.querySelectorAll('button'))
+    let viewButton = Array.from(container.querySelectorAll('button'))
       .find((button) => button.textContent.trim() === 'View in AR');
     expect(viewButton).toBeDefined();
     expect(container.textContent).not.toContain('Project Progress');
+
+    const submissionToggle = container.querySelector('.already-submitted .section-collapse-toggle');
+    expect(submissionToggle.getAttribute('aria-expanded')).toBe('true');
+
+    await act(async () => {
+      submissionToggle.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(submissionToggle.getAttribute('aria-expanded')).toBe('false');
+    expect(container.querySelector('#already-submitted-content')).toBeNull();
+
+    await act(async () => {
+      submissionToggle.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(submissionToggle.getAttribute('aria-expanded')).toBe('true');
+    viewButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.trim() === 'View in AR');
 
     await act(async () => {
       viewButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -189,6 +207,25 @@ describe('student ActivityDetails AR guide', () => {
     expect(rubric.textContent).toContain('Consistent');
     expect(rubric.textContent).toContain('Rubric v3');
     expect(container.querySelector('.primary-button').textContent).toContain('Start Project');
+
+    const toggle = rubric.querySelector('.section-collapse-toggle');
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(toggle.getAttribute('aria-label')).toBe('Minimize rubric section');
+
+    await act(async () => {
+      toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('aria-label')).toBe('Maximize rubric section');
+    expect(rubric.querySelector('#activity-rubric-content')).toBeNull();
+
+    await act(async () => {
+      toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(rubric.querySelector('#activity-rubric-content')).not.toBeNull();
   });
 
   it('shows only teacher-confirmed final grading, criterion evidence, and approved suggestions', async () => {

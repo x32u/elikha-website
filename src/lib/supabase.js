@@ -13,4 +13,11 @@ export const isSupabaseConfigured = Boolean(
 const supabaseUrl = configuredSupabaseUrl || 'http://127.0.0.1:54321';
 const supabaseAnonKey = configuredSupabaseAnonKey || 'missing-anon-key';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+  },
+});

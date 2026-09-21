@@ -14,6 +14,8 @@ import {
   PUZZLE_PIECE_OPTIONS,
 } from '../../utils/activityArConfig';
 import { getActivityRubricOptions } from '../../services/rubricApi';
+import { getTodayDateInputValue } from '../../utils/dateInput';
+import { normalizeActivityMaxPoints } from '../../utils/activityPoints';
 
 const formatDate = (value) => {
   if (!value) return '—';
@@ -29,6 +31,7 @@ const formatDate = (value) => {
 const statusClass = (status) => {
   const value = String(status || '').toLowerCase();
   if (value.includes('reviewed')) return 'approved';
+  if (value.includes('late')) return 'late';
   if (value.includes('reject')) return 'rejected';
   return 'pending';
 };
@@ -134,6 +137,7 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
     modelId: DEFAULT_MODEL_ID,
     puzzlePieces: DEFAULT_PUZZLE_PIECES,
     rubricId: '',
+    maxPoints: 5,
   });
 
   const closeAllModals = React.useCallback(() => {
@@ -249,6 +253,12 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
       return;
     }
 
+    const maxPoints = normalizeActivityMaxPoints(createDraft.maxPoints);
+    if (!maxPoints) {
+      setCreateError('Maximum points must be a whole number from 1 to 1000.');
+      return;
+    }
+
     setCreateBusy(true);
 
     const composedDescription = [createDraft.description.trim(), createDraft.instructions.trim()]
@@ -263,6 +273,7 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
       modelId: createDraft.modelId,
       puzzlePieces: createDraft.puzzlePieces,
       rubricId: createDraft.rubricId,
+      maxPoints,
       allowedObjectIds: ['cube', 'sphere', 'cone', 'cylinder'],
     });
 
@@ -663,6 +674,26 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
                 </label>
 
                 <label className="dash-field">
+                  <span>Maximum Points</span>
+                  <input
+                    className="dash-input"
+                    type="number"
+                    inputMode="numeric"
+                    name="activityMaxPoints"
+                    autoComplete="off"
+                    min="1"
+                    max="1000"
+                    step="1"
+                    required
+                    value={createDraft.maxPoints}
+                    onChange={(event) => setCreateDraft((prev) => ({
+                      ...prev,
+                      maxPoints: event.target.value,
+                    }))}
+                  />
+                </label>
+
+                <label className="dash-field">
                   <span>Puzzle Pieces</span>
                   <select
                     className="dash-input"
@@ -687,6 +718,9 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
                   <input
                     className="dash-input"
                     type="date"
+                    name="activityDueDate"
+                    autoComplete="off"
+                    min={getTodayDateInputValue()}
                     value={createDraft.dueDate}
                     onChange={(event) =>
                       setCreateDraft((prev) => ({

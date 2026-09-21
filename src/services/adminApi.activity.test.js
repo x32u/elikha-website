@@ -51,6 +51,7 @@ describe('administrator activity creation', () => {
       allowedObjectIds: ['cube'],
       puzzlePieces: 0,
       rubricId: 'rubric-1',
+      maxPoints: 30,
     });
 
     expect(mockRpc).toHaveBeenCalledWith(
@@ -59,6 +60,7 @@ describe('administrator activity creation', () => {
         p_teacher_id: 'teacher-1',
         p_class_id: 'class-1',
         p_rubric_id: 'rubric-1',
+        p_max_points: 30,
       })
     );
     expect(result).toEqual({

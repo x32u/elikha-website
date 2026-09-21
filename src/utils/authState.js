@@ -13,17 +13,51 @@ export const getDefaultRouteForRole = (role) => {
   return '/homepage';
 };
 
-export const resolveAuthenticatedProfile = async (client) => {
-  const { data: authData, error: authError } = await client.auth.getUser();
-  const authUser = authData?.user;
+const isInvalidSessionError = (error) => {
+  if (!error) return false;
+  const status = Number(error.status || error.statusCode || 0);
+  const message = String(error.message || error.code || '').toLowerCase();
+  return status === 401 || status === 403 || [
+    'expired token',
+    'invalid jwt',
+    'jwt expired',
+    'session_not_found',
+    'session not found',
+    'refresh token not found',
+    'invalid refresh token',
+    'user not found',
+  ].some((fragment) => message.includes(fragment));
+};
 
-  if (authError || !authUser?.id) {
+export const resolveAuthenticatedProfile = async (client) => {
+  let persistedSession = null;
+  if (typeof client.auth.getSession === 'function') {
+    const { data: sessionData, error: sessionError } = await client.auth.getSession();
+    if (sessionError) {
+      return {
+        success: false,
+        reason: isInvalidSessionError(sessionError) ? 'unauthenticated' : 'transient',
+        error: sessionError,
+      };
+    }
+    persistedSession = sessionData?.session || null;
+    if (!persistedSession?.user?.id) {
+      return { success: false, reason: 'unauthenticated', error: null };
+    }
+  }
+
+  const { data: authData, error: authError } = await client.auth.getUser();
+  const authUser = authData?.user || persistedSession?.user;
+
+  if (authError) {
     return {
       success: false,
-      reason: 'unauthenticated',
-      error: authError || null,
+      reason: isInvalidSessionError(authError) ? 'unauthenticated' : 'transient',
+      error: authError,
+      userId: authUser?.id || null,
     };
   }
+  if (!authUser?.id) return { success: false, reason: 'unauthenticated', error: null };
 
   const { data: profile, error: profileError } = await client
     .from('users')
@@ -32,10 +66,12 @@ export const resolveAuthenticatedProfile = async (client) => {
     .single();
 
   if (profileError || !profile?.id) {
+    const profileMissing = !profile?.id && (!profileError || String(profileError.code || '') === 'PGRST116');
     return {
       success: false,
-      reason: 'profile-unavailable',
+      reason: profileMissing ? 'profile-missing' : 'profile-unavailable',
       error: profileError || null,
+      userId: authUser.id,
     };
   }
 

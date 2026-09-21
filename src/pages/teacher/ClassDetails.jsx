@@ -33,6 +33,9 @@ import {
 } from '../../services/classImageApi';
 import { resolveUserAvatarUrl } from '../../services/avatarApi';
 import { formatClassLabel } from '../../utils/classLabels';
+import { getTodayDateInputValue } from '../../utils/dateInput';
+import { getDueDateState } from '../../utils/dateDisplay';
+import { DEFAULT_ACTIVITY_MAX_POINTS, normalizeActivityMaxPoints } from '../../utils/activityPoints';
 import {
   getActivityRubricManagementState,
   getActivityRubricOptions,
@@ -44,6 +47,18 @@ import ActivityModelSelector from '../../components/ActivityModelSelector';
 import { sanitizeColorRequirements } from '../../utils/activityColorRequirements';
 
 const MAX_MODEL_QUANTITY = 12;
+const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})/;
+
+export const formatClassActivityDueDate = (value) => {
+  if (!value) return 'No due date';
+  const match = String(value).match(DATE_ONLY_PATTERN);
+  const date = match
+    ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+    : new Date(value);
+  if (Number.isNaN(date.getTime())) return 'No due date';
+  return `Due ${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+};
+
 const EMPTY_CLASS_DRAFT = {
   grade: '',
   section: '',
@@ -80,6 +95,7 @@ const ClassDetails = () => {
   const [editDescription, setEditDescription] = useState('');
   const [editInstructions, setEditInstructions] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
+  const [editMaxPoints, setEditMaxPoints] = useState(5);
   const [editThumbnailUrl, setEditThumbnailUrl] = useState('');
   const [editThumbnailName, setEditThumbnailName] = useState('');
   const [editThumbnailError, setEditThumbnailError] = useState('');
@@ -312,6 +328,7 @@ const ClassDetails = () => {
     setEditDescription(parsedDescription.summary || '');
     setEditInstructions(parsedDescription.instructions || '');
     setEditDueDate(formatDateInput(activity.due_date));
+    setEditMaxPoints(Number(activity.max_points) || 5);
     setEditThumbnailUrl(activity.image_url || '');
     setEditThumbnailName(activity.image_url ? 'Current thumbnail' : '');
     setEditThumbnailError('');
@@ -356,6 +373,7 @@ const ClassDetails = () => {
     setEditDescription('');
     setEditInstructions('');
     setEditDueDate('');
+    setEditMaxPoints(5);
     setEditThumbnailUrl('');
     setEditThumbnailName('');
     setEditThumbnailError('');
@@ -428,6 +446,11 @@ const ClassDetails = () => {
 
   const handleSaveEdit = async () => {
     if (!editingActivityId || !editName.trim()) return;
+    const maxPoints = normalizeActivityMaxPoints(editMaxPoints);
+    if (!maxPoints) {
+      setEditThumbnailError('Maximum points must be a whole number from 1 to 1000.');
+      return;
+    }
     savingEditRef.current = true;
     setSavingEdit(true);
     try {
@@ -449,6 +472,7 @@ const ClassDetails = () => {
         title: editName.trim(),
         description: encodedDescription,
         due_date: editDueDate || null,
+        max_points: maxPoints,
         image_url: uploadedThumbnailUrl,
         rubric_action: editRubricId === originalEditRubricId
           ? 'keep'
@@ -529,7 +553,10 @@ const ClassDetails = () => {
       <main className="page-content">
         <div className="class-details-shell">
           <header className="class-details-header">
-            <button className="back-btn" onClick={() => navigate(-1)}>← Back</button>
+            <button className="back-btn" onClick={() => navigate(-1)}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+              Back
+            </button>
             <div className="class-details-title">
               <div className={`class-badge ${classImageSrc ? 'has-image' : ''}`} style={{ background: classData.color || '#1800AD' }}>
                 {classImageSrc
@@ -619,32 +646,43 @@ const ClassDetails = () => {
           )}
 
           <div className="class-details-layout">
-            {/* Students Section */}
             <section className="class-section students-section">
-              <h2>Students in This Class</h2>
-              <p className="enroll-title">Add Student to Class</p>
-              <div className="enroll-row">
-                <input
-                  type="email"
-                  placeholder="Student email"
-                  value={enrollEmail}
-                  onChange={(event) => {
-                    setEnrollEmail(event.target.value);
-                    if (enrollError) setEnrollError('');
-                    if (enrollNotice) setEnrollNotice('');
-                  }}
-                  className="form-input enroll-input"
-                />
-                <button
-                  className="btn-submit enroll-btn"
-                  onClick={handleEnrollStudent}
-                  disabled={enrollBusy}
-                >
-                  {enrollBusy ? 'Adding...' : 'Add to Class'}
-                </button>
+              <div className="class-section-header">
+                <div className="class-section-heading">
+                  <h2>Students</h2>
+                  <p>Manage learners enrolled in this class.</p>
+                </div>
+                <span className="class-section-count" aria-label={`${students.length} students`}>{students.length}</span>
               </div>
-              {enrollError ? <p className="enroll-msg error">{enrollError}</p> : null}
-              {enrollNotice ? <p className="enroll-msg success">{enrollNotice}</p> : null}
+              <div className="enroll-panel">
+                <label className="enroll-title" htmlFor="class-student-email">Add a student</label>
+                <div className="enroll-row">
+                  <input
+                    id="class-student-email"
+                    type="email"
+                    placeholder="Student email address"
+                    value={enrollEmail}
+                    onChange={(event) => {
+                      setEnrollEmail(event.target.value);
+                      if (enrollError) setEnrollError('');
+                      if (enrollNotice) setEnrollNotice('');
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') handleEnrollStudent();
+                    }}
+                    className="form-input enroll-input"
+                  />
+                  <button
+                    className="btn-submit enroll-btn"
+                    onClick={handleEnrollStudent}
+                    disabled={enrollBusy}
+                  >
+                    {enrollBusy ? 'Adding…' : 'Add student'}
+                  </button>
+                </div>
+                {enrollError ? <p className="enroll-msg error">{enrollError}</p> : null}
+                {enrollNotice ? <p className="enroll-msg success">{enrollNotice}</p> : null}
+              </div>
               <div className="students-list">
                 {students.length === 0 ? (
                   <p className="no-students">No students added yet.</p>
@@ -664,9 +702,6 @@ const ClassDetails = () => {
                       <div className="student-info">
                         <div className="student-name">{student.name}</div>
                         {student.email ? <div className="student-email">{student.email}</div> : null}
-                        <div className="student-status completed">
-                          ✓ In class
-                        </div>
                       </div>
                       <div className="student-actions">
                         <button
@@ -684,16 +719,22 @@ const ClassDetails = () => {
               </div>
             </section>
 
-            {/* Activities Section */}
             <section className="class-section activities-section">
-              <div className="activities-header">
-                <h2>Class Activities</h2>
-                <button 
-                  className="btn-add-activity"
-                  onClick={() => setShowActivityForm(true)}
-                >
-                  + Add Activity
-                </button>
+              <div className="class-section-header class-activities-header">
+                <div className="class-section-heading">
+                  <h2>Activities</h2>
+                  <p>Review and update work assigned to this class.</p>
+                </div>
+                <div className="class-section-actions">
+                  <span className="class-section-count" aria-label={`${activities.length} activities`}>{activities.length}</span>
+                  <button
+                    className="btn-add-activity"
+                    onClick={() => setShowActivityForm(true)}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                    Add activity
+                  </button>
+                </div>
               </div>
 
               <CreateActivityModal
@@ -743,6 +784,10 @@ const ClassDetails = () => {
                           <dd>{viewingActivity.due_date && !Number.isNaN(new Date(viewingActivity.due_date).getTime())
                             ? new Date(viewingActivity.due_date).toLocaleDateString(undefined, { dateStyle: 'medium' })
                             : 'No due date'}</dd>
+                        </div>
+                        <div>
+                          <dt>Points</dt>
+                          <dd>{normalizeActivityMaxPoints(viewingActivity.max_points) || DEFAULT_ACTIVITY_MAX_POINTS}</dd>
                         </div>
                         <div><dt>Puzzle</dt><dd>{viewedActivityConfig.puzzlePieces > 0 ? `${viewedActivityConfig.puzzlePieces} pieces` : 'Off'}</dd></div>
                       </dl>
@@ -926,8 +971,25 @@ const ClassDetails = () => {
                               type="date"
                               name="activityDueDate"
                               autoComplete="off"
+                              min={getTodayDateInputValue()}
                               value={editDueDate}
                               onChange={(e) => setEditDueDate(e.target.value)}
+                              className="form-input"
+                            />
+                          </label>
+                          <label className="activity-edit-field">
+                            <span className="form-label">Maximum Points</span>
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              name="activityMaxPoints"
+                              autoComplete="off"
+                              min="1"
+                              max="1000"
+                              step="1"
+                              required
+                              value={editMaxPoints}
+                              onChange={(event) => setEditMaxPoints(event.target.value)}
                               className="form-input"
                             />
                           </label>
@@ -1079,86 +1141,21 @@ const ClassDetails = () => {
                         document.body
                       )}
                         <>
-                          <div className="activity-content">
-                            {(() => {
-                              const parsed = parseActivityDescription(activity.description);
-                              const selectedModels = (Array.isArray(parsed.modelIds) && parsed.modelIds.length > 0
-                                ? parsed.modelIds
-                                : [parsed.modelId]
-                              )
-                                .map((modelId) => modelOptions.find((model) => model.id === modelId))
-                                .filter(Boolean);
-                              const selectedModelLabels = [];
-                              const selectedModelCounts = new Map();
-                              selectedModels.forEach((model) => {
-                                if (!selectedModelCounts.has(model.id)) {
-                                  selectedModelLabels.push(model);
-                                }
-                                selectedModelCounts.set(model.id, (selectedModelCounts.get(model.id) || 0) + 1);
-                              });
-                              const fallbackModelLabel = parsed.modelUrl
-                                ? String(parsed.modelUrl).split('?')[0].split('/').filter(Boolean).pop()
-                                : '';
-                              return (
-                                <>
+                          <div className={`activity-list-visual ${activity.image_url ? 'has-image' : ''}`} style={{ '--activity-color': classData.color || '#3156e0' }} aria-hidden="true">
+                            {activity.image_url ? (
+                              <img src={activity.image_url} alt="" />
+                            ) : (
+                              <span>{String(activity.title || 'A').trim().charAt(0).toUpperCase()}</span>
+                            )}
+                          </div>
+                          <div className="activity-content activity-list-main">
                             <div className="activity-name">{activity.title}</div>
-                            {parsed.summary && (
-                              <div className="activity-description">{parsed.summary}</div>
-                            )}
-                            {activity.image_url && (
-                              <img
-                                src={activity.image_url}
-                                alt={`${activity.title} thumbnail`}
-                                className="activity-list-thumbnail"
-                              />
-                            )}
-                            {parsed.instructions && (
-                              <div className="activity-description">Instructions: {parsed.instructions}</div>
-                            )}
-                            {(selectedModels.length > 0 || fallbackModelLabel || parsed.puzzlePieces > 0) && (
-                              <div className="activity-object-tags">
-                                {(selectedModels.length > 0 || fallbackModelLabel) && (
-                                  <span className="activity-object-tag">
-                                    Models: {selectedModelLabels.length > 0
-                                      ? selectedModelLabels
-                                        .map((model) => {
-                                          const count = selectedModelCounts.get(model.id) || 1;
-                                          return count > 1 ? `${model.label} x${count}` : model.label;
-                                        })
-                                        .join(', ')
-                                      : fallbackModelLabel}
-                                  </span>
-                                )}
-                                {parsed.puzzlePieces > 0 && (
-                                  <span className="activity-object-tag">
-                                    Puzzle: {parsed.puzzlePieces} pieces
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                            <div className="activity-object-tags">
-                              {parsed.allowedObjectIds.map((objectId) => {
-                                const objectDef = AR_OBJECT_LIBRARY.find((item) => item.id === objectId);
-                                if (!objectDef) return null;
-                                return (
-                                  <span key={`${activity.id}-${objectId}`} className="activity-object-tag">
-                                    {objectDef.icon} {objectDef.label}
-                                  </span>
-                                );
-                              })}
+                            <div className="activity-row-meta">
+                              <span className={getDueDateState(activity.due_date).isPastDue ? 'is-past-due' : ''}>
+                                {formatClassActivityDueDate(activity.due_date)}
+                              </span>
+                              <span>{normalizeActivityMaxPoints(activity.max_points) || DEFAULT_ACTIVITY_MAX_POINTS} points</span>
                             </div>
-                            {activity.due_date && (
-                              <div className="activity-due-date">
-                                {(() => {
-                                  const dueDate = new Date(activity.due_date);
-                                  if (Number.isNaN(dueDate.getTime())) return 'Due: No due date';
-                                  return `Due: ${dueDate.toLocaleDateString()}`;
-                                })()}
-                              </div>
-                            )}
-                                </>
-                              );
-                            })()}
                           </div>
                           <div className="activity-action">
                             <button
@@ -1172,7 +1169,7 @@ const ClassDetails = () => {
                               View activity
                             </button>
                             <button type="button" className="btn-edit" onClick={() => handleEditClick(activity)}>
-                              <span aria-hidden="true">✎</span>
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 5.5 4 4M4 20l3.7-.8L19 7.9a1.4 1.4 0 0 0 0-2l-.9-.9a1.4 1.4 0 0 0-2 0L4.8 16.3 4 20Z" /></svg>
                               Edit
                             </button>
                           </div>

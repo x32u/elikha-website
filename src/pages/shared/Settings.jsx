@@ -11,6 +11,7 @@ import {
   validateAvatarFile,
 } from '../../services/avatarApi';
 import { DEFAULT_USER_SETTINGS, normalizeUserSettings, storeUserSettings } from '../../utils/userSettings';
+import { invalidateUserDataCache } from '../../utils/userDataCache';
 import './Settings.css';
 
 const getNotificationPermissionLabel = () => {
@@ -175,7 +176,7 @@ const Settings = () => {
         type: notificationAllowed || !settings.notifications ? 'success' : 'warning',
         text:
           !notificationAllowed && settings.notifications
-            ? 'Settings saved, but browser notifications are blocked. Enable them in Chrome site settings.'
+            ? 'Settings saved, but browser notifications are blocked. Enable them in your browser site settings.'
             : 'Settings saved and applied.',
       });
       return;
@@ -195,6 +196,7 @@ const Settings = () => {
     try {
       await supabase.auth.signOut();
     } finally {
+      invalidateUserDataCache(userInfo.id);
       sessionStorage.removeItem('userInfo');
       window.dispatchEvent(new Event('elikha-auth-changed'));
       navigate('/login', { replace: true });
@@ -329,47 +331,6 @@ const Settings = () => {
             </div>
           </div>
 
-          <div className="settings-card">
-            <h2 className="card-title">Performance</h2>
-            <div className="settings-row">
-              <div>
-                <p className="settings-label">Data Saver</p>
-                <p className="settings-help">Use lightweight placeholders instead of large thumbnails.</p>
-              </div>
-              <button
-                className={`toggle ${settings.dataSaver ? 'active' : ''}`}
-                type="button"
-                aria-label="Data saver"
-                aria-pressed={settings.dataSaver}
-                disabled={loading}
-                onClick={() => updateSetting('dataSaver', !settings.dataSaver)}
-              >
-                <span className="toggle-handle" />
-              </button>
-            </div>
-
-            <div className="settings-row select-row">
-              <div>
-                <p className="settings-label">Preview Quality</p>
-                <p className="settings-help">Low quality disables rich preview images.</p>
-              </div>
-              <select
-                className="settings-select"
-                id="preview-quality"
-                name="previewQuality"
-                value={settings.quality}
-                onChange={(e) => updateSetting('quality', e.target.value)}
-                aria-label="Preview quality"
-                disabled={loading}
-              >
-                <option value="auto">Auto</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
-            </div>
-          </div>
-
           <section className="settings-card requirements-card" aria-labelledby="system-requirements-title">
             <button className="settings-card-toggle" type="button" onClick={() => setRequirementsOpen((open) => !open)} aria-expanded={requirementsOpen} aria-controls="system-requirements-content">
               <span className="card-title" id="system-requirements-title">System Requirements</span>
@@ -386,16 +347,16 @@ const Settings = () => {
                       <li><strong>Lowest supported version:</strong> Android 10 (API level 29) or later</li>
                       <li>4 GB RAM</li>
                       <li>720 × 1280 screen resolution</li>
-                      <li>Working rear camera</li>
+                      <li>Working camera</li>
                       <li>Stable Wi-Fi or mobile data</li>
                     </ul>
-                    <p className="requirements-note">Android 9 and earlier are not supported. Camera permission is required for AR activities. Low-spec phones may experience lag or unreliable hand tracking.</p>
+                    <p className="requirements-note">Android 9 and earlier are not supported. Camera permission is required for AR activities.</p>
                   </div>
                   <div className="requirements-column">
                     <h2>Website</h2>
                     <p><strong>Minimum</strong></p>
                     <ul>
-                      <li>Current Chrome, Edge, Firefox, or Safari</li>
+                      <li>A current, modern web browser</li>
                       <li>4 GB RAM</li>
                       <li>WebGL-enabled graphics</li>
                       <li>720 × 1280 screen resolution</li>
@@ -404,7 +365,6 @@ const Settings = () => {
                     <p className="requirements-note">A webcam and browser camera permission are required only for AR activities. Desktop or tablet is recommended for teacher and admin tools.</p>
                   </div>
                 </div>
-                <p className="requirements-warning">Unsupported devices may not be able to use AR, 3D models, hand gestures, painting tools, or AR submission capture.</p>
               </div>
             )}
           </section>
@@ -421,8 +381,7 @@ const Settings = () => {
                 <ul>
                   <li>Intended for smartphones and requires internet access for accounts, activities, saved progress, submissions, and online content.</li>
                   <li>Camera permission is required when opening an AR activity.</li>
-                  <li>A working rear camera is required for mobile AR; E-Likha uses the environment-facing camera.</li>
-                  <li>Phones with insufficient memory or processing power may load slowly, lag, or provide unstable AR and hand-gesture detection.</li>
+                  <li>A working camera is required for mobile AR.</li>
                   <li>If camera permission is denied, the learner cannot start AR activities.</li>
                   <li>Without internet, login, activity retrieval, saving work, submissions, and AI checking are unavailable.</li>
                   <li>AR may not work correctly if the camera is unavailable or the phone does not support the needed 3D graphics capability.</li>
@@ -437,7 +396,7 @@ const Settings = () => {
                   <li>Browser-based AR requires a webcam and browser camera permission.</li>
                   <li>The browser must support camera access and WebGL/3D rendering for AR, 3D models, and hand tracking.</li>
                   <li>The website is responsive for mobile, tablet, and desktop screens; teacher and admin pages are better suited to tablets, laptops, or desktops.</li>
-                  <li>Outdated browsers, unavailable WebGL, blocked camera access, or low graphics performance can prevent AR, 3D models, hand gestures, painting, and AR submission capture from working.</li>
+                  <li>AR tools require browser camera access and WebGL support.</li>
                 </ul>
                 </div>
               </div>

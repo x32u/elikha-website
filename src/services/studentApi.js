@@ -2,6 +2,11 @@ import { supabase } from '../lib/supabase';
 import { starRatingLabel } from '../utils/starRating';
 import { parseArSubmissionDescription } from '../utils/arSubmission';
 import { parseActivityDescription } from '../utils/activityArConfig';
+import { getDueDateState } from '../utils/dateDisplay';
+import {
+  invalidateUserDataCache,
+  writeUserDataCache,
+} from '../utils/userDataCache';
 
 const REVIEWED_SUBMISSION_STATUSES = new Set(['reviewed', 'graded', 'completed']);
 const SUBMITTED_SUBMISSION_STATUSES = new Set(['submitted', 'reviewed', 'graded', 'completed', 'late']);
@@ -16,15 +21,7 @@ const isSubmittedSubmission = ({ submissionStatus = '', submittedAt = null } = {
   Boolean(submittedAt) || SUBMITTED_SUBMISSION_STATUSES.has(normalizeStatus(submissionStatus));
 
 const isDueDateOverdue = (dueDate) => {
-  if (!dueDate) return false;
-  const due = new Date(dueDate);
-  if (Number.isNaN(due.getTime())) return false;
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  due.setHours(0, 0, 0, 0);
-
-  return due < today;
+  return getDueDateState(dueDate).isPastDue;
 };
 
 const resolveStudentActivityState = ({
@@ -209,7 +206,10 @@ export const getStudentClasses = async (studentId) => {
 
 // ==================== STUDENT ACTIVITIES ====================
 
-export const getStudentActivities = async (studentId) => {
+const studentActivityRequests = new Map();
+const STUDENT_ACTIVITY_CACHE_KEY = 'activities';
+
+const fetchStudentActivities = async (studentId) => {
   try {
     // Get all assignments for this student
     const { data: assignments, error: assignError } = await supabase
@@ -228,7 +228,8 @@ export const getStudentActivities = async (studentId) => {
           image_url,
           class_id,
           grade,
-          subject
+          subject,
+          max_points
         )
       `)
       .eq('student_id', studentId);
@@ -249,11 +250,12 @@ export const getStudentActivities = async (studentId) => {
       : [...new Set((enrollments || []).map((enrollment) => enrollment.class_id).filter(Boolean))];
     let classIds = [];
     let classActivities = [];
+    let activeClassesById = new Map();
 
     if (enrolledClassIds.length > 0) {
       const { data: activeClasses, error: classError } = await supabase
         .from('classes')
-        .select('id')
+        .select('id, name, grade, section, subject, color')
         .in('id', enrolledClassIds)
         .eq('is_active', true);
 
@@ -261,13 +263,14 @@ export const getStudentActivities = async (studentId) => {
         console.warn('Unable to confirm active classes for student activity fallback:', classError);
       } else {
         classIds = (activeClasses || []).map((classInfo) => classInfo.id).filter(Boolean);
+        activeClassesById = new Map((activeClasses || []).map((classInfo) => [classInfo.id, classInfo]));
       }
     }
 
     if (classIds.length > 0) {
       const { data, error } = await supabase
         .from('activities')
-        .select('id, title, description, due_date, status, image_url, class_id, grade, subject')
+        .select('id, title, description, due_date, status, image_url, class_id, grade, subject, max_points')
         .in('class_id', classIds)
         .eq('status', 'active')
         .order('due_date', { ascending: true });
@@ -327,6 +330,7 @@ export const getStudentActivities = async (studentId) => {
 
     // Combine and categorize
     const activities = activityRows.map(a => {
+      const classInfo = activeClassesById.get(a.activity?.class_id) || null;
       const submission = submissionMap.get(a.activity_id);
       const parsedArSubmission = parseArSubmissionDescription(submission?.description);
       const parsedActivity = parseActivityDescription(a.activity?.description);
@@ -347,6 +351,12 @@ export const getStudentActivities = async (studentId) => {
         color_requirements: parsedActivity.colorRequirements || [],
         allowed_colors: parsedActivity.allowedColors || [],
         due_date: a.activity?.due_date,
+        // Keep the two image sources distinct so assignment lists can show the
+        // teacher's thumbnail before submission and the learner's finished art
+        // after submission. `image_url` remains the preferred display image for
+        // existing profile and home consumers.
+        activity_thumbnail_url: a.activity?.image_url || null,
+        artwork_url: submission?.artwork_url || null,
         image_url: submission?.artwork_url || a.activity?.image_url,
         paint_state: parsedArSubmission?.paintState || [],
         scene_state: parsedArSubmission?.sceneState || [],
@@ -360,14 +370,17 @@ export const getStudentActivities = async (studentId) => {
         model_configs: parsedActivity.models || [],
         puzzle_pieces: parsedActivity.puzzlePieces || 0,
         submission_description: parsedArSubmission?.summary || submission?.description || '',
-        grade: a.activity?.grade,
-        subject: a.activity?.subject,
+        grade: a.activity?.grade || classInfo?.grade || null,
+        subject: a.activity?.subject || classInfo?.subject || null,
+        class_name: classInfo?.name || [classInfo?.grade, classInfo?.section].filter(Boolean).join(' - ') || null,
+        class_color: classInfo?.color || null,
         status: state.status,
         assignment_status: normalizeStatus(a.status),
         submission_status: normalizeStatus(submission?.status),
         submitted_at: submission?.submitted_at,
         reviewed_at: submission?.reviewed_at || null,
         score: submission?.score ?? null,
+        max_points: Number(a.activity?.max_points) || 5,
         feedback: submission?.feedback || '',
         is_submitted: state.isSubmitted,
         is_reviewed: state.isReviewed,
@@ -375,11 +388,23 @@ export const getStudentActivities = async (studentId) => {
       };
     });
 
+    writeUserDataCache(studentId, STUDENT_ACTIVITY_CACHE_KEY, activities);
     return { success: true, data: activities };
   } catch (error) {
     console.error('Error fetching student activities:', error);
     return { success: false, error: error.message };
   }
+};
+
+export const getStudentActivities = async (studentId) => {
+  if (!studentId) return { success: false, error: 'Student information is required.' };
+
+  if (studentActivityRequests.has(studentId)) return studentActivityRequests.get(studentId);
+  const request = fetchStudentActivities(studentId).finally(() => {
+    studentActivityRequests.delete(studentId);
+  });
+  studentActivityRequests.set(studentId, request);
+  return request;
 };
 
 export const getStudentPendingActivities = async (studentId) => {
@@ -522,6 +547,7 @@ export const submitActivity = async (studentId, activityId, submissionData) => {
     });
 
     if (error) throw error;
+    invalidateUserDataCache(studentId, STUDENT_ACTIVITY_CACHE_KEY);
     return { success: true, data };
   } catch (error) {
     console.error('Error submitting activity:', error);

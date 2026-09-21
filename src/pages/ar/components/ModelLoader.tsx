@@ -171,6 +171,7 @@ export function ModelLoader({
               // Shadows are disabled in AR mode to keep paint interaction responsive.
               child.castShadow = false;
               child.receiveShadow = false;
+              child.userData.isPaintableSurface = true;
             }
           });
 

@@ -70,6 +70,15 @@ export const AR_OBJECT_LIBRARY = Object.freeze(sortArLibraryItems([
     defaultScale: 0.32,
     color: '#ffffff',
   },
+  {
+    id: 'rectangle',
+    label: 'Rectangle',
+    kind: 'primitive',
+    primitive: 'rectangle',
+    icon: '▭',
+    defaultScale: 0.34,
+    color: '#ffffff',
+  },
 ]));
 
 const BUILT_IN_AR_MODELS = Object.freeze([

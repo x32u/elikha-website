@@ -1,7 +1,7 @@
 # E-Likha R2 storage Worker
 
 This Worker is the shared private storage service used by the E-Likha React
-app. It stores model binaries, profile pictures, and class images in the
+app. It stores model binaries, profile pictures, class images, and activity thumbnails in the
 `elikha-3d-models` R2 bucket under separate prefixes. Image objects do not count
 toward the app's 3D-model capacity meter.
 
@@ -30,6 +30,12 @@ toward the app's 3D-model capacity meter.
 - `GET|HEAD /media/classes/:classId` returns an image after checking class access.
 - `PUT|DELETE /media/classes/:classId` replaces or removes a class image after
   confirming the caller is an administrator or the class's assigned teacher.
+- `POST /activity-thumbnails` stores an activity thumbnail for an authenticated
+  teacher or administrator and returns its public, versioned image URL.
+- `GET|HEAD /activity-thumbnails/:id` serves an activity thumbnail with immutable
+  caching so the URL can be saved directly in `activities.image_url`.
+- `DELETE /activity-thumbnails/:id` removes an uploaded thumbnail for its owner
+  or an administrator.
 
 The model read routes are public so students can load assigned AR content. Media
 routes are private and require a valid Supabase session. Model mutations
@@ -50,8 +56,9 @@ copies until they are deliberately removed later.
 - `.blend` is accepted as a source/archive file, but browsers cannot render it
   directly. Convert it to `.glb` before selecting it for an AR activity.
 - Maximum file size defaults to 50 MiB (`MAX_MODEL_FILE_BYTES=52428800`).
-- Profile-picture and class-image uploads accept PNG, JPG, or WebP sources up to
-  20 MiB. The browser crops and compresses them before upload.
+- Profile-picture, class-image, and activity-thumbnail uploads accept PNG, JPG,
+  or WebP sources up to 20 MiB. The browser crops and compresses profile and
+  class images, while activity thumbnails are already resized before upload.
 - Application capacity defaults to 10 GB
   (`MODEL_STORAGE_CAPACITY_BYTES=10000000000`). This is an E-Likha limit, not the
   Cloudflare account's total R2 quota.

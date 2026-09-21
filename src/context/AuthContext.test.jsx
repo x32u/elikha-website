@@ -96,4 +96,22 @@ describe('AuthProvider', () => {
     expect(container.querySelector('output').getAttribute('data-status')).toBe('anonymous');
     expect(window.sessionStorage.getItem('userInfo')).toBeNull();
   });
+
+  it('keeps the last verified user signed in during a temporary refresh failure', async () => {
+    window.sessionStorage.setItem('userInfo', JSON.stringify({ id: 'student-7', role: 'student' }));
+    mockResolveAuthenticatedProfile.mockResolvedValue({
+      success: false,
+      reason: 'transient',
+      userId: 'student-7',
+      error: new Error('network unavailable'),
+    });
+
+    await act(async () => {
+      root.render(<AuthProvider><Probe /></AuthProvider>);
+    });
+
+    expect(container.querySelector('output').getAttribute('data-status')).toBe('authenticated');
+    expect(container.textContent).toBe('student-7:student');
+    expect(window.sessionStorage.getItem('userInfo')).not.toBeNull();
+  });
 });

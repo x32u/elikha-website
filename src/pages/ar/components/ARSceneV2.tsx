@@ -9,6 +9,8 @@ import type { HandLandmarks, GrabState, DebugInfo, PalmPosition } from '../hooks
 import { CONFIG } from '../hooks/useHandTrackingV2';
 import { raycastFromFingertip } from '../utils/raycasting';
 import { createPaintDecal } from '../utils/decals';
+import { selectPaintRecoverySource } from '../utils/paintRecovery';
+import { bindWebglContextRecovery } from '../utils/renderingRecovery';
 import { recolorModel } from '../utils/decals';
 import type { PaintStamp } from '../utils/decals';
 import { isPointingGesture } from '../utils/gestures';
@@ -166,12 +168,15 @@ interface ARSceneV2Props {
   renderQuality?: 'auto' | 'high' | 'medium' | 'low';
   dataSaver?: boolean;
   onModelLoadError?: (message: string) => void;
+  onRenderingInterrupted?: () => void;
+  onRenderingRestored?: () => void;
 }
 
 type PinchInteractionOwner = 'model' | 'scene-object' | 'group' | `puzzle-piece:${string}` | null;
 
 const PRIMITIVE_GEOMETRIES: Record<string, THREE.BufferGeometry> = {
   box: new THREE.BoxGeometry(1, 1, 1),
+  rectangle: new THREE.BoxGeometry(1.6, 0.8, 0.3),
   sphere: new THREE.SphereGeometry(0.6, 24, 24),
   cone: new THREE.ConeGeometry(0.55, 1.1, 20),
   cylinder: new THREE.CylinderGeometry(0.45, 0.45, 1, 20),
@@ -1153,6 +1158,7 @@ function disposePaintDecalMesh(object: THREE.Object3D) {
   };
   object.parent?.remove(object);
   renderable.geometry?.dispose?.();
+  if (object.userData?.usesSharedPaintMaterial) return;
   if (Array.isArray(renderable.material)) {
     renderable.material.forEach((material) => material.dispose());
   } else {
@@ -3323,10 +3329,13 @@ function PaintSystem({
   const lastPaintPos = useRef<THREE.Vector3 | null>(null);
   const smoothedHitPos = useRef<THREE.Vector3 | null>(null);
   const smoothedNormal = useRef<THREE.Vector3 | null>(null);
+  const lastPaintTargetRef = useRef<THREE.Mesh | null>(null);
+  const lastPointingTimeRef = useRef(0);
   const bucketArmedRef = useRef(false);
   const paintStampsRef = useRef<PaintStamp[]>([]);
   const serializedPaintRef = useRef<SerializedPaintDecal[]>([]);
   const hydrationKeyRef = useRef<string>('');
+  const hydratedStateVersionRef = useRef<number | null>(null);
   const baseMaterialRootRef = useRef<THREE.Object3D | null>(null);
   const baseMaterialReadyTickRef = useRef<number | null>(null);
   const baseMaterialColorsRef = useRef<Array<{
@@ -3351,6 +3360,7 @@ function PaintSystem({
   const disposeStamp = useCallback((stamp: PaintStamp) => {
     stamp.mesh.parent?.remove(stamp.mesh);
     stamp.mesh.geometry.dispose();
+    if (stamp.mesh.userData?.usesSharedPaintMaterial) return;
     if (stamp.mesh.material instanceof THREE.Material) {
       stamp.mesh.material.dispose();
     } else if (Array.isArray(stamp.mesh.material)) {
@@ -3440,7 +3450,7 @@ function PaintSystem({
     });
   }, []);
 
-  const clearPaintState = useCallback((restoreMaterials = false) => {
+  const clearPaintState = useCallback((restoreMaterials = false, emit = true) => {
     paintStampsRef.current.forEach(disposeStamp);
     paintStampsRef.current = [];
     serializedPaintRef.current = [];
@@ -3451,7 +3461,8 @@ function PaintSystem({
     lastPaintPos.current = null;
     smoothedHitPos.current = null;
     smoothedNormal.current = null;
-    emitPaintState(true);
+    lastPaintTargetRef.current = null;
+    if (emit) emitPaintState(true);
   }, [disposeStamp, emitPaintState, restoreBaseMaterialColors]);
 
   useEffect(() => {
@@ -3460,11 +3471,12 @@ function PaintSystem({
         window.clearTimeout(emitTimeoutRef.current);
         emitTimeoutRef.current = null;
       }
+      flushPaintState();
       paintStampsRef.current.forEach(disposeStamp);
       paintStampsRef.current = [];
       serializedPaintRef.current = [];
     };
-  }, [disposeStamp]);
+  }, [disposeStamp, flushPaintState]);
 
   useEffect(() => {
     bucketArmedRef.current = false;
@@ -3481,12 +3493,27 @@ function PaintSystem({
       captureBaseMaterialColors(modelRoot);
     }
 
-    const normalizedInitialState = normalizeSerializedPaintState(initialPaintState);
-    const hydrationKey = `${stateVersion}:${modelReadyTick}:${JSON.stringify(normalizedInitialState)}`;
+    const isSameSessionVersion = hydratedStateVersionRef.current === stateVersion;
+    const liveRecoveryState = serializedPaintRef.current.map((stamp) => ({
+          ...stamp,
+          meshPath: [...stamp.meshPath],
+          point: [...stamp.point] as [number, number, number],
+          normal: [...stamp.normal] as [number, number, number],
+        }));
+    const recoveryState = selectPaintRecoverySource({
+      sameSessionVersion: isSameSessionVersion,
+      liveState: liveRecoveryState,
+      initialState: initialPaintState,
+    });
+    const normalizedInitialState = normalizeSerializedPaintState(recoveryState);
+    const hydrationKey = `${stateVersion}:${modelReadyTick}`;
     if (hydrationKeyRef.current === hydrationKey) return;
     hydrationKeyRef.current = hydrationKey;
+    hydratedStateVersionRef.current = stateVersion;
 
-    clearPaintState(true);
+    // Hydration is an internal reconstruction, not a learner edit. Avoid
+    // emitting a transient empty state that can win a parent/autosave race.
+    clearPaintState(true, false);
     if (normalizedInitialState.length === 0) return;
 
     const anchor = anchorRef.current;
@@ -3598,13 +3625,16 @@ function PaintSystem({
 
     // Check if pointing gesture (index extended, others curled)
     const indexTip = handLandmarks.indexTip;
-    const isPointing = isPointingGesture(handLandmarks);
+    const pointingDetected = isPointingGesture(handLandmarks);
+    if (pointingDetected) lastPointingTimeRef.current = nowMs;
+    const isPointing = pointingDetected || nowMs - lastPointingTimeRef.current <= 180;
 
     if (!isPointing) {
       bucketArmedRef.current = false;
       lastPaintPos.current = null;
       smoothedHitPos.current = null;
       smoothedNormal.current = null;
+      lastPaintTargetRef.current = null;
       return;
     }
 
@@ -3650,6 +3680,12 @@ function PaintSystem({
 
     const targetMesh = hit.object as THREE.Mesh;
     targetMesh.updateWorldMatrix(true, false);
+    if (lastPaintTargetRef.current !== targetMesh) {
+      lastPaintTargetRef.current = targetMesh;
+      lastPaintPos.current = null;
+      smoothedHitPos.current = null;
+      smoothedNormal.current = null;
+    }
 
     if (isBucketFill) {
       if (!bucketArmedRef.current) {
@@ -3938,6 +3974,9 @@ function SceneContent({
     () => normalizeSerializedBaseModelState(initialModelState),
     [initialModelState]
   );
+  const liveModelStateRef = useRef<SerializedBaseModelTransform[]>(normalizedInitialModelState);
+  const liveGroupStateRef = useRef<SerializedArGroupTransform | null>(normalizedInitialGroupState);
+  const liveTransformVersionRef = useRef(stateVersion);
   const initialModelStateById = useMemo(() => {
     const stateById = new Map<string, SerializedBaseModelTransform>();
     normalizedInitialModelState.forEach((entry) => {
@@ -3952,6 +3991,13 @@ function SceneContent({
     )).join('|'),
     [baseModels]
   );
+
+  useEffect(() => {
+    if (liveTransformVersionRef.current === stateVersion) return;
+    liveTransformVersionRef.current = stateVersion;
+    liveModelStateRef.current = normalizedInitialModelState;
+    liveGroupStateRef.current = normalizedInitialGroupState;
+  }, [normalizedInitialGroupState, normalizedInitialModelState, stateVersion]);
 
   const handleModelError = useCallback((instanceId: string, label: string, message: string) => {
     if (message) {
@@ -4033,6 +4079,7 @@ function SceneContent({
       .filter(Boolean) as SerializedBaseModelTransform[];
 
     if (nextState.length > 0) {
+      liveModelStateRef.current = nextState;
       onModelStateChange(nextState);
     }
   }, [baseModels, onModelStateChange]);
@@ -4070,19 +4117,22 @@ function SceneContent({
 
   const emitGroupState = useCallback(() => {
     if (!onGroupStateChange || !anchorRef.current) return;
-    onGroupStateChange(serializeGroupTransform(anchorRef.current));
+    const nextState = serializeGroupTransform(anchorRef.current);
+    liveGroupStateRef.current = nextState;
+    onGroupStateChange(nextState);
   }, [onGroupStateChange]);
 
   useEffect(() => {
     if (anchorRef.current) {
-      applyGroupTransform(anchorRef.current, normalizedInitialGroupState || DEFAULT_GROUP_TRANSFORM);
+      applyGroupTransform(anchorRef.current, liveGroupStateRef.current || DEFAULT_GROUP_TRANSFORM);
     }
   }, [normalizedInitialGroupState, stateVersion]);
 
   useEffect(() => {
     baseModels.forEach((model) => {
       const instanceId = model.instanceId || model.id;
-      const transform = initialModelStateById.get(instanceId);
+      const transform = liveModelStateRef.current.find((entry) => entry.id === instanceId)
+        || initialModelStateById.get(instanceId);
       const defaultTransform = defaultModelStateByIdRef.current.get(instanceId);
       const modelObject = modelRefsByIdRef.current.get(instanceId)?.current;
       if (modelObject) {
@@ -4330,6 +4380,23 @@ function SceneContent({
   );
 }
 
+function RenderingRecoveryBridge({
+  onInterrupted,
+  onRestored,
+}: {
+  onInterrupted?: () => void;
+  onRestored?: () => void;
+}) {
+  const { gl } = useThree();
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+    return bindWebglContextRecovery(canvas, { onInterrupted, onRestored });
+  }, [gl, onInterrupted, onRestored]);
+
+  return null;
+}
+
 export function ARSceneV2(props: ARSceneV2Props) {
   const lowPerformance = props.dataSaver || props.renderQuality === 'low';
   const dpr: number | [number, number] = lowPerformance
@@ -4363,6 +4430,10 @@ export function ARSceneV2(props: ARSceneV2Props) {
         gl.setClearColor(0x000000, 0);
       }}
     >
+      <RenderingRecoveryBridge
+        onInterrupted={props.onRenderingInterrupted}
+        onRestored={props.onRenderingRestored}
+      />
       <SceneContent {...props} />
     </Canvas>
   );

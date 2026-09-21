@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { summarizeTeacherActivities } from '../utils/teacherActivitySummary';
 import { countLateSubmissionsByStudent, isSubmissionLate } from '../utils/teacherStudentMetrics';
+import { DEFAULT_ACTIVITY_MAX_POINTS, normalizeActivityMaxPoints } from '../utils/activityPoints';
 
 const REVIEWED_STATUSES = new Set(['reviewed', 'graded', 'completed']);
 const SUBMITTED_STATUSES = new Set(['submitted', 'late', 'reviewed', 'graded', 'completed']);
@@ -569,7 +570,13 @@ export const getStudentSubmissions = async (studentId) => {
       .from('submissions')
       .select(`
         *,
-        activity:activities(id, title, due_date)
+        activity:activities(
+          id,
+          title,
+          due_date,
+          subject,
+          class:classes(name, grade, section, subject)
+        )
       `)
       .eq('student_id', studentId)
       .order('submitted_at', { ascending: false });
@@ -580,7 +587,14 @@ export const getStudentSubmissions = async (studentId) => {
       .from('activity_assignments')
       .select(`
         *,
-        activity:activities(id, title, due_date, description)
+        activity:activities(
+          id,
+          title,
+          due_date,
+          description,
+          subject,
+          class:classes(name, grade, section, subject)
+        )
       `)
       .eq('student_id', studentId);
 
@@ -598,6 +612,8 @@ export const getStudentSubmissions = async (studentId) => {
       return {
         ...s,
         activity_title: s.activity?.title,
+        activity_subject: s.activity?.subject || s.activity?.class?.subject || '',
+        class_name: s.activity?.class?.name || '',
         due_date: s.activity?.due_date,
         status: state.status,
         raw_status: normalizeStatus(s.status),
@@ -623,6 +639,8 @@ export const getStudentSubmissions = async (studentId) => {
           status: state.status,
           raw_status: normalizeStatus(a.status),
           activity_title: a.activity?.title,
+          activity_subject: a.activity?.subject || a.activity?.class?.subject || '',
+          class_name: a.activity?.class?.name || '',
           due_date: a.activity?.due_date,
           is_submitted: state.isSubmitted,
           is_reviewed: state.isReviewed,
@@ -745,6 +763,12 @@ export const createActivity = async (teacherIdOrPayload, activityDataInput) => {
     if (!activityData.rubric_id) {
       return { success: false, error: 'A rubric is required to create an activity.' };
     }
+    const maxPoints = normalizeActivityMaxPoints(
+      activityData.max_points ?? DEFAULT_ACTIVITY_MAX_POINTS
+    );
+    if (!maxPoints) {
+      return { success: false, error: 'Maximum points must be a whole number from 1 to 1000.' };
+    }
 
     const { data, error } = await supabase.rpc('create_activity_with_assignments', {
       p_teacher_id: teacherId,
@@ -757,6 +781,7 @@ export const createActivity = async (teacherIdOrPayload, activityDataInput) => {
       p_status: activityData.status || 'active',
       p_image_url: activityData.image_url || null,
       p_rubric_id: activityData.rubric_id,
+      p_max_points: maxPoints,
     });
 
     if (error) throw error;
@@ -769,6 +794,12 @@ export const createActivity = async (teacherIdOrPayload, activityDataInput) => {
 
 export const updateActivity = async (activityId, updates) => {
   try {
+    const maxPoints = updates.max_points == null
+      ? null
+      : normalizeActivityMaxPoints(updates.max_points);
+    if (updates.max_points != null && !maxPoints) {
+      return { success: false, error: 'Maximum points must be a whole number from 1 to 1000.' };
+    }
     const { data, error } = await supabase.rpc('update_activity_with_rubric', {
       p_activity_id: activityId,
       p_title: updates.title,
@@ -777,6 +808,7 @@ export const updateActivity = async (activityId, updates) => {
       p_image_url: updates.image_url || null,
       p_rubric_action: updates.rubric_action || 'keep',
       p_rubric_id: updates.rubric_id || null,
+      p_max_points: maxPoints,
     });
 
     if (error) throw error;
@@ -1057,10 +1089,13 @@ export const getDashboardStats = async (teacherId) => {
     }
 
     // Get pending reviews
-    const { count: pendingReviews } = await supabase
+    const { count: pendingReviews, error: pendingReviewsError } = await supabase
       .from('submissions')
-      .select('*', { count: 'exact', head: true })
+      .select('id, activity:activities!inner(teacher_id)', { count: 'exact', head: true })
+      .eq('activity.teacher_id', teacherId)
       .in('status', ['submitted', 'late']);
+
+    if (pendingReviewsError) throw pendingReviewsError;
 
     // Get upcoming deadlines (activities due in next 7 days)
     const sevenDaysFromNow = new Date();

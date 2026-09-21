@@ -32,6 +32,26 @@ describe('auth state helpers', () => {
     expect(client.from).not.toHaveBeenCalled();
   });
 
+  it('classifies temporary user verification failures without invalidating a persisted session', async () => {
+    const client = {
+      auth: {
+        getSession: jest.fn(async () => ({
+          data: { session: { user: { id: 'student-7' } } },
+          error: null,
+        })),
+        getUser: jest.fn(async () => ({
+          data: { user: null },
+          error: new Error('Failed to fetch'),
+        })),
+      },
+      from: jest.fn(),
+    };
+
+    const result = await resolveAuthenticatedProfile(client);
+    expect(result).toMatchObject({ success: false, reason: 'transient', userId: 'student-7' });
+    expect(client.from).not.toHaveBeenCalled();
+  });
+
   it('loads the profile belonging to the server-verified user and normalizes its role', async () => {
     const query = createProfileQuery({
       data: { id: 'server-user', name: 'Sam', role: 'Super Admin' },
@@ -72,5 +92,16 @@ describe('auth state helpers', () => {
     const result = await resolveAuthenticatedProfile(client);
     expect(result.success).toBe(false);
     expect(result.reason).toBe('inactive');
+  });
+
+  it('rejects a session whose application profile was removed', async () => {
+    const query = createProfileQuery({ data: null, error: { code: 'PGRST116' } });
+    const client = {
+      auth: { getUser: jest.fn(async () => ({ data: { user: { id: 'removed-user' } }, error: null })) },
+      from: jest.fn(() => query),
+    };
+    const result = await resolveAuthenticatedProfile(client);
+    expect(result.success).toBe(false);
+    expect(result.reason).toBe('profile-missing');
   });
 });

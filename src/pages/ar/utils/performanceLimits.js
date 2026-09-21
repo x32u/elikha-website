@@ -1,5 +1,5 @@
-// Each paint mark is its own Three.js decal mesh. Finite limits prevent a long
-// drawing session from exhausting mobile GPU memory while retaining enough
-// marks for detailed student work.
-export const SCENE_OBJECT_PAINT_STAMP_LIMIT = 80;
-export const BASE_MODEL_PAINT_STAMP_LIMIT = 300;
+// Painting is learner work, so completed marks must never be discarded to meet
+// a rendering budget. Decals use a shared brush texture and throttled state
+// persistence; both limits intentionally remain unbounded.
+export const SCENE_OBJECT_PAINT_STAMP_LIMIT = Number.POSITIVE_INFINITY;
+export const BASE_MODEL_PAINT_STAMP_LIMIT = Number.POSITIVE_INFINITY;

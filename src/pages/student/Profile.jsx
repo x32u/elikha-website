@@ -6,7 +6,7 @@ import { resolveAvatarUrl } from '../../services/avatarApi';
 import { useStoredUserSettings } from '../../hooks/useStoredUserSettings';
 import { shouldLoadRichMedia } from '../../utils/userSettings';
 import { formatStudentClassLabel } from '../../utils/classLabels';
-import { hasStarRating, normalizeStarRating, starRatingText } from '../../utils/starRating';
+import { hasStarRating, normalizeStarRating } from '../../utils/starRating';
 import './Profile.css';
 
 const PASTEL_THUMBNAIL_PALETTES = [
@@ -313,53 +313,62 @@ const Profile = () => {
 
         <section className="profile-grid" aria-label="Activities grid">
           {(activeTab === 'favorites' ? favorites : activitiesWithFavoriteState).length > 0 ? (
-            (activeTab === 'favorites' ? favorites : activitiesWithFavoriteState).map((activity) => (
-              <article key={activity.id} className="post-card">
-                <Link
-                  className="post-card-main"
-                  to={`/activity/${activity.id}`}
-                  aria-label={`Open ${activity.title} details`}
-                >
-                  <div
-                    className="post-thumb"
-                    style={{
-                      background: `linear-gradient(135deg, ${activity.thumbPalette?.[0]} 0%, ${activity.thumbPalette?.[1]} 52%, ${activity.thumbPalette?.[2]} 100%)`,
+            (activeTab === 'favorites' ? favorites : activitiesWithFavoriteState).map((activity) => {
+              const rating = normalizeStarRating(activity.score);
+              return (
+                <article key={activity.id} className="post-card">
+                  <Link
+                    className="post-card-main"
+                    to={`/activity/${activity.id}`}
+                    aria-label={`Open ${activity.title} details`}
+                  >
+                    <div
+                      className="post-thumb"
+                      style={{
+                        background: `linear-gradient(135deg, ${activity.thumbPalette?.[0]} 0%, ${activity.thumbPalette?.[1]} 52%, ${activity.thumbPalette?.[2]} 100%)`,
+                      }}
+                    >
+                      {shouldLoadRichMedia(settings) && shouldRenderImageThumb(activity.image_url) ? (
+                        <SnapshotThumbnailImage
+                          src={activity.image_url}
+                          alt=""
+                          className={`post-thumb-img ${isSnapshotDataUri(activity.image_url) ? 'post-thumb-img--snapshot' : ''}`}
+                        />
+                      ) : (
+                        <span className="post-thumb-icon" aria-hidden="true">{activity.emoji}</span>
+                      )}
+                    </div>
+                    <div className="post-meta">
+                      <p className="post-title">{activity.title}</p>
+                      {hasSubmissionScore(activity) && (
+                        <p className="post-grade">
+                          <span>Rating:</span>{' '}
+                          <span className="post-grade-stars" aria-label={`${rating} out of 5 stars`}>
+                            {'★'.repeat(rating)}{'☆'.repeat(5 - rating)}
+                          </span>{' '}
+                          <span>({rating}/5)</span>
+                        </p>
+                      )}
+                      {getFeedbackPreview(activity.feedback) && (
+                        <p className="post-feedback">Feedback: {getFeedbackPreview(activity.feedback)}</p>
+                      )}
+                    </div>
+                  </Link>
+                  <button
+                    type="button"
+                    className={`favorite-badge ${activity.favorite ? '' : 'is-off'}`}
+                    aria-label={activity.favorite ? 'Remove favorite' : 'Add favorite'}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      toggleFavorite(activity.id);
                     }}
                   >
-                    {shouldLoadRichMedia(settings) && shouldRenderImageThumb(activity.image_url) ? (
-                      <SnapshotThumbnailImage
-                        src={activity.image_url}
-                        alt=""
-                        className={`post-thumb-img ${isSnapshotDataUri(activity.image_url) ? 'post-thumb-img--snapshot' : ''}`}
-                      />
-                    ) : (
-                      <span className="post-thumb-icon" aria-hidden="true">{activity.emoji}</span>
-                    )}
-                  </div>
-                  <div className="post-meta">
-                    <p className="post-title">{activity.title}</p>
-                    {hasSubmissionScore(activity) && (
-                      <p className="post-grade">Rating: {starRatingText(activity.score)}</p>
-                    )}
-                    {getFeedbackPreview(activity.feedback) && (
-                      <p className="post-feedback">Feedback: {getFeedbackPreview(activity.feedback)}</p>
-                    )}
-                  </div>
-                </Link>
-                <button
-                  type="button"
-                  className={`favorite-badge ${activity.favorite ? '' : 'is-off'}`}
-                  aria-label={activity.favorite ? 'Remove favorite' : 'Add favorite'}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    toggleFavorite(activity.id);
-                  }}
-                >
-                  ★
-                </button>
-              </article>
-            ))
+                    ★
+                  </button>
+                </article>
+              );
+            })
           ) : (
             <div className="no-activities-profile">
               <p>{activeTab === 'favorites' ? 'No favorites yet' : 'No completed activities yet'}</p>

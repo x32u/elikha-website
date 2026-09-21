@@ -556,6 +556,16 @@
   background: var(--dash-warn);
 }
 
+.pill.late {
+  background: color-mix(in srgb, var(--dash-bad) 14%, white);
+  border: 1px solid color-mix(in srgb, var(--dash-bad) 40%, white);
+  color: #7a1406;
+}
+
+.pill.late::before {
+  background: var(--dash-bad);
+}
+
 .pill.rejected {
   background: color-mix(in srgb, var(--dash-bad) 14%, white);
   border: 1px solid color-mix(in srgb, var(--dash-bad) 40%, white);

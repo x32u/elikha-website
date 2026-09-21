@@ -40,7 +40,7 @@ const ActivityModelSelector = ({
 
   const closeLibrary = useCallback(() => {
     setIsOpen(false);
-    window.requestAnimationFrame(() => triggerRef.current?.focus());
+    triggerRef.current?.focus();
   }, []);
 
   const openLibrary = () => {
@@ -58,6 +58,7 @@ const ActivityModelSelector = ({
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
         event.preventDefault();
+        event.stopPropagation();
         closeLibrary();
         return;
       }
@@ -81,10 +82,10 @@ const ActivityModelSelector = ({
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', handleKeyDown, true);
     return () => {
       document.body.style.overflow = previousOverflow;
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [closeLibrary, isOpen]);
 

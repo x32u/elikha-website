@@ -5,11 +5,8 @@ export const DEFAULT_USER_SETTINGS = Object.freeze({
   soundEffects: true,
   voiceInstructions: true,
   notifications: true,
-  dataSaver: false,
-  quality: 'auto',
 });
 
-const VALID_QUALITIES = new Set(['auto', 'high', 'medium', 'low']);
 const ADMINISTRATIVE_ROLES = new Set(['admin', 'superadmin']);
 
 export const getUserSettingsKey = (userId = 'anonymous') => `elikha_user_settings_${userId || 'anonymous'}`;
@@ -31,11 +28,6 @@ export const normalizeUserSettings = (settings = {}) => ({
     typeof settings.notifications === 'boolean'
       ? settings.notifications
       : DEFAULT_USER_SETTINGS.notifications,
-  dataSaver:
-    typeof settings.dataSaver === 'boolean'
-      ? settings.dataSaver
-      : DEFAULT_USER_SETTINGS.dataSaver,
-  quality: VALID_QUALITIES.has(settings.quality) ? settings.quality : DEFAULT_USER_SETTINGS.quality,
 });
 
 export const getSessionUserInfo = () => {
@@ -82,10 +74,7 @@ export const getCurrentUserSettings = () => {
   return getStoredUserSettings(userInfo.id);
 };
 
-export const shouldLoadRichMedia = (settings = getCurrentUserSettings()) => {
-  const normalized = normalizeUserSettings(settings);
-  return !normalized.dataSaver && normalized.quality !== 'low';
-};
+export const shouldLoadRichMedia = () => true;
 
 export const shouldPlayBackgroundMusic = (
   settings,

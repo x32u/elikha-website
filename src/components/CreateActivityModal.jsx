@@ -14,6 +14,8 @@ import { uploadActivityThumbnail } from '../services/activityThumbnailStorage';
 import { createActivity } from '../services/teacherApi';
 import { formatClassLabel } from '../utils/classLabels';
 import { sanitizeColorRequirements } from '../utils/activityColorRequirements';
+import { getTodayDateInputValue } from '../utils/dateInput';
+import { normalizeActivityMaxPoints } from '../utils/activityPoints';
 import ActivityColorPalettePicker from './ActivityColorPalettePicker';
 import ActivityColorRequirements from './ActivityColorRequirements';
 import ActivityModelSelector from './ActivityModelSelector';
@@ -34,6 +36,7 @@ const createInitialForm = (preselectedClassId = '') => ({
   thumbnailName: '',
   thumbnailError: '',
   rubricId: '',
+  maxPoints: 5,
   allowedColors: [],
   colorRequirements: [],
 });
@@ -102,14 +105,17 @@ const CreateActivityModal = ({
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!formData.title.trim() || !selectedClassId || !formData.rubricId) {
+    const maxPoints = normalizeActivityMaxPoints(formData.maxPoints);
+    if (!formData.title.trim() || !selectedClassId || !formData.rubricId || !maxPoints) {
       setFormData((current) => ({
         ...current,
         thumbnailError: !formData.title.trim()
           ? 'Enter an activity title.'
           : !selectedClassId
             ? 'Select a class.'
-            : 'Select a rubric before creating the activity.',
+            : !formData.rubricId
+              ? 'Select a rubric before creating the activity.'
+              : 'Maximum points must be a whole number from 1 to 1000.',
       }));
       return;
     }
@@ -141,6 +147,7 @@ const CreateActivityModal = ({
         status: 'active',
         image_url: uploadedThumbnailUrl,
         rubric_id: formData.rubricId,
+        max_points: maxPoints,
       });
 
       if (!result.success) throw new Error(result.error || 'Failed to create activity.');
@@ -193,6 +200,25 @@ const CreateActivityModal = ({
               {rubrics.map((rubric) => <option key={rubric.id} value={rubric.id}>{rubric.title}</option>)}
             </select>
             <small className="form-help">Required. Students review its criteria before starting, and it guides assessment.</small>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="activity-max-points">Maximum Points</label>
+            <input
+              id="activity-max-points"
+              name="activityMaxPoints"
+              type="number"
+              inputMode="numeric"
+              autoComplete="off"
+              className="form-input"
+              min="1"
+              max="1000"
+              step="1"
+              required
+              value={formData.maxPoints}
+              onChange={(event) => setFormData((current) => ({ ...current, maxPoints: event.target.value }))}
+            />
+            <small className="form-help">Shown to learners in the assignment list.</small>
           </div>
 
           <div className="form-group">
@@ -252,7 +278,7 @@ const CreateActivityModal = ({
 
           <div className="form-group">
             <label className="form-label" htmlFor="activity-due-date">Due Date</label>
-            <input id="activity-due-date" type="date" className="form-input" value={formData.dueDate} onChange={(event) => setFormData((current) => ({ ...current, dueDate: event.target.value }))} />
+            <input id="activity-due-date" name="activityDueDate" type="date" autoComplete="off" className="form-input" min={getTodayDateInputValue()} value={formData.dueDate} onChange={(event) => setFormData((current) => ({ ...current, dueDate: event.target.value }))} />
           </div>
 
           {formData.thumbnailError && <p className="create-activity-modal__error" role="alert">{formData.thumbnailError}</p>}

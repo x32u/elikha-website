@@ -1,6 +1,7 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import ClassDetails from './ClassDetails';
+import { formatClassActivityDueDate } from './ClassDetails';
 
 const mockGetClassById = jest.fn();
 const mockGetClassStudents = jest.fn();
@@ -52,6 +53,7 @@ describe('Class activity rubric selector', () => {
         title: 'Color the bird',
         description: 'Paint the bird',
         due_date: '2026-08-29',
+        max_points: 25,
         image_url: '',
       }],
     });
@@ -95,7 +97,7 @@ describe('Class activity rubric selector', () => {
     });
 
     const addButton = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent.trim() === '+ Add Activity'
+      (button) => button.textContent.trim() === 'Add activity'
     );
     await act(async () => {
       addButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -137,6 +139,7 @@ describe('Class activity rubric selector', () => {
     expect(document.querySelector('[role="dialog"][aria-modal="true"]')).not.toBeNull();
     expect(document.querySelector('.activity-edit-modal-backdrop')).not.toBeNull();
     expect(editSelect.value).toBe('rubric-1');
+    expect(document.querySelector('[name="activityMaxPoints"]').value).toBe('25');
     expect(editSelect.disabled).toBe(true);
     expect(document.body.textContent).toContain('This rubric is locked because student work depends on it.');
   });
@@ -199,5 +202,10 @@ describe('Class activity rubric selector', () => {
     expect(avatar).not.toBeNull();
     expect(avatar.getAttribute('src')).toBe('blob:sophia-avatar');
     expect(avatar.getAttribute('alt')).toBe('Sophia Lei Torrefiel profile');
+  });
+
+  test('formats date-only activity deadlines without shifting the calendar day', () => {
+    expect(formatClassActivityDueDate('2026-08-29')).toContain('Aug 29, 2026');
+    expect(formatClassActivityDueDate(null)).toBe('No due date');
   });
 });

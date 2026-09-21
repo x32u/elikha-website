@@ -9,6 +9,7 @@ import {
   aggregateAnalyticsReport,
   createReportDateRange,
 } from '../utils/reportAnalytics';
+import { DEFAULT_ACTIVITY_MAX_POINTS, normalizeActivityMaxPoints } from '../utils/activityPoints';
 
 const toIso = (value) => {
   const date = value ? new Date(value) : new Date();
@@ -967,6 +968,7 @@ export const createAdminActivity = async ({
   allowedObjectIds,
   puzzlePieces,
   rubricId = null,
+  maxPoints = 5,
 }) => {
   try {
     if (!title || !classId) {
@@ -974,6 +976,10 @@ export const createAdminActivity = async ({
     }
     if (!rubricId) {
       return { success: false, error: 'A rubric is required to create an activity.' };
+    }
+    const normalizedMaxPoints = normalizeActivityMaxPoints(maxPoints ?? DEFAULT_ACTIVITY_MAX_POINTS);
+    if (!normalizedMaxPoints) {
+      return { success: false, error: 'Maximum points must be a whole number from 1 to 1000.' };
     }
 
     const { data: classRow, error: classError } = await supabase
@@ -1010,6 +1016,7 @@ export const createAdminActivity = async ({
         p_status: 'active',
         p_image_url: imageUrl || null,
         p_rubric_id: rubricId,
+        p_max_points: normalizedMaxPoints,
       }
     );
 

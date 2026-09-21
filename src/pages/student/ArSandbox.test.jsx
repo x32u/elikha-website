@@ -128,6 +128,27 @@ describe('AR Sandbox voice guide preference', () => {
     expect(container.querySelector('[data-mobile-mode="true"]')).not.toBeNull();
   });
 
+  it.each([
+    ['desktop', false, false],
+    ['tablet viewport', true, false],
+    ['coarse-pointer mobile device', false, true],
+  ])('selects the expected AR control layout for a %s', async (_label, narrowViewport, coarsePointer) => {
+    window.matchMedia = jest.fn((query) => ({
+      matches: query === '(max-width: 768px)' ? narrowViewport : coarsePointer,
+    }));
+
+    await act(async () => {
+      root.render(<ArSandbox />);
+    });
+    const start = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent.includes('Start Easy Practice')
+    );
+    await act(async () => start.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+
+    expect(container.querySelector('[data-mobile-mode]')?.getAttribute('data-mobile-mode'))
+      .toBe(String(narrowViewport || coarsePointer));
+  });
+
   it('asks native mobile launches to choose a model before entering AR', async () => {
     window.history.replaceState(
       {},

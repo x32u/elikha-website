@@ -79,6 +79,7 @@
   margin: 0;
   color: #13213f;
   font-size: 20px;
+  text-wrap: balance;
 }
 
 .set-title {
@@ -493,4 +494,227 @@
 .set-btn.disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Super-admin database tools use a compact operation rail instead of another
+   pair of generic dashboard cards. */
+.set-database-section {
+  margin-top: 18px;
+  overflow: visible;
+}
+
+.set-database-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 18px;
+}
+
+.set-eyebrow {
+  display: block;
+  margin-bottom: 7px;
+  color: #3152cc;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.set-security-badge {
+  flex: none;
+  padding: 7px 10px;
+  border: 1px solid #d4ddf5;
+  border-radius: 999px;
+  background: #f6f8ff;
+  color: #405580;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.set-database-actions {
+  border-top: 1px solid #e8edf7;
+}
+
+.set-database-action {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 16px;
+  min-height: 118px;
+  padding: 22px 20px;
+}
+
+.set-database-action + .set-database-action {
+  border-top: 1px solid #e8edf7;
+}
+
+.set-database-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid #dbe3f7;
+  border-radius: 13px;
+  background: #f4f7ff;
+  color: #3152cc;
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.set-database-action--restore .set-database-icon {
+  border-color: #f0d2cf;
+  background: #fff7f6;
+  color: #b42318;
+}
+
+.set-database-copy h3 {
+  margin: 0;
+  color: #13213f;
+  font-size: 16px;
+}
+
+.set-database-copy p {
+  max-width: 760px;
+  margin: 5px 0 0;
+  color: #687797;
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1.55;
+}
+
+.set-database-buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.set-btn.danger {
+  background: #b42318;
+  color: #fff;
+  box-shadow: 0 10px 22px rgba(180, 35, 24, .16);
+}
+
+.set-backup-file {
+  color: #344767 !important;
+  overflow-wrap: anywhere;
+}
+
+.set-inline-error {
+  color: #b42318 !important;
+  font-weight: 700 !important;
+}
+
+.set-modal-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(17, 24, 39, .56);
+  backdrop-filter: blur(3px);
+}
+
+.set-modal {
+  width: min(100%, 560px);
+  overflow: hidden;
+  border: 1px solid #d9e0ee;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 28px 80px rgba(17, 24, 39, .24);
+  overscroll-behavior: contain;
+}
+
+.set-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 22px 18px;
+  border-bottom: 1px solid #e8edf7;
+}
+
+.set-modal-header h2 {
+  margin: 0;
+  color: #13213f;
+  font-size: 22px;
+}
+
+.set-modal-close {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  place-items: center;
+  border: 1px solid #d9e0ee;
+  border-radius: 11px;
+  background: #fff;
+  color: #53627d;
+  cursor: pointer;
+  font: inherit;
+  font-size: 22px;
+}
+
+.set-modal-close:hover {
+  border-color: #aebbd8;
+  background: #f6f8ff;
+  color: #24385f;
+}
+
+.set-modal-close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(151, 217, 255, .45);
+}
+
+.set-modal-body {
+  padding: 20px 22px 24px;
+}
+
+.set-modal-body > p {
+  margin: 0 0 18px;
+  color: #53627d;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.set-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 15px 22px;
+  border-top: 1px solid #e8edf7;
+  background: #f8faff;
+}
+
+@media (max-width: 760px) {
+  .set-database-heading,
+  .set-database-action {
+    align-items: flex-start;
+  }
+
+  .set-database-heading {
+    flex-direction: column;
+  }
+
+  .set-database-action {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .set-database-action > .set-btn,
+  .set-database-buttons {
+    grid-column: 2;
+  }
+
+  .set-database-buttons {
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .set-btn,
+  .set-switch::after,
+  .set-logout {
+    transition: none;
+  }
 }

@@ -160,7 +160,7 @@
   font-weight: 800;
   color: #5670a1;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 .tab:hover {
@@ -280,9 +280,15 @@
 
 .post-grade {
   font-size: 13px;
-  color: #16764d;
+  color: #141217;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   margin: 0;
+}
+
+.post-grade-stars {
+  color: #f4a72e;
+  letter-spacing: 1px;
 }
 
 .post-feedback {

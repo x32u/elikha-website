@@ -36,6 +36,7 @@ describe('teacher transaction services', () => {
       due_date: '2026-08-20',
       image_url: 'https://example.test/thumb.webp',
       rubric_id: 'rubric-1',
+      max_points: 25,
     });
 
     expect(mockRpc).toHaveBeenCalledWith('create_activity_with_assignments',
@@ -43,6 +44,7 @@ describe('teacher transaction services', () => {
         p_teacher_id: 'teacher-1',
         p_class_id: 'class-1',
         p_rubric_id: 'rubric-1',
+        p_max_points: 25,
       }));
     expect(result).toEqual({
       success: true,
@@ -74,6 +76,7 @@ describe('teacher transaction services', () => {
       image_url: 'https://example.test/activity.webp',
       rubric_action: 'set',
       rubric_id: 'rubric-2',
+      max_points: 40,
     });
 
     expect(mockRpc).toHaveBeenCalledWith('update_activity_with_rubric', {
@@ -84,6 +87,7 @@ describe('teacher transaction services', () => {
       p_image_url: 'https://example.test/activity.webp',
       p_rubric_action: 'set',
       p_rubric_id: 'rubric-2',
+      p_max_points: 40,
     });
     expect(result.success).toBe(true);
   });

@@ -37,7 +37,7 @@ describe('AR model format handling', () => {
 
   test('keeps 2D object choices alphabetized', () => {
     const labels = AR_OBJECT_LIBRARY.map((item) => item.label);
-    expect(labels).toEqual(['Cone', 'Cube', 'Cylinder', 'Sphere']);
+    expect(labels).toEqual(['Cone', 'Cube', 'Cylinder', 'Rectangle', 'Sphere']);
   });
 
   test('keeps newly added 3D models alphabetized', () => {

@@ -11,6 +11,14 @@ import {
   uploadUserAvatar,
   validateAvatarFile,
 } from "../../services/avatarApi";
+import {
+  exportPlatformBackup,
+  PLATFORM_BACKUP_MAX_BYTES,
+  restorePlatformBackup,
+  validatePlatformBackup,
+} from "../../services/platformBackupApi";
+
+const RESTORE_CONFIRMATION = "RESTORE DATABASE";
 
 function Settings({ onNavigate, role, onLogout }) {
   const isSuperAdmin = role === "SuperAdmin";
@@ -26,12 +34,35 @@ function Settings({ onNavigate, role, onLogout }) {
   const [avatarUrl, setAvatarUrl] = React.useState("");
   const [avatarStoredPath, setAvatarStoredPath] = React.useState("");
   const [avatarBusy, setAvatarBusy] = React.useState(false);
+  const [backupBusy, setBackupBusy] = React.useState(false);
+  const [restoreBusy, setRestoreBusy] = React.useState(false);
+  const [backupFile, setBackupFile] = React.useState(null);
+  const [backupPayload, setBackupPayload] = React.useState(null);
+  const [backupSummary, setBackupSummary] = React.useState(null);
+  const [backupError, setBackupError] = React.useState("");
+  const [restoreDialogOpen, setRestoreDialogOpen] = React.useState(false);
+  const [restoreConfirmation, setRestoreConfirmation] = React.useState("");
+  const [restoreError, setRestoreError] = React.useState("");
+  const backupInputRef = React.useRef(null);
 
   React.useEffect(() => {
     if (!toast) return undefined;
     const t = window.setTimeout(() => setToast(null), 2500);
     return () => window.clearTimeout(t);
   }, [toast]);
+
+  React.useEffect(() => {
+    if (!restoreDialogOpen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape" && !restoreBusy) {
+        setRestoreDialogOpen(false);
+        setRestoreConfirmation("");
+        setRestoreError("");
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [restoreDialogOpen, restoreBusy]);
 
   React.useEffect(() => {
     const userInfo = JSON.parse(sessionStorage.getItem("userInfo") || "{}");
@@ -177,6 +208,78 @@ function Settings({ onNavigate, role, onLogout }) {
     showToast(result.needsDatabaseSetup ? "warning" : "success", result.error || "Settings saved.");
   };
 
+  const handleBackupExport = async () => {
+    setBackupBusy(true);
+    try {
+      const backup = await exportPlatformBackup();
+      const blob = new Blob([`${JSON.stringify(backup, null, 2)}\n`], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const date = String(backup.created_at || new Date().toISOString()).slice(0, 10);
+      link.href = url;
+      link.download = `elikha-backup-${date}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      showToast("success", "Application-data backup downloaded.");
+    } catch (error) {
+      showToast("error", error?.message || "The backup could not be exported.");
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const handleBackupFile = async (event) => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = "";
+    setBackupFile(null);
+    setBackupPayload(null);
+    setBackupSummary(null);
+    setBackupError("");
+    if (!file) return;
+    if (file.size > PLATFORM_BACKUP_MAX_BYTES) {
+      setBackupError("Choose a backup file smaller than 25 MB.");
+      return;
+    }
+
+    try {
+      const payload = JSON.parse(await file.text());
+      const summary = validatePlatformBackup(payload);
+      if (!summary.valid) throw new Error(summary.error);
+      setBackupFile(file);
+      setBackupPayload(payload);
+      setBackupSummary(summary);
+      showToast("success", "Backup verified and ready to restore.");
+    } catch (error) {
+      setBackupError(error?.message || "The selected backup could not be read.");
+    }
+  };
+
+  const closeRestoreDialog = () => {
+    if (restoreBusy) return;
+    setRestoreDialogOpen(false);
+    setRestoreConfirmation("");
+    setRestoreError("");
+  };
+
+  const handleBackupRestore = async () => {
+    if (!backupPayload || restoreConfirmation !== RESTORE_CONFIRMATION) return;
+    setRestoreBusy(true);
+    setRestoreError("");
+    try {
+      const result = await restorePlatformBackup(backupPayload);
+      const restored = Object.values(result?.counts || {}).reduce((total, count) => total + Number(count || 0), 0);
+      setRestoreDialogOpen(false);
+      setRestoreConfirmation("");
+      showToast("success", `${restored} backup rows restored. Newer records were preserved.`);
+    } catch (error) {
+      setRestoreError(error?.message || "The backup could not be restored. Check the file and try again.");
+    } finally {
+      setRestoreBusy(false);
+    }
+  };
+
   return (
     <AdminShell
       active="settings"
@@ -311,6 +414,53 @@ function Settings({ onNavigate, role, onLogout }) {
         </section>
         </div>
 
+        {isSuperAdmin && (
+          <section className="set-section set-database-section" aria-labelledby="database-backup-title">
+            <div className="set-section-heading set-database-heading">
+              <div>
+                <span className="set-eyebrow">Super admin tools</span>
+                <h2 id="database-backup-title">Database backup &amp; restore</h2>
+                <p>Download a portable snapshot of e-Likha application data or restore records from a verified backup.</p>
+              </div>
+              <span className="set-security-badge">Application data only</span>
+            </div>
+
+            <div className="set-database-actions">
+              <article className="set-database-action">
+                <div className="set-database-icon" aria-hidden="true">↓</div>
+                <div className="set-database-copy">
+                  <h3>Export backup</h3>
+                  <p>Includes public application tables and R2 file references. Passwords, auth tokens, secrets, and binary R2 objects are never included.</p>
+                </div>
+                <button className="set-btn" type="button" onClick={handleBackupExport} disabled={backupBusy || restoreBusy}>
+                  {backupBusy ? "Preparing…" : "Download JSON"}
+                </button>
+              </article>
+
+              <article className="set-database-action set-database-action--restore">
+                <div className="set-database-icon" aria-hidden="true">↑</div>
+                <div className="set-database-copy">
+                  <h3>Restore backup</h3>
+                  <p>Updates matching records and recreates missing records. Records created after the backup are preserved.</p>
+                  {backupFile && backupSummary && (
+                    <p className="set-backup-file" role="status">
+                      <strong>{backupFile.name}</strong> · {backupSummary.tableCount} tables · {backupSummary.rowCount} rows
+                    </p>
+                  )}
+                  {backupError && <p className="set-inline-error" role="alert">{backupError}</p>}
+                </div>
+                <div className="set-database-buttons">
+                  <button className="set-btn ghost" type="button" onClick={() => backupInputRef.current?.click()}>Choose backup</button>
+                  <input ref={backupInputRef} type="file" accept="application/json,.json" onChange={handleBackupFile} hidden />
+                  <button className="set-btn danger" type="button" disabled={!backupPayload || backupBusy || restoreBusy} onClick={() => { setRestoreError(""); setRestoreDialogOpen(true); }}>
+                    Review restore
+                  </button>
+                </div>
+              </article>
+            </div>
+          </section>
+        )}
+
         <div className="set-page-actions">
           <button className="set-logout" type="button" onClick={() => onLogout?.()}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
@@ -332,6 +482,34 @@ function Settings({ onNavigate, role, onLogout }) {
           </button>
         </div>
       </div>
+
+      {isSuperAdmin && restoreDialogOpen && (
+        <div className="set-modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && closeRestoreDialog()}>
+          <section className="set-modal" role="dialog" aria-modal="true" aria-labelledby="restore-dialog-title">
+            <div className="set-modal-header">
+              <div>
+                <span className="set-eyebrow">Final confirmation</span>
+                <h2 id="restore-dialog-title">Restore this database backup?</h2>
+              </div>
+              <button className="set-modal-close" type="button" onClick={closeRestoreDialog} aria-label="Close restore confirmation">×</button>
+            </div>
+            <div className="set-modal-body">
+              <p>This writes {backupSummary?.rowCount || 0} application rows across {backupSummary?.tableCount || 0} tables. Existing records with matching IDs will be replaced; newer unmatched records stay in place.</p>
+              {restoreError && <p className="set-inline-error" role="alert">{restoreError}</p>}
+              <label className="set-field" htmlFor="restore-confirmation">
+                <span className="set-label">Type <strong>{RESTORE_CONFIRMATION}</strong> to continue</span>
+                <input id="restore-confirmation" name="restoreConfirmation" className="set-input" value={restoreConfirmation} onChange={(event) => setRestoreConfirmation(event.target.value)} autoComplete="off" spellCheck="false" />
+              </label>
+            </div>
+            <div className="set-modal-actions">
+              <button className="set-btn ghost" type="button" onClick={closeRestoreDialog} disabled={restoreBusy}>Cancel</button>
+              <button className="set-btn danger" type="button" onClick={handleBackupRestore} disabled={restoreBusy || restoreConfirmation !== RESTORE_CONFIRMATION}>
+                {restoreBusy ? "Restoring…" : "Restore backup"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </AdminShell>
   );
 }

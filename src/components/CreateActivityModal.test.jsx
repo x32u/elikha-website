@@ -47,6 +47,7 @@ describe('CreateActivityModal', () => {
 
     expect(container.querySelector('#activity-class')).not.toBeNull();
     expect(container.querySelector('#activity-class').required).toBe(true);
+    expect(container.querySelector('#activity-max-points').value).toBe('5');
     expect(container.textContent).not.toContain('Required Materials');
   });
 
@@ -85,6 +86,7 @@ describe('CreateActivityModal', () => {
     expect(payload.class_id).toBe('class-1');
     expect(payload.title).toBe('Color study');
     expect(payload.rubric_id).toBe('rubric-1');
+    expect(payload.max_points).toBe(5);
     expect(payload).not.toHaveProperty('materials');
     expect(onCreated).toHaveBeenCalledWith({ id: 'activity-1' });
   });

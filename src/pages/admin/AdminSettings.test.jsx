@@ -17,6 +17,12 @@ jest.mock('../../services/avatarApi', () => ({
   uploadUserAvatar: jest.fn(),
   validateAvatarFile: jest.fn(),
 }));
+jest.mock('../../services/platformBackupApi', () => ({
+  exportPlatformBackup: jest.fn(),
+  PLATFORM_BACKUP_MAX_BYTES: 25 * 1024 * 1024,
+  restorePlatformBackup: jest.fn(),
+  validatePlatformBackup: jest.fn(),
+}));
 jest.mock('../../lib/supabase', () => ({
   supabase: {
     from: () => ({
@@ -57,4 +63,27 @@ describe.each(['Admin', 'SuperAdmin'])('%s settings', (role) => {
     sessionStorage.clear();
     delete global.IS_REACT_ACT_ENVIRONMENT;
   });
+
+  if (role === 'SuperAdmin') {
+    it('shows database backup and restore tools only to super admins', async () => {
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+      const root = createRoot(container);
+      global.IS_REACT_ACT_ENVIRONMENT = true;
+      sessionStorage.setItem('userInfo', JSON.stringify({ id: 'super-id' }));
+
+      await act(async () => {
+        root.render(<AdminSettings role={role} />);
+      });
+
+      expect(container.textContent).toContain('Database backup & restore');
+      expect(container.textContent).toContain('Download JSON');
+      expect(container.textContent).toContain('Review restore');
+
+      act(() => root.unmount());
+      container.remove();
+      sessionStorage.clear();
+      delete global.IS_REACT_ACT_ENVIRONMENT;
+    });
+  }
 });

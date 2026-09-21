@@ -7,6 +7,11 @@ import ExcelJS from 'exceljs';
 import { serializeCsvRow } from '../../utils/reportAnalytics';
 import { resolveUserAvatarUrl } from '../../services/avatarApi';
 
+export const getClassInitial = (project) => {
+  const source = String(project.className || project.subject || project.title || 'A').trim();
+  return source.charAt(0).toUpperCase() || 'A';
+};
+
 const Student = () => {
   const [loading, setLoading] = useState(true);
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -156,6 +161,8 @@ const Student = () => {
         submittedDate: s.submitted_at,
         reviewedDate: s.reviewed_at,
         score: s.score,
+        subject: s.activity_subject || '',
+        className: s.class_name || '',
         feedback: s.feedback || ''
       })),
       assigned: assigned.map((s) => ({
@@ -163,6 +170,8 @@ const Student = () => {
         title: s.activity_title || 'Untitled',
         status: 'Assigned',
         dueDate: s.due_date,
+        subject: s.activity_subject || '',
+        className: s.class_name || '',
         submittedDate: null
       })),
       overdue: overdue.map((s) => ({
@@ -170,6 +179,8 @@ const Student = () => {
         title: s.activity_title || 'Untitled',
         status: 'Overdue',
         dueDate: s.due_date,
+        subject: s.activity_subject || '',
+        className: s.class_name || '',
         submittedDate: null
       })),
       created: created.map(a => ({
@@ -178,7 +189,8 @@ const Student = () => {
         status: 'Created',
         dueDate: a.created_at,
         createdDate: a.created_at,
-        image: '🎨',
+        subject: a.subject || '',
+        className: a.class_name || '',
         description: a.description || 'Student artwork'
       }))
     };
@@ -515,7 +527,9 @@ const Student = () => {
                   ) : (
                     getTabProjects().map((project) => (
                       <div key={project.id} className="gallery-card">
-                        <div className="gallery-image">{project.image}</div>
+                        <div className="gallery-image" aria-hidden="true">
+                          <span className="gallery-class-initial">{getClassInitial(project)}</span>
+                        </div>
                         <div className="gallery-info">
                           <h3 className="gallery-title">{project.title}</h3>
                           <p className="gallery-description">{project.description}</p>
@@ -538,9 +552,16 @@ const Student = () => {
                   ) : (
                     getTabProjects().map((project) => (
                       <div key={project.id} className="project-card">
-                        <div className="project-icon">📋</div>
+                        <div className="project-icon" aria-hidden="true">
+                          {getClassInitial(project)}
+                        </div>
                         <div className="project-content">
                           <h3 className="project-title">{project.title}</h3>
+                          {(project.subject || project.className) && (
+                            <p className="project-class-context">
+                              {[project.subject, project.className].filter(Boolean).join(' · ')}
+                            </p>
+                          )}
                           <div className="project-meta">
                             <span className="project-due">Due: {formatDate(project.dueDate)}</span>
                             {project.submittedDate && (
@@ -585,7 +606,6 @@ const Student = () => {
           {/* Search Bar */}
           <div className="student-search-container">
             <div className="student-search-input-wrapper">
-              <span className="search-icon">🔍</span>
               <svg className="student-search-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
                 <circle cx="11" cy="11" r="6.5" />
                 <path d="m16 16 4.2 4.2" />
@@ -609,7 +629,6 @@ const Student = () => {
                   aria-label="Clear search"
                 >
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" /></svg>
-                  ✕
                 </button>
               )}
             </div>

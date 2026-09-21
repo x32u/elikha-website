@@ -65,3 +65,38 @@ export const formatTimeAgo = (value, now = new Date()) => {
   }).format(date);
 };
 
+const calendarDayNumber = (value) => {
+  const raw = String(value || '');
+  const dateOnly = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateOnly) {
+    const [, year, month, day] = dateOnly;
+    return Date.UTC(Number(year), Number(month) - 1, Number(day)) / DAY_MS;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / DAY_MS;
+};
+
+const relativeUnit = (days, direction) => {
+  const suffix = direction < 0 ? 'ago' : '';
+  const prefix = direction > 0 ? 'in ' : '';
+  const phrase = (amount, unit) => `${prefix}${amount === 1 ? `a ${unit}` : `${amount} ${unit}s`}${suffix ? ` ${suffix}` : ''}`;
+  if (days < 7) return phrase(days, 'day');
+  if (days < 14) return phrase(1, 'week');
+  if (days < 60) return phrase(Math.max(2, Math.round(days / 7)), 'week');
+  if (days < 365) return phrase(Math.max(2, Math.round(days / 30)), 'month');
+  if (days < 548) return phrase(1, 'year');
+  return phrase(Math.max(2, Math.round(days / 365)), 'year');
+};
+
+export const formatRelativeDueDate = (value, now = new Date()) => {
+  if (!value || Number.isNaN(now.getTime())) return '';
+  const dueDay = calendarDayNumber(value);
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / DAY_MS;
+  if (dueDay === null) return '';
+  const difference = Math.round(dueDay - today);
+  if (difference === 0) return 'Due today';
+  if (difference === 1) return 'Due tomorrow';
+  if (difference === -1) return 'Due yesterday';
+  return `Due ${relativeUnit(Math.abs(difference), difference)}`;
+};

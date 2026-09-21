@@ -49,6 +49,8 @@ const ActivityDetails = () => {
   const [assessment, setAssessment] = useState(EMPTY_ASSESSMENT);
   const [assessmentError, setAssessmentError] = useState('');
   const [assessmentLoading, setAssessmentLoading] = useState(false);
+  const [isRubricExpanded, setIsRubricExpanded] = useState(true);
+  const [isSubmissionExpanded, setIsSubmissionExpanded] = useState(true);
   const settings = useStoredUserSettings();
 
   const userInfo = useMemo(() => {
@@ -399,63 +401,80 @@ const ActivityDetails = () => {
                 <p className="activity-rubric-eyebrow">Before you begin</p>
                 <h3 className="section-title" id="activity-rubric-heading">How your work will be checked</h3>
               </div>
-              {activityRubric?.assignedVersion && (
-                <span className="activity-rubric-version">Rubric v{activityRubric.assignedVersion}</span>
-              )}
-            </div>
-
-            {assessmentError ? (
-              <div className="activity-rubric-error" role="status">
-                <p className="activity-rubric-status">
-                  {isReviewed
-                    ? canUseLimitedReviewFallback
-                      ? 'Your activity has been reviewed. Your score is shown below, but the detailed rubric results could not be loaded.'
-                      : 'Your activity has been reviewed, but the score and detailed rubric results could not be loaded.'
-                    : isSubmitted
-                      ? 'Your activity was submitted, but the rubric details could not be loaded right now.'
-                      : 'We could not load how your work will be checked. Try again before starting.'}
-                </p>
+              <div className="activity-section-heading-actions">
+                {activityRubric?.assignedVersion && (
+                  <span className="activity-rubric-version">Rubric v{activityRubric.assignedVersion}</span>
+                )}
                 <button
                   type="button"
-                  className="activity-rubric-retry"
-                  onClick={loadAssessment}
-                  disabled={assessmentLoading}
-                  aria-label="Retry loading rubric and review details"
+                  className="section-collapse-toggle"
+                  onClick={() => setIsRubricExpanded((expanded) => !expanded)}
+                  aria-expanded={isRubricExpanded}
+                  aria-controls="activity-rubric-content"
+                  aria-label={`${isRubricExpanded ? 'Minimize' : 'Maximize'} rubric section`}
+                  title={isRubricExpanded ? 'Minimize' : 'Maximize'}
                 >
-                  {assessmentLoading ? 'Trying again…' : 'Retry rubric and review'}
+                  <span aria-hidden="true">{isRubricExpanded ? '−' : '+'}</span>
                 </button>
               </div>
-            ) : activityRubric ? (
-              <>
-                <div className="activity-rubric-intro">
-                  <h4>{activityRubric.title || 'Activity rubric'}</h4>
-                  {activityRubric.description && <p>{activityRubric.description}</p>}
-                </div>
-                {Array.isArray(activityRubric.criteria) && activityRubric.criteria.length > 0 ? (
-                  <div className="activity-rubric-criteria">
-                    {activityRubric.criteria.map((criterion, criterionIndex) => (
-                      <article className="activity-rubric-criterion" key={`${criterion.name || 'criterion'}-${criterionIndex}`}>
-                        <h4>{criterionIndex + 1}. {criterion.name || 'Observable skill'}</h4>
-                        <dl>
-                          {(criterion.levels || []).map((level, levelIndex) => (
-                            <div key={`${level.code || level.label || 'level'}-${levelIndex}`}>
-                              <dt>
-                                {level.code && <span>{level.code}</span>}
-                                {level.label || reviewLevelLabel(level.code) || 'Level'}
-                              </dt>
-                              <dd>{level.description || 'No description provided.'}</dd>
-                            </div>
-                          ))}
-                        </dl>
-                      </article>
-                    ))}
+            </div>
+
+            {isRubricExpanded && (
+              <div id="activity-rubric-content">
+                {assessmentError ? (
+                  <div className="activity-rubric-error" role="status">
+                    <p className="activity-rubric-status">
+                      {isReviewed
+                        ? canUseLimitedReviewFallback
+                          ? 'Your activity has been reviewed. Your score is shown below, but the detailed rubric results could not be loaded.'
+                          : 'Your activity has been reviewed, but the score and detailed rubric results could not be loaded.'
+                        : isSubmitted
+                          ? 'Your activity was submitted, but the rubric details could not be loaded right now.'
+                          : 'We could not load how your work will be checked. Try again before starting.'}
+                    </p>
+                    <button
+                      type="button"
+                      className="activity-rubric-retry"
+                      onClick={loadAssessment}
+                      disabled={assessmentLoading}
+                      aria-label="Retry loading rubric and review details"
+                    >
+                      {assessmentLoading ? 'Trying again…' : 'Retry rubric and review'}
+                    </button>
                   </div>
+                ) : activityRubric ? (
+                  <>
+                    <div className="activity-rubric-intro">
+                      <h4>{activityRubric.title || 'Activity rubric'}</h4>
+                      {activityRubric.description && <p>{activityRubric.description}</p>}
+                    </div>
+                    {Array.isArray(activityRubric.criteria) && activityRubric.criteria.length > 0 ? (
+                      <div className="activity-rubric-criteria">
+                        {activityRubric.criteria.map((criterion, criterionIndex) => (
+                          <article className="activity-rubric-criterion" key={`${criterion.name || 'criterion'}-${criterionIndex}`}>
+                            <h4>{criterionIndex + 1}. {criterion.name || 'Observable skill'}</h4>
+                            <dl>
+                              {(criterion.levels || []).map((level, levelIndex) => (
+                                <div key={`${level.code || level.label || 'level'}-${levelIndex}`}>
+                                  <dt>
+                                    {level.code && <span>{level.code}</span>}
+                                    {level.label || reviewLevelLabel(level.code) || 'Level'}
+                                  </dt>
+                                  <dd>{level.description || 'No description provided.'}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="activity-rubric-status">Your teacher attached this rubric without criterion details.</p>
+                    )}
+                  </>
                 ) : (
-                  <p className="activity-rubric-status">Your teacher attached this rubric without criterion details.</p>
+                  <p className="activity-rubric-status">Your teacher has not attached a rubric to this activity yet.</p>
                 )}
-              </>
-            ) : (
-              <p className="activity-rubric-status">Your teacher has not attached a rubric to this activity yet.</p>
+              </div>
             )}
           </section>
         )}
@@ -472,26 +491,41 @@ const ActivityDetails = () => {
           )}
           {isStudent && isSubmitted && (
             <div className="already-submitted">
-              <h3>{isReviewed ? 'Reviewed' : 'Already submitted'}</h3>
-              {submission?.submitted_at && (
-                <p>Submitted on {formatDate(submission.submitted_at)}</p>
-              )}
-              {submission?.reviewed_at && (
-                <p>Reviewed on {formatDate(submission.reviewed_at)}</p>
-              )}
-              <button
-                className="view-ar-button"
-                type="button"
-                onClick={viewSubmittedWork}
-              >
-                View in AR
-              </button>
-              {!isReviewed && (
-                <p className="final-review-pending" role="status">
-                  Waiting for your teacher's review. Your final score and rubric results will appear here after confirmation.
-                </p>
-              )}
-              {isReviewed && finalReview ? (
+              <div className="already-submitted-heading">
+                <h3>{isReviewed ? 'Reviewed' : 'Already submitted'}</h3>
+                <button
+                  type="button"
+                  className="section-collapse-toggle section-collapse-toggle-success"
+                  onClick={() => setIsSubmissionExpanded((expanded) => !expanded)}
+                  aria-expanded={isSubmissionExpanded}
+                  aria-controls="already-submitted-content"
+                  aria-label={`${isSubmissionExpanded ? 'Minimize' : 'Maximize'} submitted activity section`}
+                  title={isSubmissionExpanded ? 'Minimize' : 'Maximize'}
+                >
+                  <span aria-hidden="true">{isSubmissionExpanded ? '−' : '+'}</span>
+                </button>
+              </div>
+              {isSubmissionExpanded && (
+                <div id="already-submitted-content">
+                  {submission?.submitted_at && (
+                    <p>Submitted on {formatDate(submission.submitted_at)}</p>
+                  )}
+                  {submission?.reviewed_at && (
+                    <p>Reviewed on {formatDate(submission.reviewed_at)}</p>
+                  )}
+                  <button
+                    className="view-ar-button"
+                    type="button"
+                    onClick={viewSubmittedWork}
+                  >
+                    View in AR
+                  </button>
+                  {!isReviewed && (
+                    <p className="final-review-pending" role="status">
+                      Waiting for your teacher's review. Your final score and rubric results will appear here after confirmation.
+                    </p>
+                  )}
+                  {isReviewed && finalReview ? (
                 <div className="review-result" aria-labelledby="final-review-heading">
                   <div className="final-review-heading">
                     <div>
@@ -592,17 +626,36 @@ const ActivityDetails = () => {
                     </div>
                   )}
                 </div>
-              ) : isReviewed ? (
-                <p className="final-review-pending" role="status">
-                  Your teacher has reviewed this activity. Detailed rubric results will appear after the review is confirmed.
-                </p>
-              ) : null}
+                  ) : isReviewed ? (
+                    <p className="final-review-pending" role="status">
+                      Your teacher has reviewed this activity. Detailed rubric results will appear after the review is confirmed.
+                    </p>
+                  ) : null}
+                </div>
+              )}
             </div>
           )}
           {isTeacher && (
             <div className="already-submitted">
-              <h3>Teacher view</h3>
-              <p>Submissions can be reviewed in the Reviews page.</p>
+              <div className="already-submitted-heading">
+                <h3>Teacher view</h3>
+                <button
+                  type="button"
+                  className="section-collapse-toggle section-collapse-toggle-success"
+                  onClick={() => setIsSubmissionExpanded((expanded) => !expanded)}
+                  aria-expanded={isSubmissionExpanded}
+                  aria-controls="teacher-view-content"
+                  aria-label={`${isSubmissionExpanded ? 'Minimize' : 'Maximize'} teacher view section`}
+                  title={isSubmissionExpanded ? 'Minimize' : 'Maximize'}
+                >
+                  <span aria-hidden="true">{isSubmissionExpanded ? '−' : '+'}</span>
+                </button>
+              </div>
+              {isSubmissionExpanded && (
+                <div id="teacher-view-content">
+                  <p>Submissions can be reviewed in the Reviews page.</p>
+                </div>
+              )}
             </div>
           )}
         </section>

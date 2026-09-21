@@ -1,4 +1,4 @@
-import { formatTimeAgo, getDueDateState } from './dateDisplay';
+import { formatRelativeDueDate, formatTimeAgo, getDueDateState } from './dateDisplay';
 
 describe('getDueDateState', () => {
   it('keeps a date-only deadline open through the end of that local calendar day', () => {
@@ -42,3 +42,20 @@ describe('formatTimeAgo', () => {
   });
 });
 
+describe('formatRelativeDueDate', () => {
+  const now = new Date(2026, 8, 21, 12, 0, 0);
+
+  it('uses natural wording for recent and older overdue dates', () => {
+    expect(formatRelativeDueDate('2026-09-20', now)).toBe('Due yesterday');
+    expect(formatRelativeDueDate('2026-09-18', now)).toBe('Due 3 days ago');
+    expect(formatRelativeDueDate('2026-09-14', now)).toBe('Due a week ago');
+    expect(formatRelativeDueDate('2026-06-21', now)).toBe('Due 3 months ago');
+    expect(formatRelativeDueDate('2025-09-21', now)).toBe('Due a year ago');
+  });
+
+  it('keeps date-only deadlines stable and handles today and future dates', () => {
+    expect(formatRelativeDueDate('2026-09-21', now)).toBe('Due today');
+    expect(formatRelativeDueDate('2026-09-22', now)).toBe('Due tomorrow');
+    expect(formatRelativeDueDate('2026-10-12', now)).toBe('Due in 3 weeks');
+  });
+});

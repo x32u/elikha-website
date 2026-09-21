@@ -8,6 +8,8 @@ export interface PaintStamp {
 }
 
 let circleAlphaMap: THREE.Texture | null = null;
+const paintMaterials = new Map<string, THREE.MeshStandardMaterial>();
+const deformedProjectionGeometry = new WeakMap<THREE.Mesh, THREE.BufferGeometry>();
 
 function getCircleAlphaMap(): THREE.Texture | null {
   if (circleAlphaMap) return circleAlphaMap;
@@ -47,6 +49,32 @@ function getCircleAlphaMap(): THREE.Texture | null {
   return texture;
 }
 
+function getPaintMaterial(color: THREE.Color, isEraser: boolean): THREE.MeshStandardMaterial {
+  const materialColor = isEraser ? new THREE.Color(0x000000) : color;
+  const key = `${materialColor.getHexString()}:${isEraser ? 'eraser' : 'paint'}`;
+  const existing = paintMaterials.get(key);
+  if (existing) return existing;
+
+  const alphaMap = getCircleAlphaMap();
+  const material = new THREE.MeshStandardMaterial({
+    color: materialColor,
+    transparent: true,
+    opacity: isEraser ? 0.45 : 0.85,
+    roughness: 0.55,
+    metalness: 0.05,
+    ...(alphaMap ? { alphaMap } : {}),
+    alphaTest: 0.35,
+    depthWrite: false,
+    depthTest: true,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -1,
+    side: THREE.DoubleSide,
+  });
+  paintMaterials.set(key, material);
+  return material;
+}
+
 /**
  * Create a paint decal at the specified position on a mesh
  */
@@ -67,30 +95,36 @@ export function createPaintDecal(
     );
     orientation.setFromQuaternion(quat);
 
+    let projectionMesh = targetMesh;
+    const hasDeformedVertices = targetMesh instanceof THREE.SkinnedMesh
+      || Boolean(targetMesh.morphTargetInfluences?.some((weight) => Math.abs(weight) > 1e-6));
+    if (hasDeformedVertices && targetMesh.geometry?.attributes?.position) {
+      let projectionGeometry = deformedProjectionGeometry.get(targetMesh);
+      if (!projectionGeometry) {
+        projectionGeometry = targetMesh.geometry.clone();
+        const positions = projectionGeometry.attributes.position as THREE.BufferAttribute;
+        const vertex = new THREE.Vector3();
+        for (let index = 0; index < positions.count; index += 1) {
+          targetMesh.getVertexPosition(index, vertex);
+          positions.setXYZ(index, vertex.x, vertex.y, vertex.z);
+        }
+        positions.needsUpdate = true;
+        deformedProjectionGeometry.set(targetMesh, projectionGeometry);
+      }
+      projectionMesh = new THREE.Mesh(projectionGeometry, targetMesh.material);
+      projectionMesh.matrixWorld.copy(targetMesh.matrixWorld);
+    }
+
     const decalGeometry = new DecalGeometry(
-      targetMesh,
+      projectionMesh,
       position,
       orientation,
       new THREE.Vector3(size, size, size)
     );
 
-    const decalMaterial = new THREE.MeshStandardMaterial({
-      color: isEraser ? new THREE.Color(0x000000) : color,
-      transparent: true,
-      opacity: isEraser ? 0.45 : 0.85,
-      roughness: 0.55,
-      metalness: 0.05,
-      alphaMap: getCircleAlphaMap() ?? undefined,
-      alphaTest: 0.35,
-      depthWrite: false,
-      depthTest: true,
-      polygonOffset: true,
-      polygonOffsetFactor: -4,
-      polygonOffsetUnits: -1,
-      side: THREE.DoubleSide,
-    });
-
+    const decalMaterial = getPaintMaterial(color, isEraser);
     const decalMesh = new THREE.Mesh(decalGeometry, decalMaterial);
+    decalMesh.userData.usesSharedPaintMaterial = true;
     return decalMesh;
   } catch (error) {
     console.warn('Failed to create decal:', error);
@@ -115,28 +149,4 @@ export function recolorModel(model: THREE.Object3D, color: THREE.Color): void {
       }
     }
   });
-}
-
-/**
- * Limit total decals by removing oldest ones
- */
-export function pruneDecals(
-  stamps: PaintStamp[],
-  maxCount: number,
-  scene: THREE.Scene
-): PaintStamp[] {
-  if (stamps.length <= maxCount) return stamps;
-
-  const toRemove = stamps.length - maxCount;
-  const removed = stamps.splice(0, toRemove);
-
-  removed.forEach((stamp) => {
-    scene.remove(stamp.mesh);
-    stamp.mesh.geometry.dispose();
-    if (stamp.mesh.material instanceof THREE.Material) {
-      stamp.mesh.material.dispose();
-    }
-  });
-
-  return stamps;
 }

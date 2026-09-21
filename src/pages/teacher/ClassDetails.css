@@ -1455,3 +1455,443 @@ body:has(.class-details-shell)::-webkit-scrollbar {
     width: 100%;
   }
 }
+
+/* Class workspace: compact roster and assignment-management rows. */
+.class-details-shell {
+  --class-accent: #3156e0;
+  --class-ink: #142142;
+  --class-muted: #687897;
+  --class-line: #dbe3f1;
+  gap: 26px;
+}
+
+.class-details-header {
+  align-items: center;
+  padding: 4px 2px;
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
+  margin-top: 0;
+  border: 1px solid #d4def0;
+  background: rgba(255, 255, 255, 0.82);
+  color: #365184;
+}
+
+.back-btn svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.class-details-title {
+  align-items: center;
+}
+
+.class-details-title h1 {
+  color: var(--class-ink);
+  font-size: clamp(27px, 3vw, 36px);
+  line-height: 1.12;
+}
+
+.class-subtitle {
+  color: var(--class-muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.edit-class-button {
+  min-height: 40px;
+  margin-top: 0;
+  padding-inline: 16px;
+  border-color: #c8d5ee;
+  color: #2848bf;
+}
+
+.class-details-layout {
+  align-items: start;
+  grid-template-columns: minmax(340px, 0.9fr) minmax(500px, 1.1fr);
+  gap: 22px;
+}
+
+.class-section {
+  padding: 0;
+  border-color: var(--class-line);
+  border-radius: 18px;
+  box-shadow: 0 12px 32px rgba(42, 63, 114, 0.07);
+}
+
+.class-section-header {
+  display: flex;
+  min-height: 84px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px;
+  border-bottom: 1px solid #e8edf6;
+}
+
+.class-section-heading {
+  min-width: 0;
+}
+
+.class-section .class-section-heading h2 {
+  margin: 0;
+  color: var(--class-ink);
+  font-size: 19px;
+  line-height: 1.25;
+}
+
+.class-section-heading p {
+  margin: 4px 0 0;
+  color: var(--class-muted);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.class-section-count {
+  display: grid;
+  min-width: 30px;
+  height: 30px;
+  place-items: center;
+  padding-inline: 8px;
+  border-radius: 999px;
+  background: #edf2ff;
+  color: #3156c9;
+  font-size: 12px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.class-section-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.enroll-panel {
+  margin: 18px 20px;
+  padding: 14px;
+  border: 1px solid #e3e9f4;
+  border-radius: 12px;
+  background: #f7f9fd;
+}
+
+.enroll-title {
+  display: block;
+  margin-bottom: 7px;
+  color: #334462;
+  font-size: 12px;
+}
+
+.enroll-row {
+  align-items: stretch;
+  gap: 8px;
+}
+
+.enroll-input {
+  min-height: 42px;
+  border-color: #d7dfec;
+  background: #fff;
+}
+
+.enroll-btn,
+.btn-add-activity {
+  min-height: 42px;
+  border-radius: 9px;
+  background: var(--class-accent);
+  box-shadow: none;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.enroll-btn:hover,
+.btn-add-activity:hover {
+  background: #2849c2;
+  box-shadow: 0 7px 16px rgba(49, 86, 224, 0.2);
+}
+
+.students-list {
+  gap: 0;
+  padding: 0 20px 18px;
+}
+
+.student-item {
+  gap: 11px;
+  padding: 13px 0;
+  border: 0;
+  border-top: 1px solid #e8edf6;
+  border-radius: 0;
+  background: transparent;
+}
+
+.student-item:hover {
+  border-color: #e8edf6;
+  background: transparent;
+}
+
+.student-avatar {
+  width: 42px;
+  height: 42px;
+  background: var(--class-accent);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+.student-avatar img {
+  border-radius: 50%;
+}
+
+.student-name {
+  color: var(--class-ink);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.student-email {
+  overflow: hidden;
+  color: var(--class-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-remove-student {
+  border-color: #efb8bf;
+  background: transparent;
+  color: #b62e40;
+}
+
+.class-activities-header {
+  margin: 0;
+}
+
+.btn-add-activity {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 14px;
+}
+
+.btn-add-activity svg,
+.btn-edit svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.class-details-shell .activities-list {
+  display: grid;
+  gap: 0;
+  padding: 0 20px 18px;
+}
+
+.class-details-shell .activities-list .activity-item,
+.class-details-shell .activities-list .activity-item.is-minimized {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  gap: 12px;
+  min-height: 76px !important;
+  padding: 13px 0 !important;
+  border: 0;
+  border-top: 1px solid #e8edf6;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.activity-list-visual {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--activity-color) 20%, #dce3f0);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--activity-color) 13%, #fff);
+  color: var(--activity-color);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.activity-list-visual img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.class-details-shell .activities-list .activity-content.activity-list-main {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+}
+
+.class-details-shell .activities-list .activity-item.is-minimized .activity-name {
+  overflow: hidden;
+  margin: 0;
+  color: var(--class-ink);
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 14px;
+  color: var(--class-muted);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-row-meta .is-past-due {
+  color: #b12c3c;
+}
+
+.class-details-shell .activities-list .activity-action {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: 0;
+}
+
+.btn-view-activity,
+.btn-edit {
+  min-height: 36px;
+  padding: 8px 11px;
+  border-radius: 8px;
+  box-shadow: none;
+  font-size: 12px;
+}
+
+.btn-edit {
+  background: var(--class-accent);
+  border-color: var(--class-accent);
+}
+
+.btn-edit:hover {
+  background: #2849c2;
+  box-shadow: 0 6px 14px rgba(49, 86, 224, 0.2);
+}
+
+.no-students,
+.class-details-shell .no-activities {
+  margin: 0;
+  padding: 30px 20px;
+  color: var(--class-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+@media (max-width: 1100px) {
+  .class-details-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .class-details-header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+  }
+
+  .back-btn {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .class-details-title {
+    min-width: 0;
+  }
+
+  .class-details-title h1 {
+    overflow: hidden;
+    font-size: 23px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .edit-class-button {
+    width: auto;
+  }
+
+  .class-section {
+    padding: 0;
+  }
+
+  .class-section-header,
+  .enroll-panel {
+    margin-right: 0;
+    margin-left: 0;
+  }
+
+  .class-section-header {
+    padding: 15px 16px;
+  }
+
+  .enroll-panel {
+    margin: 14px 16px;
+  }
+
+  .students-list,
+  .class-details-shell .activities-list {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .class-details-shell .activities-list .activity-item,
+  .class-details-shell .activities-list .activity-item.is-minimized {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .activity-list-visual {
+    width: 42px;
+    height: 42px;
+  }
+
+  .class-details-shell .activities-list .activity-action {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 430px) {
+  .class-activities-header {
+    align-items: flex-start;
+  }
+
+  .class-section-heading p {
+    display: none;
+  }
+
+  .btn-add-activity {
+    min-height: 38px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .student-item {
+    align-items: flex-start;
+  }
+
+  .student-actions {
+    align-self: center;
+  }
+}

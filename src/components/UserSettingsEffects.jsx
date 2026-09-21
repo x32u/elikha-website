@@ -56,8 +56,6 @@ export default function UserSettingsEffects() {
 
   useEffect(() => {
     latestSettingsRef.current = settings;
-    document.documentElement.dataset.elikhaDataSaver = settings.dataSaver ? 'true' : 'false';
-    document.documentElement.dataset.elikhaQuality = settings.quality;
   }, [settings]);
 
   useEffect(() => {

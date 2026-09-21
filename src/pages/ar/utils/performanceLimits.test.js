@@ -3,19 +3,10 @@ import {
   SCENE_OBJECT_PAINT_STAMP_LIMIT,
 } from './performanceLimits';
 
-describe('AR mobile performance limits', () => {
-  test('paint decal limits are finite positive integers', () => {
+describe('AR paint retention policy', () => {
+  test('never discards completed learner paint because of a stamp limit', () => {
     [BASE_MODEL_PAINT_STAMP_LIMIT, SCENE_OBJECT_PAINT_STAMP_LIMIT].forEach((limit) => {
-      expect(Number.isFinite(limit)).toBe(true);
-      expect(Number.isInteger(limit)).toBe(true);
-      expect(limit).toBeGreaterThan(0);
+      expect(limit).toBe(Number.POSITIVE_INFINITY);
     });
   });
-
-  test('base-model painting has a larger budget than added scene objects', () => {
-    expect(BASE_MODEL_PAINT_STAMP_LIMIT).toBeGreaterThan(
-      SCENE_OBJECT_PAINT_STAMP_LIMIT
-    );
-  });
 });
-
