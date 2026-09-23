@@ -14,6 +14,7 @@ import { eraseFootprint, applyErasedRegions, type ErasedRegion } from '../utils/
 import { selectPaintRecoverySource } from '../utils/paintRecovery';
 import { bindWebglContextRecovery } from '../utils/renderingRecovery';
 import { setBucketPaint, clearBucketPaint, bucketEraseAt, type BucketErase } from '../utils/bucketPaint';
+import { belongsToBucketTarget, resolveBucketTarget } from '../utils/bucketTarget';
 import type { PaintStamp } from '../utils/decals';
 import { isPointingGesture } from '../utils/gestures';
 import {
@@ -2009,6 +2010,7 @@ function ZoomController({
 
 function SceneObjectSystem({
   bucketRequest = 0,
+  bucketTarget = null,
   objectRootRef,
   initialSceneState,
   onSceneStateChange,
@@ -2033,6 +2035,7 @@ function SceneObjectSystem({
   pinchInteractionOwnerRef,
 }: {
   bucketRequest?: number;
+  bucketTarget?: THREE.Object3D | null;
   objectRootRef: React.RefObject<THREE.Group | null>;
   initialSceneState?: SerializedSceneObject[];
   onSceneStateChange?: (sceneState: SerializedSceneObject[]) => void;
@@ -2222,12 +2225,12 @@ function SceneObjectSystem({
     appliedBucketRef.current = bucketRequest;
     serializedSceneRef.current = serializedSceneRef.current.map((entry) => {
       const object = objectsRef.current.get(entry.id);
-      if (!object || !object.visible || entry.editingLocked) return entry;
+      if (!object || !belongsToBucketTarget(object, bucketTarget) || !object.visible || entry.editingLocked) return entry;
       applySceneObjectColor(object, paintColor);
       return { ...entry, color: `#${paintColor.getHexString()}`, bucketErases: [] };
     });
     emitSceneState();
-  }, [bucketRequest, emitSceneState, paintColor]);
+  }, [bucketRequest, bucketTarget, emitSceneState, paintColor]);
 
   const getSceneObjectPaintHit = useCallback((pointerX: number, pointerY: number) => {
     const hits = raycastFromFingertip(pointerX, pointerY, camera, Array.from(objectsRef.current.values()));
@@ -3317,6 +3320,7 @@ function PuzzlePieceSystem({
 // Paint system component
 function PaintSystem({
   bucketRequest = 0,
+  bucketTarget = null,
   anchorRef,
   modelRef,
   modelReadyTick,
@@ -3336,6 +3340,7 @@ function PaintSystem({
   mirrorX = true,
 }: {
   bucketRequest?: number;
+  bucketTarget?: THREE.Object3D | null;
   anchorRef: React.RefObject<THREE.Group | null>;
   modelRef: React.RefObject<THREE.Group | null>;
   modelReadyTick: number;
@@ -3527,6 +3532,7 @@ function PaintSystem({
     appliedBucketRef.current = bucketRequest;
     const fills: SerializedPaintDecal[] = [];
     root.traverseVisible((object) => {
+      if (!belongsToBucketTarget(object, bucketTarget)) return;
       if (!(object instanceof THREE.Mesh) || object.userData.isPaintDecal || object.userData.isSceneObjectPaintDecal || object.userData.isPuzzleTrace) return;
       let ancestor: THREE.Object3D | null = object;
       while (ancestor) {
@@ -3547,7 +3553,7 @@ function PaintSystem({
       ...fills,
     ];
     emitPaintState(true);
-  }, [bucketRequest, brushSize, emitPaintState, modelRef, paintColor]);
+  }, [bucketRequest, bucketTarget, brushSize, emitPaintState, modelRef, paintColor]);
 
   useEffect(() => {
     if (!modelRef.current) return;
@@ -3968,6 +3974,7 @@ function SceneContent({
   const processedModelActionRequestRef = useRef<number | null>(null);
   const [modelReadyTick, setModelReadyTick] = useState(0);
   const [bucketRequest, setBucketRequest] = useState(0);
+  const [bucketTarget, setBucketTarget] = useState<THREE.Object3D | null>(null);
   const globalBucketArmedRef = useRef(false);
   const { camera: bucketCamera } = useThree();
   useFrame(() => {
@@ -3978,8 +3985,16 @@ function SceneContent({
     if (globalBucketArmedRef.current || !anchorRef.current) return;
     const x = mirrorX ? 1 - handLandmarks.indexTip.x : handLandmarks.indexTip.x;
     const hits = raycastFromFingertip(x, handLandmarks.indexTip.y, bucketCamera, [anchorRef.current]);
-    if (!hits.some((hit) => hit.object instanceof THREE.Mesh && hit.object.visible)) return;
+    const hit = hits.find((candidate) => candidate.object instanceof THREE.Mesh && candidate.object.visible
+      && !candidate.object.userData.isPaintDecal && !candidate.object.userData.isSceneObjectPaintDecal
+      && !candidate.object.userData.isPuzzleTrace && !candidate.object.userData.elikhaSelectionHelper);
+    if (!hit) return;
+    const roots = [modelRef.current, ...Array.from(modelRefsByIdRef.current.values()).map((ref) => ref.current)]
+      .filter((root): root is THREE.Group => root !== null);
+    const target = resolveBucketTarget(hit.object, roots);
+    if (!target) return;
     globalBucketArmedRef.current = true;
+    setBucketTarget(target);
     setBucketRequest((request) => request + 1);
   });
   const [isMovingSceneObject, setIsMovingSceneObject] = useState(false);
@@ -4311,6 +4326,7 @@ function SceneContent({
 
       <SceneObjectSystem
         bucketRequest={bucketRequest}
+        bucketTarget={bucketTarget}
         objectRootRef={objectRootRef}
         initialSceneState={initialSceneState}
         onSceneStateChange={onSceneStateChange}
@@ -4416,6 +4432,7 @@ function SceneContent({
         isGrabbing={grabState.isGrabbing}
         isPinching={grabState.isPinching}
         bucketRequest={bucketRequest}
+        bucketTarget={bucketTarget}
         paintMode={paintMode && !isBucketFill}
         paintColor={paintColor}
         brushSize={brushSize}
