@@ -59,7 +59,7 @@ describe('ControlPanel selected 3D model locking', () => {
     expect(onToggleModelLock).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps touch tools at full size with scrollable overflow', async () => {
+  it('keeps short touch toolbars at full size with overflow available as a fallback', async () => {
     await act(async () => {
       root.render(
         <ControlPanel
@@ -83,6 +83,40 @@ describe('ControlPanel selected 3D model locking', () => {
     expect(panel.style.background).toBe('transparent');
     expect(panel.style.boxShadow).toBe('none');
     expect(panel.style.backdropFilter).toBe('none');
+  });
+
+  it('fits long touch toolbars and refits after content changes without tiny controls', async () => {
+    let measure;
+    let resized;
+    const originalObserver = global.ResizeObserver;
+    const raf = jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      measure = callback;
+      return 1;
+    });
+    global.ResizeObserver = class {
+      constructor(callback) { resized = callback; }
+      observe() {}
+      disconnect() {}
+    };
+    try {
+      await act(async () => root.render(
+        <ControlPanel compact paintColor={new THREE.Color('#ff0000')}
+          onPaintColorChange={jest.fn()} activeTool="paint" onToolChange={jest.fn()}
+          brushLevel={5} onBrushLevelChange={jest.fn()} />
+      ));
+      const panel = container.querySelector('.control-panel');
+      const content = container.querySelector('.control-panel-content');
+      Object.defineProperty(content, 'scrollHeight', { configurable: true, value: 1500 });
+      act(() => measure());
+      expect(panel.dataset.fitScale).toBe('0.850');
+      expect(parseFloat(panel.style.maxHeight) * 0.85).toBeCloseTo(window.innerHeight - 120);
+      Object.defineProperty(content, 'scrollHeight', { configurable: true, value: 200 });
+      act(() => { resized(); measure(); });
+      expect(panel.dataset.fitScale).toBe('1.000');
+    } finally {
+      raf.mockRestore();
+      global.ResizeObserver = originalObserver;
+    }
   });
 
   it('renders only the activity palette in its saved order', async () => {

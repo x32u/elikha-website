@@ -82,6 +82,7 @@ export function ControlPanel({
   const panelRef = useRef<HTMLDivElement>(null);
   const preferredCompactScale = vrMode ? 0.68 : 1;
   const [fitScale, setFitScale] = useState(compact ? preferredCompactScale : 1);
+  const [availablePanelHeight, setAvailablePanelHeight] = useState<number | null>(null);
   const currentColorHex = `#${paintColor.getHexString()}`;
   const enabledTools = new Set(allowedTools);
   const showColors = enabledTools.has('paint') || enabledTools.has('bucket');
@@ -97,8 +98,9 @@ export function ControlPanel({
   }, []);
 
   useLayoutEffect(() => {
-    if (!vrMode) {
+    if (!compact && !vrMode) {
       setFitScale(1);
+      setAvailablePanelHeight(null);
       return undefined;
     }
 
@@ -114,14 +116,18 @@ export function ControlPanel({
         const availableWidth = vrMode
           ? Math.max(1, viewportWidth / 2 - 12)
           : Math.max(1, viewportWidth - 16);
-        const availableHeight = Math.max(1, viewportHeight - 16);
+        const availableHeight = Math.max(1, viewportHeight - (vrMode ? 16 : 120));
         const naturalWidth = Math.max(1, panel.scrollWidth);
-        const naturalHeight = Math.max(1, panel.scrollHeight);
-        const nextScale = Math.min(
+        const content = panel.querySelector<HTMLElement>('.control-panel-content');
+        const naturalHeight = Math.max(1, vrMode ? panel.scrollHeight : (content?.scrollHeight || 0) + 8);
+        const fittedScale = Math.min(
           preferredCompactScale,
           availableWidth / naturalWidth,
           availableHeight / naturalHeight
         );
+        // Keep touch targets usable; only extreme lists fall back to overflow.
+        const nextScale = vrMode ? fittedScale : Math.max(0.85, fittedScale);
+        if (!vrMode) setAvailablePanelHeight(availableHeight);
 
         setFitScale((current) => Math.abs(current - nextScale) < 0.005 ? current : nextScale);
       });
@@ -132,6 +138,8 @@ export function ControlPanel({
       ? null
       : new ResizeObserver(fitPanelToViewport);
     if (panelRef.current) observer?.observe(panelRef.current);
+    const content = panelRef.current?.querySelector('.control-panel-content');
+    if (content) observer?.observe(content);
     window.addEventListener('resize', fitPanelToViewport);
     window.visualViewport?.addEventListener('resize', fitPanelToViewport);
 
@@ -174,9 +182,13 @@ export function ControlPanel({
         fontFamily: 'system-ui, sans-serif',
         fontSize: compact ? 11 : 14,
         zIndex: 1000,
-        maxWidth: vrMode ? 'calc(50vw - 12px)' : compact ? 'min(360px, calc(100vw - 16px))' : 320,
-        width: vrMode ? 'min(44vw, 360px)' : compact ? 'min(360px, calc(100vw - 16px))' : 'auto',
-        maxHeight: compact && !vrMode ? 'calc(100dvh - 110px - env(safe-area-inset-bottom))' : 'none',
+        maxWidth: vrMode ? 'calc(50vw - 12px)' : compact ? 'calc(100vw - 24px)' : 320,
+        width: vrMode ? 'min(44vw, 360px)' : compact ? 'min(520px, max(320px, 44vw), calc(100vw - 24px))' : 'auto',
+        maxHeight: compact && !vrMode
+          ? availablePanelHeight === null
+            ? 'calc(100dvh - 120px)'
+            : `${availablePanelHeight / fitScale}px`
+          : 'none',
         overflow: compact && !vrMode ? 'auto' : 'visible',
         display: 'flex',
         flexDirection: 'column',
