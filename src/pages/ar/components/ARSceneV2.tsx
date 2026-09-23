@@ -9,6 +9,7 @@ import type { HandLandmarks, GrabState, DebugInfo, PalmPosition } from '../hooks
 import { CONFIG } from '../hooks/useHandTrackingV2';
 import { raycastFromFingertip } from '../utils/raycasting';
 import { createPaintDecal } from '../utils/decals';
+import { eraseFootprint, applyErasedRegions, type ErasedRegion } from '../utils/paintErasing';
 import { selectPaintRecoverySource } from '../utils/paintRecovery';
 import { bindWebglContextRecovery } from '../utils/renderingRecovery';
 import { recolorModel } from '../utils/decals';
@@ -36,6 +37,7 @@ import { placeModelInView } from '../utils/modelPlacement';
 export type { SerializedBaseModelTransform } from '../utils/baseModelTransform';
 
 export interface SerializedPaintDecal {
+  erasedRegions?: ErasedRegion[];
   id: string;
   meshPath: number[];
   point: [number, number, number];
@@ -49,6 +51,7 @@ export interface SerializedPaintDecal {
 }
 
 export interface SerializedSceneObjectPaintDecal {
+  erasedRegions?: ErasedRegion[];
   id: string;
   point: [number, number, number];
   normal: [number, number, number];
@@ -157,6 +160,7 @@ interface ARSceneV2Props {
   selectedModelId?: string | null;
   modelActionRequest?: ModelActionRequest | null;
   onModelSelectionChange?: (selection: ModelSelection | null) => void;
+  onRemoveModel?: (id: string) => void;
   onModelFeedback?: (message: string) => void;
   groupBaseModels?: boolean;
   puzzlePieces?: number;
@@ -394,6 +398,7 @@ function normalizeSerializedPaintState(
     .map((item, index) => ({
       id: typeof item.id === 'string' && item.id ? item.id : `stamp-${index}`,
       meshPath: item.meshPath.filter((v) => Number.isInteger(v) && v >= 0),
+      erasedRegions: item.erasedRegions || [],
       point: [
         Number(item.point?.[0]) || 0,
         Number(item.point?.[1]) || 0,
@@ -421,6 +426,7 @@ function normalizeSerializedSceneObjectPaintState(
     .filter((item) => item)
     .map((item, index) => ({
       id: typeof item.id === 'string' && item.id ? item.id : `scene-stamp-${index}`,
+      erasedRegions: item.erasedRegions || [],
       point: [
         Number(item.point?.[0]) || 0,
         Number(item.point?.[1]) || 0,
@@ -898,15 +904,6 @@ function findPuzzlePieceRoot(
   return pieceRoot;
 }
 
-function isDescendantOf(object: THREE.Object3D | null, ancestor: THREE.Object3D): boolean {
-  let current = object;
-  while (current) {
-    if (current === ancestor) return true;
-    current = current.parent;
-  }
-  return false;
-}
-
 function sameObjectPath(a: number[] = [], b: number[] = []): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
@@ -1172,21 +1169,12 @@ function disposePaintDecalMesh(object: THREE.Object3D) {
   object.parent?.remove(object);
   renderable.geometry?.dispose?.();
   if (object.userData?.usesSharedPaintMaterial) return;
+  if (object.userData.eraseCanvas) (renderable.material as THREE.MeshStandardMaterial)?.alphaMap?.dispose();
   if (Array.isArray(renderable.material)) {
     renderable.material.forEach((material) => material.dispose());
   } else {
     renderable.material?.dispose?.();
   }
-}
-
-function clearSceneObjectPaintDecals(sceneObject: THREE.Object3D) {
-  const decals: THREE.Object3D[] = [];
-  sceneObject.traverse((child) => {
-    if (child.userData?.isSceneObjectPaintDecal) {
-      decals.push(child);
-    }
-  });
-  decals.forEach(disposePaintDecalMesh);
 }
 
 function buildSceneObjectMesh(serialized: SerializedSceneObject): THREE.Object3D | null {
@@ -1232,6 +1220,7 @@ function buildSceneObjectMesh(serialized: SerializedSceneObject): THREE.Object3D
     );
     if (!decal) return;
     attachSceneObjectDecal(group, mesh, decal, stamp.layer || index + 1, stamp.id);
+    applyErasedRegions(decal, stamp.erasedRegions || []);
   });
 
   return group;
@@ -1247,6 +1236,7 @@ function findSceneObjectAncestor(object: THREE.Object3D | null): THREE.Object3D 
 
 function applySceneObjectColor(object: THREE.Object3D, color: THREE.Color): void {
   object.traverse((child) => {
+    if (child.userData.isSceneObjectPaintDecal || child.userData.isPaintDecal) return;
     if (!(child instanceof THREE.Mesh)) return;
     const materials = Array.isArray(child.material) ? child.material : [child.material];
     materials.forEach((material) => {
@@ -1649,6 +1639,8 @@ function PinchMoveController({
 }
 
 function MultiModelMoveController({
+  isRemoveTool = false,
+  onRemoveModel,
   modelIds,
   modelRefsByIdRef,
   interactionRootRef,
@@ -1669,6 +1661,8 @@ function MultiModelMoveController({
   onModelMoveActiveChange,
   onModelTransformChange,
 }: {
+  isRemoveTool?: boolean;
+  onRemoveModel?: (id: string) => void;
   modelIds: string[];
   modelRefsByIdRef: React.MutableRefObject<Map<string, React.RefObject<THREE.Group | null>>>;
   interactionRootRef: React.RefObject<THREE.Group | null>;
@@ -1691,6 +1685,7 @@ function MultiModelMoveController({
 }) {
   const { camera, scene, size } = useThree();
   const activeModelIdRef = useRef<string | null>(null);
+  const removeModelArmedRef = useRef(false);
   const pinchMoveActiveRef = useRef(false);
   const pinchStartPalmRef = useRef<PalmPosition | null>(null);
   const pinchStartWorldRef = useRef<THREE.Vector3>(new THREE.Vector3());
@@ -1805,6 +1800,24 @@ function MultiModelMoveController({
 
   useFrame(() => {
     const selectableModels = getSelectableModels();
+    if (isRemoveTool) {
+      resetMove();
+      if (!handLandmarks || isPinching || !isPointingGesture(handLandmarks)) {
+        removeModelArmedRef.current = false;
+        return;
+      }
+      if (removeModelArmedRef.current || !interactionRootRef.current) return;
+      const x = mirrorX ? 1 - handLandmarks.indexTip.x : handLandmarks.indexTip.x;
+      const hits = raycastFromFingertip(x, handLandmarks.indexTip.y, camera, [interactionRootRef.current]);
+      const id = resolvePinchedModelId(hits, selectableModels);
+      if (id) {
+        removeModelArmedRef.current = true;
+        if (isBaseModelEditingLocked(selectableModels.get(id))) onModelFeedback?.('Unlock this model before removing it.');
+        else onRemoveModel?.(id);
+      }
+      return;
+    }
+    removeModelArmedRef.current = false;
     // A single-model activity has no model toolbar. Let a fist immediately
     // rotate that model without requiring a prior pinch selection; multi-model
     // activities still require selecting the model first.
@@ -2013,6 +2026,7 @@ function ZoomController({
 }
 
 function SceneObjectSystem({
+  bucketRequest = 0,
   objectRootRef,
   initialSceneState,
   onSceneStateChange,
@@ -2036,6 +2050,7 @@ function SceneObjectSystem({
   movementDisabled = false,
   pinchInteractionOwnerRef,
 }: {
+  bucketRequest?: number;
   objectRootRef: React.RefObject<THREE.Group | null>;
   initialSceneState?: SerializedSceneObject[];
   onSceneStateChange?: (sceneState: SerializedSceneObject[]) => void;
@@ -2211,14 +2226,25 @@ function SceneObjectSystem({
     }
 
     applySceneObjectColor(object, color);
-    clearSceneObjectPaintDecals(object);
-    scenePaintStampsRef.current.set(objectId, []);
     serializedSceneRef.current = serializedSceneRef.current.map((entry) => (
-      entry.id === objectId ? { ...entry, color: nextColor, paint: [] } : entry
+      entry.id === objectId ? { ...entry, color: nextColor } : entry
     ));
     emitSceneState();
     return true;
   }, [emitSceneState]);
+
+  const appliedBucketRef = useRef(0);
+  useEffect(() => {
+    if (!bucketRequest || appliedBucketRef.current === bucketRequest) return;
+    appliedBucketRef.current = bucketRequest;
+    serializedSceneRef.current = serializedSceneRef.current.map((entry) => {
+      const object = objectsRef.current.get(entry.id);
+      if (!object || !object.visible || entry.editingLocked) return entry;
+      applySceneObjectColor(object, paintColor);
+      return { ...entry, color: `#${paintColor.getHexString()}` };
+    });
+    emitSceneState();
+  }, [bucketRequest, emitSceneState, paintColor]);
 
   const getSceneObjectPaintHit = useCallback((pointerX: number, pointerY: number) => {
     const hits = raycastFromFingertip(pointerX, pointerY, camera, Array.from(objectsRef.current.values()));
@@ -2332,26 +2358,23 @@ function SceneObjectSystem({
     const existingStamps = scenePaintStampsRef.current.get(hitInfo.objectId) || [];
     if (existingStamps.length === 0) return false;
 
-    const eraseRadius = Math.max(brushSize * 1.25, 0.025);
+    const eraseRadius = Math.max(brushSize * 0.5, 0.005);
     const removedIds = new Set<string>();
     const remainingStamps: PaintStamp[] = [];
     const targetPoint = hitInfo.hit.point.clone();
 
     existingStamps.forEach((stamp) => {
-      const geometry = stamp.mesh.geometry as THREE.BufferGeometry;
-      if (!geometry.boundingSphere) {
-        geometry.computeBoundingSphere();
-      }
-      stamp.mesh.updateWorldMatrix(true, false);
-      const center = geometry.boundingSphere?.center ?? new THREE.Vector3();
-      const worldCenter = center.clone().applyMatrix4(stamp.mesh.matrixWorld);
-
-      if (worldCenter.distanceTo(targetPoint) <= eraseRadius) {
+      const region = eraseFootprint(stamp.mesh, targetPoint, eraseRadius);
+      if (region) {
         removedIds.add(stamp.id);
-        disposePaintDecalMesh(stamp.mesh);
-      } else {
-        remainingStamps.push(stamp);
+        applyErasedRegions(stamp.mesh, [region]);
+        serializedSceneRef.current = serializedSceneRef.current.map((entry) => entry.id !== hitInfo.objectId ? entry : {
+          ...entry, paint: (entry.paint || []).map((saved) => saved.id !== stamp.id ? saved : {
+            ...saved, erasedRegions: [...(saved.erasedRegions || []), region],
+          }),
+        });
       }
+      remainingStamps.push(stamp);
     });
 
     if (removedIds.size === 0) return false;
@@ -2361,8 +2384,7 @@ function SceneObjectSystem({
       entry.id === hitInfo.objectId
         ? {
             ...entry,
-            paint: normalizeSerializedSceneObjectPaintState(entry.paint)
-              .filter((stamp) => !removedIds.has(stamp.id)),
+            paint: normalizeSerializedSceneObjectPaintState(entry.paint),
           }
         : entry
     ));
@@ -3303,6 +3325,7 @@ function PuzzlePieceSystem({
 
 // Paint system component
 function PaintSystem({
+  bucketRequest = 0,
   anchorRef,
   modelRef,
   modelReadyTick,
@@ -3321,6 +3344,7 @@ function PaintSystem({
   stateVersion = 0,
   mirrorX = true,
 }: {
+  bucketRequest?: number;
   anchorRef: React.RefObject<THREE.Group | null>;
   modelRef: React.RefObject<THREE.Group | null>;
   modelReadyTick: number;
@@ -3376,6 +3400,7 @@ function PaintSystem({
     stamp.mesh.parent?.remove(stamp.mesh);
     stamp.mesh.geometry.dispose();
     if (stamp.mesh.userData?.usesSharedPaintMaterial) return;
+    if (stamp.mesh.userData.eraseCanvas) (stamp.mesh.material as THREE.MeshStandardMaterial).alphaMap?.dispose();
     if (stamp.mesh.material instanceof THREE.Material) {
       stamp.mesh.material.dispose();
     } else if (Array.isArray(stamp.mesh.material)) {
@@ -3437,6 +3462,7 @@ function PaintSystem({
 
     root.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return;
+      if (child.userData.isPaintDecal || child.userData.isSceneObjectPaintDecal) return;
       const materials = Array.isArray(child.material) ? child.material : [child.material];
       materials.forEach((material) => {
         if (!material || seenMaterials.has(material)) return;
@@ -3496,6 +3522,35 @@ function PaintSystem({
   useEffect(() => {
     bucketArmedRef.current = false;
   }, [isBucketFill]);
+
+  const appliedBucketRef = useRef(0);
+  useEffect(() => {
+    const root = modelRef.current;
+    if (!bucketRequest || !root || appliedBucketRef.current === bucketRequest) return;
+    appliedBucketRef.current = bucketRequest;
+    const fills: SerializedPaintDecal[] = [];
+    root.traverseVisible((object) => {
+      if (!(object instanceof THREE.Mesh) || object.userData.isPaintDecal || object.userData.isSceneObjectPaintDecal || object.userData.isPuzzleTrace) return;
+      let ancestor: THREE.Object3D | null = object;
+      while (ancestor) {
+        if (isBaseModelEditingLocked(ancestor)) return;
+        if (ancestor === root) break;
+        ancestor = ancestor.parent;
+      }
+      const path = getObjectPath(root, object);
+      if (!path) return;
+      recolorModel(object, paintColor);
+      fills.push({ id: `fill-${bucketRequest}-${fills.length}`, meshPath: path,
+        point: [0, 0, 0], normal: [0, 0, 1], size: brushSize,
+        color: `#${paintColor.getHexString()}`, timestamp: Date.now(), mode: 'fill' });
+    });
+    if (!fills.length) return;
+    serializedPaintRef.current = [
+      ...serializedPaintRef.current.filter((stamp) => stamp.mode !== 'fill' || !fills.some((fill) => sameObjectPath(fill.meshPath, stamp.meshPath))),
+      ...fills,
+    ];
+    emitPaintState(true);
+  }, [bucketRequest, brushSize, emitPaintState, modelRef, paintColor]);
 
   useEffect(() => {
     if (!modelRef.current) return;
@@ -3579,6 +3634,7 @@ function PaintSystem({
 
       if (!decal) return;
       decal.userData.isPaintDecal = true;
+      applyErasedRegions(decal, savedStamp.erasedRegions || []);
       const layer = savedStamp.layer || restoredStamps.length + 1;
       applyDecalLayer(decal, layer);
 
@@ -3706,26 +3762,10 @@ function PaintSystem({
       if (!bucketArmedRef.current) {
         const modelRoot = modelRef.current;
         const puzzlePieceRoot = findPuzzlePieceRoot(targetMesh, modelRoot);
-        const fillRoot = puzzlePieceRoot || modelRoot;
-        const fillPath = puzzlePieceRoot ? getObjectPath(modelRoot, fillRoot) || [] : [];
-        const removedStampIds = new Set<string>();
-
-        if (puzzlePieceRoot) {
-          paintStampsRef.current = paintStampsRef.current.filter((stamp) => {
-            if (isDescendantOf(stamp.mesh, fillRoot)) {
-              removedStampIds.add(stamp.id);
-              disposeStamp(stamp);
-              return false;
-            }
-            return true;
-          });
-        } else {
-          paintStampsRef.current.forEach((stamp) => {
-            removedStampIds.add(stamp.id);
-            disposeStamp(stamp);
-          });
-          paintStampsRef.current = [];
-        }
+        let instanceRoot: THREE.Object3D = targetMesh;
+        while (instanceRoot.parent && instanceRoot.parent !== modelRoot && !instanceRoot.userData.activityModelId) instanceRoot = instanceRoot.parent;
+        const fillRoot = puzzlePieceRoot || (instanceRoot.userData.activityModelId ? instanceRoot : modelRoot);
+        const fillPath = getObjectPath(modelRoot, fillRoot) || [];
 
         recolorModel(fillRoot, paintColor);
         bucketArmedRef.current = true;
@@ -3743,16 +3783,10 @@ function PaintSystem({
           targetId: getPaintTargetId(targetMesh),
         };
 
-        serializedPaintRef.current = puzzlePieceRoot
-          ? [
-              ...serializedPaintRef.current.filter((stamp) => {
-                if (removedStampIds.has(stamp.id)) return false;
-                if (stamp.mode === 'fill' && sameObjectPath(stamp.meshPath, fillPath)) return false;
-                return true;
-              }),
-              fillStamp,
-            ]
-          : [fillStamp];
+        serializedPaintRef.current = [
+          ...serializedPaintRef.current.filter((stamp) => !(stamp.mode === 'fill' && sameObjectPath(stamp.meshPath, fillPath))),
+          fillStamp,
+        ];
         emitPaintState(true);
       }
 
@@ -3788,32 +3822,24 @@ function PaintSystem({
     const worldNormal = smoothedNormal.current.clone();
 
     if (isEraser) {
-      const eraseRadius = Math.max(brushSize * 1.2, 0.02);
+      const eraseRadius = Math.max(brushSize * 0.5, 0.005);
       const remainingStamps: PaintStamp[] = [];
       const removedStampIds = new Set<string>();
 
       paintStampsRef.current.forEach((stamp) => {
-        const geom = stamp.mesh.geometry as THREE.BufferGeometry;
-        if (!geom.boundingSphere) {
-          geom.computeBoundingSphere();
-        }
-        stamp.mesh.updateMatrixWorld(true);
-        const center = geom.boundingSphere?.center ?? new THREE.Vector3();
-        const worldCenter = center.clone().applyMatrix4(stamp.mesh.matrixWorld);
-
-        if (worldCenter.distanceTo(targetPoint) <= eraseRadius) {
+        const region = eraseFootprint(stamp.mesh, targetPoint, eraseRadius);
+        if (region) {
           removedStampIds.add(stamp.id);
-          disposeStamp(stamp);
-        } else {
-          remainingStamps.push(stamp);
+          applyErasedRegions(stamp.mesh, [region]);
+          serializedPaintRef.current = serializedPaintRef.current.map((saved) => saved.id !== stamp.id ? saved : {
+            ...saved, erasedRegions: [...(saved.erasedRegions || []), region],
+          });
         }
+        remainingStamps.push(stamp);
       });
 
-      if (remainingStamps.length !== paintStampsRef.current.length) {
+      if (removedStampIds.size > 0) {
         paintStampsRef.current = remainingStamps;
-        serializedPaintRef.current = serializedPaintRef.current.filter(
-          (stamp) => !removedStampIds.has(stamp.id)
-        );
         emitPaintState(false);
       }
 
@@ -3919,6 +3945,7 @@ function SceneContent({
   modelFileType,
   modelConfigs,
   toolbarPlacement = false,
+  onRemoveModel,
   handLandmarks,
   grabState,
   debugInfo,
@@ -3969,6 +3996,21 @@ function SceneContent({
   const modelErrorsByIdRef = useRef<Map<string, string>>(new Map());
   const processedModelActionRequestRef = useRef<number | null>(null);
   const [modelReadyTick, setModelReadyTick] = useState(0);
+  const [bucketRequest, setBucketRequest] = useState(0);
+  const globalBucketArmedRef = useRef(false);
+  const { camera: bucketCamera } = useThree();
+  useFrame(() => {
+    if (!paintMode || !isBucketFill || !handLandmarks || grabState.isPinching || grabState.isGrabbing || !isPointingGesture(handLandmarks)) {
+      globalBucketArmedRef.current = false;
+      return;
+    }
+    if (globalBucketArmedRef.current || !anchorRef.current) return;
+    const x = mirrorX ? 1 - handLandmarks.indexTip.x : handLandmarks.indexTip.x;
+    const hits = raycastFromFingertip(x, handLandmarks.indexTip.y, bucketCamera, [anchorRef.current]);
+    if (!hits.some((hit) => hit.object instanceof THREE.Mesh && hit.object.visible)) return;
+    globalBucketArmedRef.current = true;
+    setBucketRequest((request) => request + 1);
+  });
   const [isMovingSceneObject, setIsMovingSceneObject] = useState(false);
   const [isMovingPuzzlePiece, setIsMovingPuzzlePiece] = useState(false);
   const [isMovingBaseModel, setIsMovingBaseModel] = useState(false);
@@ -4267,6 +4309,8 @@ function SceneContent({
 
       {normalizedPuzzlePieces === 0 && !groupBaseModels && (
         <MultiModelMoveController
+          isRemoveTool={isRemoveTool}
+          onRemoveModel={onRemoveModel}
           allowSelectedPinch={!paintMode}
           modelIds={baseModelIds}
           modelRefsByIdRef={modelRefsByIdRef}
@@ -4295,6 +4339,7 @@ function SceneContent({
       )}
 
       <SceneObjectSystem
+        bucketRequest={bucketRequest}
         objectRootRef={objectRootRef}
         initialSceneState={initialSceneState}
         onSceneStateChange={onSceneStateChange}
@@ -4306,7 +4351,7 @@ function SceneContent({
         handLandmarks={handLandmarks}
         isPinching={grabState.isPinching}
         isRemoveTool={isRemoveTool}
-        canPaintObjects={paintMode && !isRemoveTool}
+        canPaintObjects={paintMode && !isRemoveTool && !isBucketFill}
         paintColor={paintColor}
         brushSize={brushSize}
         isEraser={isEraser}
@@ -4336,7 +4381,7 @@ function SceneContent({
             isRemoveTool={isRemoveTool}
             stateVersion={stateVersion}
             palmCenter={grabState.currentPosition}
-            editingEnabled={!isRemoveTool && !groupBaseModels}
+            editingEnabled={!groupBaseModels}
             disabled={isMovingSceneObject || isMovingBaseModel || groupBaseModels}
             onPuzzleMoveActiveChange={setIsMovingPuzzlePiece}
             onPuzzleReady={() => setPuzzleReadyTick((prev) => prev + 1)}
@@ -4362,7 +4407,7 @@ function SceneContent({
           isRemoveTool={isRemoveTool}
           stateVersion={stateVersion}
           palmCenter={grabState.currentPosition}
-          editingEnabled={!isRemoveTool && !groupBaseModels}
+          editingEnabled={!groupBaseModels}
           disabled={isMovingSceneObject || isMovingBaseModel || groupBaseModels}
           onPuzzleMoveActiveChange={setIsMovingPuzzlePiece}
           onPuzzleReady={() => setPuzzleReadyTick((prev) => prev + 1)}
@@ -4399,7 +4444,8 @@ function SceneContent({
         handLandmarks={handLandmarks}
         isGrabbing={grabState.isGrabbing}
         isPinching={grabState.isPinching}
-        paintMode={paintMode}
+        bucketRequest={bucketRequest}
+        paintMode={paintMode && !isBucketFill}
         paintColor={paintColor}
         brushSize={brushSize}
         isEraser={isEraser}

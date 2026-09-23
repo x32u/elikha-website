@@ -754,6 +754,27 @@ function ARApp({
     groupStateRef.current = nextGroupState;
   }, [markInteraction, pushUndoSnapshot]);
 
+  const handleRemoveModel = useCallback((id: string) => {
+    if (!toolbarPlacement || applyingUndoRef.current) return;
+    const index = placedModelConfigs.findIndex((model) => model.instanceId === id);
+    if (index < 0) return;
+    pushUndoSnapshot('model:remove');
+    const paint = paintStateRef.current.filter((stamp) => stamp.meshPath[0] !== index).map((stamp) => ({
+      ...stamp, meshPath: stamp.meshPath.map((part, depth) => depth === 0 && part > index ? part - 1 : part),
+    }));
+    const model = modelStateRef.current.filter((entry) => entry.id !== id);
+    paintStateRef.current = paint;
+    modelStateRef.current = model;
+    setPlacedModelConfigs((current) => current.filter((entry) => entry.instanceId !== id));
+    setHydratedArState((current) => ({
+      paint, model, scene: sceneStateRef.current, puzzle: puzzleStateRef.current,
+      group: groupStateRef.current, version: current.version + 1,
+    }));
+    setSelectedModel(null);
+    setSelectedModelId(null);
+    announce('Model removed. Use Undo to restore it.');
+  }, [announce, placedModelConfigs, pushUndoSnapshot, toolbarPlacement]);
+
   useEffect(() => {
     if (isViewMode) return undefined;
 
@@ -1448,6 +1469,7 @@ function ARApp({
         modelFileType={modelFileType || undefined}
         modelConfigs={renderedModelConfigs}
         toolbarPlacement={toolbarPlacement}
+        onRemoveModel={handleRemoveModel}
         handLandmarks={arInteractionAllowed && !historyRestoring ? landmarks : null}
         grabState={grabState}
         debugInfo={debugInfo}

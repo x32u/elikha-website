@@ -137,6 +137,7 @@ export function createPaintDecal(
  */
 export function recolorModel(model: THREE.Object3D, color: THREE.Color): void {
   model.traverse((child) => {
+    if (child.userData.isPaintDecal || child.userData.isSceneObjectPaintDecal) return;
     if (child instanceof THREE.Mesh) {
       if (Array.isArray(child.material)) {
         child.material.forEach((mat) => {
