@@ -8,17 +8,10 @@ const countModels = (modelIds = []) => {
   return counts;
 };
 
-const clampQuantity = (value, maxQuantity) => {
-  const count = Number(value);
-  if (!Number.isFinite(count)) return 1;
-  return Math.max(0, Math.min(maxQuantity, Math.floor(count)));
-};
-
 const ActivityModelSelector = ({
   modelOptions = [],
   modelIds = [],
   onChange,
-  maxQuantity = 12,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -89,16 +82,6 @@ const ActivityModelSelector = ({
     };
   }, [closeLibrary, isOpen]);
 
-  const updateQuantity = (modelId, nextQuantity) => {
-    const counts = countModels(modelIds);
-    const quantity = clampQuantity(nextQuantity, maxQuantity);
-    if (quantity === 0 && selectedModels.length > 1) counts.delete(modelId);
-    else counts.set(modelId, Math.max(1, quantity));
-    onChange?.(modelOptions.flatMap((model) => (
-      Array.from({ length: counts.get(model.id) || 0 }, () => model.id)
-    )));
-  };
-
   const toggleDraftModel = (modelId) => {
     setDraftSelection((current) => {
       const next = new Set(current);
@@ -112,21 +95,18 @@ const ActivityModelSelector = ({
     if (draftSelection.size === 0) return;
     const nextIds = modelOptions.flatMap((model) => {
       if (!draftSelection.has(model.id)) return [];
-      const quantity = modelCounts.get(model.id) || 1;
-      return Array.from({ length: quantity }, () => model.id);
+      return [model.id];
     });
     onChange?.(nextIds);
     closeLibrary();
   };
-
-  const totalQuantity = modelIds.length;
 
   return (
     <div className="activity-model-selector">
       <div className="activity-model-selector__summary">
         <div>
           <strong>Selected Models</strong>
-          <span>{selectedModels.length} types, {totalQuantity} total</span>
+          <span>{selectedModels.length} available in the student toolbar</span>
         </div>
         <button
           ref={triggerRef}
@@ -140,7 +120,6 @@ const ActivityModelSelector = ({
 
       <div className="activity-model-selector__selected" aria-live="polite">
         {selectedModels.map((model) => {
-          const quantity = modelCounts.get(model.id) || 1;
           const isOnlyModel = selectedModels.length === 1;
           return (
             <div className="activity-model-selector__row" key={model.id}>
@@ -148,27 +127,18 @@ const ActivityModelSelector = ({
               <div className="activity-model-selector__quantity">
                 <button
                   type="button"
-                  onClick={() => updateQuantity(model.id, quantity - 1)}
-                  disabled={quantity <= 1 && isOnlyModel}
-                  aria-label={`Decrease ${model.label} quantity`}
+                  onClick={() => onChange?.([...new Set(modelIds)].filter((id) => id !== model.id))}
+                  disabled={isOnlyModel}
+                  aria-label={`Remove ${model.label}`}
                 >
                   −
-                </button>
-                <span aria-label={`${model.label} quantity ${quantity}`}>{quantity}</span>
-                <button
-                  type="button"
-                  onClick={() => updateQuantity(model.id, quantity + 1)}
-                  disabled={quantity >= maxQuantity}
-                  aria-label={`Increase ${model.label} quantity`}
-                >
-                  +
                 </button>
               </div>
             </div>
           );
         })}
       </div>
-      <small className="form-help">Choose models in the library, then set how many students need.</small>
+      <small className="form-help">Students tap a model in their toolbar to add a copy when they need it.</small>
 
       {isOpen && createPortal(
         <div

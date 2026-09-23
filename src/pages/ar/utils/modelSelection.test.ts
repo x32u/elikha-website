@@ -9,6 +9,24 @@ const hit = (object: THREE.Object3D, distance: number): THREE.Intersection => ({
 });
 
 describe('resolvePinchedModelId', () => {
+  test('moves a newly selected toolbar copy on the first pinch without rotation', () => {
+    const id = 'bottle::copy::new';
+    const models = new Map([[id, new THREE.Group()]]);
+    expect(resolvePinchedModelId([], models, id)).toBe(id);
+    expect(resolvePinchedModelId([], models)).toBeNull();
+    expect(resolvePinchedModelId([], models, 'not-loaded')).toBeNull();
+  });
+
+  test('selected-model fallback does not grab through a foreground object', () => {
+    const foreground = new THREE.Mesh();
+    foreground.userData.sceneObjectId = 'shape';
+    expect(resolvePinchedModelId([hit(foreground, 1)], new Map([['bottle', new THREE.Group()]]), 'bottle')).toBeNull();
+  });
+
+  test('a direct hit selects another model instead of the toolbar selection', () => {
+    const other = new THREE.Mesh();
+    expect(resolvePinchedModelId([hit(other, 1)], new Map<string, THREE.Object3D>([['bottle', new THREE.Group()], ['other', other]]), 'bottle')).toBe('other');
+  });
   test('selects the model that owns the nearest hit mesh', () => {
     const model = new THREE.Group();
     const nested = new THREE.Group();

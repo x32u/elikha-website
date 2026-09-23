@@ -31,6 +31,7 @@ import {
   toggleBaseModelEditingLocked,
 } from '../utils/baseModelTransform';
 import type { SerializedBaseModelTransform } from '../utils/baseModelTransform';
+import { placeModelInView } from '../utils/modelPlacement';
 
 export type { SerializedBaseModelTransform } from '../utils/baseModelTransform';
 
@@ -128,6 +129,7 @@ interface ARSceneV2Props {
   modelUrl?: string;
   modelFileType?: string;
   modelConfigs?: BaseArModelConfig[];
+  toolbarPlacement?: boolean;
   handLandmarks: HandLandmarks | null;
   grabState: GrabState;
   debugInfo: DebugInfo;
@@ -213,7 +215,7 @@ function normalizeBaseModelConfigs(
       }];
 
   return source.map((model, index) => ({
-    instanceId: source.length > 1 ? (model.instanceId || `model-${index}`) : '',
+    instanceId: model.instanceId || (source.length > 1 ? `model-${index}` : ''),
     id: model.id || `model-${index}`,
     label: model.label || `Model ${index + 1}`,
     modelUrl: model.modelUrl,
@@ -266,6 +268,7 @@ function SceneModelLoader({
   position,
   scale,
   initialTransform,
+  placeInView = false,
   onModelLoad,
   onModelError,
 }: {
@@ -273,10 +276,13 @@ function SceneModelLoader({
   position: [number, number, number];
   scale: number;
   initialTransform?: SerializedBaseModelTransform | null;
+  placeInView?: boolean;
   onModelLoad: (instanceId: string, model: THREE.Group) => void;
   onModelError: (instanceId: string, label: string, message: string) => void;
 }) {
   const [loadedModel, setLoadedModel] = useState<THREE.Group | null>(null);
+  const initializedModelRef = useRef<THREE.Group | null>(null);
+  const { camera } = useThree();
   const instanceId = model.instanceId || model.id;
 
   const handleLoad = useCallback((nextModel: THREE.Group) => {
@@ -290,9 +296,16 @@ function SceneModelLoader({
 
   useEffect(() => {
     if (!loadedModel) return;
+    if (initializedModelRef.current !== loadedModel) {
+      initializedModelRef.current = loadedModel;
+      if (initialTransform) {
+        applyBaseModelTransform(loadedModel, initialTransform);
+      } else if (placeInView) {
+        placeModelInView(loadedModel, camera);
+      }
+    }
     onModelLoad(instanceId, loadedModel);
-    applyBaseModelTransform(loadedModel, initialTransform);
-  }, [initialTransform, instanceId, loadedModel, onModelLoad]);
+  }, [camera, initialTransform, instanceId, loadedModel, onModelLoad, placeInView]);
 
   return (
     <ModelLoader
@@ -1640,6 +1653,7 @@ function MultiModelMoveController({
   modelRefsByIdRef,
   interactionRootRef,
   selectedModelId,
+  allowSelectedPinch = false,
   handLandmarks,
   isPinching,
   palmCenter,
@@ -1659,6 +1673,7 @@ function MultiModelMoveController({
   modelRefsByIdRef: React.MutableRefObject<Map<string, React.RefObject<THREE.Group | null>>>;
   interactionRootRef: React.RefObject<THREE.Group | null>;
   selectedModelId?: string | null;
+  allowSelectedPinch?: boolean;
   handLandmarks: HandLandmarks | null;
   isPinching: boolean;
   palmCenter: PalmPosition | null;
@@ -1898,7 +1913,7 @@ function MultiModelMoveController({
       const pointerX = mirrorX ? 1 - pinchX : pinchX;
       const pointerY = pinchY;
       const hits = raycastFromFingertip(pointerX, pointerY, camera, [interactionRoot]);
-      const resolvedModelId = resolvePinchedModelId(hits, selectableModels);
+      const resolvedModelId = resolvePinchedModelId(hits, selectableModels, allowSelectedPinch ? selectedModelId : null);
       const pinchedModel = resolvedModelId ? selectableModels.get(resolvedModelId) : null;
       if (!resolvedModelId || !pinchedModel) return;
 
@@ -3430,7 +3445,7 @@ function PaintSystem({
         if (color instanceof THREE.Color) {
           snapshots.push({
             material: material as THREE.Material & { color?: THREE.Color },
-            color: color.clone(),
+            color: baseMaterialColorsRef.current.find((entry) => entry.material === material)?.color.clone() || color.clone(),
           });
         }
       });
@@ -3903,6 +3918,7 @@ function SceneContent({
   modelUrl,
   modelFileType,
   modelConfigs,
+  toolbarPlacement = false,
   handLandmarks,
   grabState,
   debugInfo,
@@ -3959,10 +3975,10 @@ function SceneContent({
   const [puzzleReadyTick, setPuzzleReadyTick] = useState(0);
   const normalizedPuzzlePieces = normalizePuzzlePieceCount(puzzlePieces);
   const baseModels = useMemo(
-    () => normalizeBaseModelConfigs(modelConfigs, modelUrl, modelFileType),
-    [modelConfigs, modelFileType, modelUrl]
+    () => toolbarPlacement && modelConfigs?.length === 0 ? [] : normalizeBaseModelConfigs(modelConfigs, modelUrl, modelFileType),
+    [modelConfigs, modelFileType, modelUrl, toolbarPlacement]
   );
-  const isMultiModel = baseModels.length > 1;
+  const isMultiModel = toolbarPlacement || baseModels.length > 1;
   const normalizedInitialGroupState = useMemo(
     () => normalizeSerializedGroupTransform(initialGroupState),
     [initialGroupState]
@@ -4024,6 +4040,17 @@ function SceneContent({
     return modelRefsByIdRef.current.get(instanceId)!;
   }, []);
 
+  useEffect(() => {
+    const activeIds = new Set(baseModelIds);
+    modelRefsByIdRef.current.forEach((ref, id) => {
+      if (!activeIds.has(id)) {
+        ref.current = null;
+        modelRefsByIdRef.current.delete(id);
+        defaultModelStateByIdRef.current.delete(id);
+      }
+    });
+  }, [baseModelIds]);
+
   const handleModelLoad = useCallback((model: THREE.Group) => {
     console.log('Model loaded successfully:', model);
     const baseModel = baseModels[0];
@@ -4052,12 +4079,15 @@ function SceneContent({
     model.userData.activityModelId = baseModel?.id || instanceId;
     handleModelError(instanceId, baseModel?.label || '3D model', '');
     const refObject = getModelRefObject(instanceId);
+    if (refObject.current === model) return;
     refObject.current = model;
     if (!defaultModelStateByIdRef.current.has(instanceId)) {
       defaultModelStateByIdRef.current.set(instanceId, serializeBaseModelTransform(instanceId, model));
     }
     setPuzzleReadyTick(0);
-    setModelReadyTick((prev) => prev + 1);
+    if (baseModels.every((entry) => modelRefsByIdRef.current.get(entry.instanceId || entry.id)?.current)) {
+      setModelReadyTick((prev) => prev + 1);
+    }
   }, [baseModels, getModelRefObject, handleModelError]);
 
   useEffect(() => () => {
@@ -4065,7 +4095,7 @@ function SceneContent({
       refObject.current = null;
     });
     defaultModelStateByIdRef.current.clear();
-  }, [baseModelLoadKey]);
+  }, []);
 
   const emitBaseModelState = useCallback(() => {
     if (!onModelStateChange) return;
@@ -4078,11 +4108,15 @@ function SceneContent({
       })
       .filter(Boolean) as SerializedBaseModelTransform[];
 
-    if (nextState.length > 0) {
+    if (nextState.length > 0 || toolbarPlacement) {
       liveModelStateRef.current = nextState;
       onModelStateChange(nextState);
     }
-  }, [baseModels, onModelStateChange]);
+  }, [baseModels, onModelStateChange, toolbarPlacement]);
+
+  useEffect(() => {
+    if (toolbarPlacement && baseModels.every((entry) => modelRefsByIdRef.current.get(entry.instanceId || entry.id)?.current)) emitBaseModelState();
+  }, [baseModels, emitBaseModelState, modelReadyTick, toolbarPlacement]);
 
   useEffect(() => {
     if (!modelActionRequest) return;
@@ -4171,8 +4205,9 @@ function SceneContent({
               <SceneModelLoader
                 key={model.instanceId || model.id}
                 model={model}
-                position={getMultiModelPosition(index, baseModels.length)}
+                position={toolbarPlacement ? [0, 0, 0] : getMultiModelPosition(index, baseModels.length)}
                 scale={1.25}
+                placeInView={toolbarPlacement}
                 initialTransform={initialModelStateById.get(model.instanceId || model.id)}
                 onModelLoad={handleMultiModelLoad}
                 onModelError={handleModelError}
@@ -4232,6 +4267,7 @@ function SceneContent({
 
       {normalizedPuzzlePieces === 0 && !groupBaseModels && (
         <MultiModelMoveController
+          allowSelectedPinch={!paintMode}
           modelIds={baseModelIds}
           modelRefsByIdRef={modelRefsByIdRef}
           interactionRootRef={anchorRef}

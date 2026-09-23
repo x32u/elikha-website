@@ -91,7 +91,7 @@ describe('CreateActivityModal', () => {
     expect(onCreated).toHaveBeenCalledWith({ id: 'activity-1' });
   });
 
-  test('requires a rubric before creating an activity', async () => {
+  test('creates an activity when no rubric is selected', async () => {
     await act(async () => {
       root.render(
         <CreateActivityModal
@@ -102,7 +102,7 @@ describe('CreateActivityModal', () => {
       );
     });
 
-    expect(container.querySelector('#activity-rubric').required).toBe(true);
+    expect(container.querySelector('#activity-rubric').required).toBe(false);
     const title = container.querySelector('#activity-title');
     await act(async () => {
       const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
@@ -111,7 +111,7 @@ describe('CreateActivityModal', () => {
       container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     });
 
-    expect(mockCreateActivity).not.toHaveBeenCalled();
-    expect(container.textContent).toContain('Select a rubric before creating the activity.');
+    expect(mockCreateActivity).toHaveBeenCalled();
+    expect(container.textContent).not.toContain('Select a rubric before creating the activity.');
   });
 });

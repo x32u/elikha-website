@@ -760,9 +760,6 @@ export const createActivity = async (teacherIdOrPayload, activityDataInput) => {
     if (!teacherId) {
       return { success: false, error: 'Missing teacher ID' };
     }
-    if (!activityData.rubric_id) {
-      return { success: false, error: 'A rubric is required to create an activity.' };
-    }
     const maxPoints = normalizeActivityMaxPoints(
       activityData.max_points ?? DEFAULT_ACTIVITY_MAX_POINTS
     );
@@ -780,7 +777,7 @@ export const createActivity = async (teacherIdOrPayload, activityDataInput) => {
       p_due_date: activityData.due_date || null,
       p_status: activityData.status || 'active',
       p_image_url: activityData.image_url || null,
-      p_rubric_id: activityData.rubric_id,
+      p_rubric_id: activityData.rubric_id || null,
       p_max_points: maxPoints,
     });
 

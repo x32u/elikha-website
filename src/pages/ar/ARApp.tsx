@@ -285,7 +285,24 @@ function ARApp({
     model: initialModelState,
     group: initialGroupState,
   }), [initialGroupState, initialModelState, initialPaintState, initialPuzzleState, initialSceneState]);
-  const incomingInitialState = useMemo(() => parseSnapshotKey(initialArStateKey), [initialArStateKey]);
+  const initialModelSourcesKey = createStableModelConfigsKey(Array.isArray(modelConfigs) ? modelConfigs : []);
+  const incomingInitialState = useMemo(() => {
+    const snapshot = parseSnapshotKey(initialArStateKey);
+    // Older single-model saves used the model itself as the paint root. Toolbar
+    // copies always live inside a stable group, so migrate their paths once.
+    if (sandboxMode || puzzlePieces === 3 || puzzlePieces === 4 ||
+        !snapshot.model.length || snapshot.model.some((model) => model.id.includes('::copy::'))) return snapshot;
+    const sources: BaseArModelConfig[] = JSON.parse(initialModelSourcesKey).filter((model: BaseArModelConfig) => model.modelUrl?.trim());
+    const singleModel = sources.length <= 1;
+    return {
+      ...snapshot,
+      paint: singleModel ? snapshot.paint.map((stamp) => ({ ...stamp, meshPath: [0, ...stamp.meshPath] })) : snapshot.paint,
+      model: snapshot.model.map((transform, index) => ({
+        ...transform,
+        id: `${sources[index]?.id || `model-${index}`}::copy::legacy-${index}`,
+      })),
+    };
+  }, [initialArStateKey, initialModelSourcesKey, puzzlePieces, sandboxMode]);
   const [hydratedArState, setHydratedArState] = useState<HydratedArState>(() => ({
     ...cloneSnapshot(incomingInitialState),
     version: 0,
@@ -349,24 +366,42 @@ function ARApp({
     }];
   }, [modelConfigsKey, modelFileType, modelUrl]);
   const normalizedPuzzlePieces = puzzlePieces === 3 || puzzlePieces === 4 ? puzzlePieces : 0;
+  const toolbarPlacement = !sandboxMode && !normalizedPuzzlePieces;
+  const [placedModelConfigs, setPlacedModelConfigs] = useState<BaseArModelConfig[]>(() => {
+    return incomingInitialState.model.flatMap((transform) => {
+      const source = sceneModelConfigs.find((model) =>
+        transform.id === (model.instanceId || model.id) || transform.id.startsWith(`${model.id}::copy::`));
+      return source ? [{ ...source, instanceId: transform.id }] : [];
+    });
+  });
+  const renderedModelConfigs = toolbarPlacement ? placedModelConfigs : sceneModelConfigs;
+  useEffect(() => {
+    if (!toolbarPlacement) return;
+    setPlacedModelConfigs(hydratedArState.model.flatMap((transform) => {
+      const source = sceneModelConfigs.find((model) =>
+        transform.id === (model.instanceId || model.id) || transform.id.startsWith(`${model.id}::copy::`));
+      return source ? [{ ...source, instanceId: transform.id }] : [];
+    }));
+  }, [hydratedArState, sceneModelConfigs, toolbarPlacement]);
   const modelToolbarControls = useMemo(() => {
-    if (normalizedPuzzlePieces || sceneModelConfigs.length <= 1) return [];
+    if (normalizedPuzzlePieces || (!toolbarPlacement && sceneModelConfigs.length <= 1)) return [];
 
-    return sceneModelConfigs.map((model, index) => ({
+    return sceneModelConfigs.filter((model, index, all) => all.findIndex((item) => item.id === model.id) === index).map((model, index) => ({
       id: model.instanceId || model.id || `model-${index}`,
       label: model.label || `Model ${index + 1}`,
+      add: toolbarPlacement,
     }));
-  }, [normalizedPuzzlePieces, sceneModelConfigs]);
+  }, [normalizedPuzzlePieces, sceneModelConfigs, toolbarPlacement]);
   useEffect(() => {
     if (!selectedModelId) return;
-    const selectableModelIds = sceneModelConfigs.map(
+    const selectableModelIds = renderedModelConfigs.map(
       (model, index) => model.instanceId || model.id || `model-${index}`
     );
     if (normalizedPuzzlePieces || !selectableModelIds.includes(selectedModelId)) {
       setSelectedModelId(null);
       setSelectedModel(null);
     }
-  }, [normalizedPuzzlePieces, sceneModelConfigs, selectedModelId]);
+  }, [normalizedPuzzlePieces, renderedModelConfigs, selectedModelId]);
   const puzzlePieceControls = useMemo(() => {
     if (!normalizedPuzzlePieces) return [];
 
@@ -696,7 +731,10 @@ function ARApp({
   const handleModelStateChange = useCallback((nextModelState: SerializedBaseModelTransform[]) => {
     if (!arraysEqualByValue(modelStateRef.current, nextModelState)) {
       if (modelStateRef.current.length > 0) markInteraction(false);
-      pushUndoSnapshot('model:change', 800);
+      // Adding a copy already captured the pre-insertion snapshot.
+      const sameInstances = nextModelState.length === modelStateRef.current.length
+        && nextModelState.every((entry) => modelStateRef.current.some((previous) => previous.id === entry.id));
+      if (sameInstances) pushUndoSnapshot('model:change', 800);
     }
     modelStateRef.current = nextModelState;
     setSelectedModel((current) => {
@@ -844,6 +882,20 @@ function ARApp({
   }, [announce, practiceAllowsPuzzle, pushUndoSnapshot, puzzlePieceControls]);
 
   const handleGrabModel = useCallback((modelId: string) => {
+    if (toolbarPlacement) {
+      if (applyingUndoRef.current) return;
+      const source = sceneModelConfigs.find((model) => (model.instanceId || model.id) === modelId);
+      if (!source) return;
+      pushUndoSnapshot('model:spawn');
+      const instanceId = `${source.id}::copy::${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      setPlacedModelConfigs((current) => [...current, { ...source, instanceId }]);
+      setActiveTool('move');
+      setSelectedSceneObject(null);
+      setSelectedModelId(instanceId);
+      setSelectedModel({ id: instanceId, locked: false, label: source.label || 'Model' });
+      announce(`${source.label || 'Model'} added in view. Move tool ready.`);
+      return;
+    }
     setActiveTool('move');
     setSelectedSceneObject(null);
     setSelectedModelId(modelId);
@@ -853,7 +905,7 @@ function ARApp({
     announce(locked
       ? `${modelLabel} selected. It is locked. Use Unlock before moving it.`
       : `${modelLabel} selected. Move tool ready.`);
-  }, [announce, modelToolbarControls]);
+  }, [announce, modelToolbarControls, toolbarPlacement, sceneModelConfigs, pushUndoSnapshot]);
 
   const handleModelSelectionChange = useCallback((selection: ModelSelection | null) => {
     if (!selection) {
@@ -863,7 +915,7 @@ function ARApp({
     }
     setSelectedSceneObject(null);
     setSelectedModelId(selection.id);
-    const modelLabel = sceneModelConfigs.find((model, index) => (
+    const modelLabel = renderedModelConfigs.find((model, index) => (
       (model.instanceId || model.id || `model-${index}`) === selection.id
     ))?.label || 'model';
     if (selectedModel?.id !== selection.id) {
@@ -872,7 +924,7 @@ function ARApp({
         : `${modelLabel} selected. Keep pinching to move it.`);
     }
     setSelectedModel({ ...selection, label: modelLabel });
-  }, [announce, sceneModelConfigs, selectedModel?.id]);
+  }, [announce, renderedModelConfigs, selectedModel?.id]);
 
   const cameraReadyAnnouncedRef = useRef(false);
   const handleCameraReady = useCallback(() => {
@@ -1394,7 +1446,8 @@ function ARApp({
       <ARSceneV2
         modelUrl={modelUrl || '/models/cute_cactus.glb'}
         modelFileType={modelFileType || undefined}
-        modelConfigs={sceneModelConfigs}
+        modelConfigs={renderedModelConfigs}
+        toolbarPlacement={toolbarPlacement}
         handLandmarks={arInteractionAllowed && !historyRestoring ? landmarks : null}
         grabState={grabState}
         debugInfo={debugInfo}

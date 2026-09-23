@@ -974,9 +974,6 @@ export const createAdminActivity = async ({
     if (!title || !classId) {
       return { success: false, error: 'Title and class are required' };
     }
-    if (!rubricId) {
-      return { success: false, error: 'A rubric is required to create an activity.' };
-    }
     const normalizedMaxPoints = normalizeActivityMaxPoints(maxPoints ?? DEFAULT_ACTIVITY_MAX_POINTS);
     if (!normalizedMaxPoints) {
       return { success: false, error: 'Maximum points must be a whole number from 1 to 1000.' };
@@ -1015,7 +1012,7 @@ export const createAdminActivity = async ({
         p_due_date: dueDate ? toIso(dueDate) : null,
         p_status: 'active',
         p_image_url: imageUrl || null,
-        p_rubric_id: rubricId,
+        p_rubric_id: rubricId || null,
         p_max_points: normalizedMaxPoints,
       }
     );

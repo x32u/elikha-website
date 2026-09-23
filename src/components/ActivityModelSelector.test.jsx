@@ -68,7 +68,7 @@ describe('ActivityModelSelector', () => {
     expect(container.textContent).toContain('Elephant');
   });
 
-  it('removes a quantity-one model while preserving at least one selected model', async () => {
+  it('removes a model type while preserving at least one selected model', async () => {
     const openButton = Array.from(container.querySelectorAll('button'))
       .find((button) => button.textContent.trim() === 'Add 3D Models');
     await act(async () => openButton.dispatchEvent(new MouseEvent('click', { bubbles: true })));
@@ -81,7 +81,7 @@ describe('ActivityModelSelector', () => {
       .find((button) => button.textContent.trim() === 'Save Model Selection');
     await act(async () => applyButton.dispatchEvent(new MouseEvent('click', { bubbles: true })));
 
-    const decreaseCactus = container.querySelector('button[aria-label="Decrease Cactus quantity"]');
+    const decreaseCactus = container.querySelector('button[aria-label="Remove Cactus"]');
     await act(async () => decreaseCactus.dispatchEvent(new MouseEvent('click', { bubbles: true })));
 
     expect(container.querySelector('[data-testid="selected-model-ids"]').textContent).toBe('elephant');

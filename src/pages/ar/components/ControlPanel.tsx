@@ -23,7 +23,7 @@ interface ControlPanelProps {
   onToggleSceneObjectLock?: () => void;
   availableObjects?: Array<{ id: string; label: string; icon?: string }>;
   onAddObject?: (objectId: string) => void;
-  modelItems?: Array<{ id: string; label: string }>;
+  modelItems?: Array<{ id: string; label: string; add?: boolean }>;
   selectedModelId?: string | null;
   onSelectModel?: (modelId: string) => void;
   selectedModel?: { label: string; locked: boolean } | null;
@@ -397,10 +397,10 @@ export function ControlPanel({
                   data-gesture-target="true"
                   onClick={() => onSelectModel(modelItem.id)}
                   className={`tool-button ${selectedModelId === modelItem.id ? 'active' : ''}`}
-                  aria-pressed={selectedModelId === modelItem.id}
-                  aria-label={`Grab ${modelItem.label}`}
+                  aria-pressed={modelItem.add ? undefined : selectedModelId === modelItem.id}
+                  aria-label={`${modelItem.add ? 'Add' : 'Select'} ${modelItem.label}`}
                 >
-                  <span>Grab</span>
+                  <span>{modelItem.add ? 'Add' : 'Select'}</span>
                   <span>{modelItem.label}</span>
                 </button>
               ))}

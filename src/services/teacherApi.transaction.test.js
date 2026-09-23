@@ -52,15 +52,16 @@ describe('teacher transaction services', () => {
     });
   });
 
-  test('rejects activity creation without a rubric before calling the RPC', async () => {
+  test('creates an activity without a rubric using a null rubric ID', async () => {
+    mockRpc.mockResolvedValue({ data: { id: 'activity-1' }, error: null });
     const result = await createActivity({
       teacher_id: 'teacher-1',
       title: 'Missing rubric',
       class_id: 'class-1',
     });
 
-    expect(result).toEqual({ success: false, error: 'A rubric is required to create an activity.' });
-    expect(mockRpc).not.toHaveBeenCalled();
+    expect(result.success).toBe(true);
+    expect(mockRpc).toHaveBeenCalledWith('create_activity_with_assignments', expect.objectContaining({ p_rubric_id: null }));
   });
 
   test('updates the activity and its rubric choice atomically', async () => {

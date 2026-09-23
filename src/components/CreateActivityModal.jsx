@@ -106,16 +106,14 @@ const CreateActivityModal = ({
   const handleSubmit = async (event) => {
     event.preventDefault();
     const maxPoints = normalizeActivityMaxPoints(formData.maxPoints);
-    if (!formData.title.trim() || !selectedClassId || !formData.rubricId || !maxPoints) {
+    if (!formData.title.trim() || !selectedClassId || !maxPoints) {
       setFormData((current) => ({
         ...current,
         thumbnailError: !formData.title.trim()
           ? 'Enter an activity title.'
           : !selectedClassId
             ? 'Select a class.'
-            : !formData.rubricId
-              ? 'Select a rubric before creating the activity.'
-              : 'Maximum points must be a whole number from 1 to 1000.',
+            : 'Maximum points must be a whole number from 1 to 1000.',
       }));
       return;
     }
@@ -194,12 +192,12 @@ const CreateActivityModal = ({
           )}
 
           <div className="form-group">
-            <label className="form-label" htmlFor="activity-rubric">Rubric</label>
-            <select id="activity-rubric" className="form-input" required value={formData.rubricId} onChange={(event) => setFormData((current) => ({ ...current, rubricId: event.target.value }))}>
-              <option value="">Select a rubric</option>
+            <label className="form-label" htmlFor="activity-rubric">Rubric (optional)</label>
+            <select id="activity-rubric" className="form-input" value={formData.rubricId} onChange={(event) => setFormData((current) => ({ ...current, rubricId: event.target.value }))}>
+              <option value="">No rubric</option>
               {rubrics.map((rubric) => <option key={rubric.id} value={rubric.id}>{rubric.title}</option>)}
             </select>
-            <small className="form-help">Required. Students review its criteria before starting, and it guides assessment.</small>
+            <small className="form-help">Add a rubric to share assessment criteria with students.</small>
           </div>
 
           <div className="form-group">

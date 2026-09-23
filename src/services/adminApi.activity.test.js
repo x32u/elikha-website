@@ -69,15 +69,18 @@ describe('administrator activity creation', () => {
     });
   });
 
-  test('rejects activity creation without a rubric before querying the class', async () => {
+  test('creates an activity without a rubric', async () => {
+    mockFrom.mockReturnValue({ select: () => ({ eq: () => ({ single: async () => ({ data: {
+      id: 'class-1', teacher_id: 'teacher-1', grade: 'Grade 6', subject: 'Arts', is_active: true,
+    }, error: null }) }) }) });
+    mockRpc.mockResolvedValue({ data: { id: 'activity-1' }, error: null });
     const result = await createAdminActivity({
       title: 'Missing rubric',
       classId: 'class-1',
     });
 
-    expect(result).toEqual({ success: false, error: 'A rubric is required to create an activity.' });
-    expect(mockFrom).not.toHaveBeenCalled();
-    expect(mockRpc).not.toHaveBeenCalled();
+    expect(result.success).toBe(true);
+    expect(mockRpc).toHaveBeenCalledWith('create_activity_with_assignments', expect.objectContaining({ p_rubric_id: null }));
   });
 });
 

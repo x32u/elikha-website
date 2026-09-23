@@ -248,11 +248,6 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
       return;
     }
 
-    if (!createDraft.rubricId) {
-      setCreateError('Please select a rubric.');
-      return;
-    }
-
     const maxPoints = normalizeActivityMaxPoints(createDraft.maxPoints);
     if (!maxPoints) {
       setCreateError('Maximum points must be a whole number from 1 to 1000.');
@@ -629,7 +624,6 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
                   <span>Rubric</span>
                   <select
                     className="dash-input"
-                    required
                     value={createDraft.rubricId}
                     onChange={(event) =>
                       setCreateDraft((prev) => ({
@@ -640,7 +634,7 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
                     disabled={rubricOptionsLoading || Boolean(rubricOptionsError)}
                   >
                     <option value="">
-                      {rubricOptionsLoading ? 'Loading rubrics...' : 'Select a rubric'}
+                      {rubricOptionsLoading ? 'Loading rubrics...' : 'No rubric'}
                     </option>
                     {rubricOptions.map((rubric) => (
                       <option key={rubric.id} value={rubric.id}>
@@ -649,7 +643,7 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
                     ))}
                   </select>
                   <small className={rubricOptionsError ? 'dash-field-error' : 'dash-field-help'}>
-                    {rubricOptionsError || 'Required. Only rubrics created by the selected class teacher are available.'}
+                    {rubricOptionsError || 'Optional. Choose a rubric from the selected class teacher.'}
                   </small>
                 </label>
 
@@ -756,7 +750,7 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
                 className="btn primary"
                 type="button"
                 onClick={submitCreate}
-                disabled={createBusy || !createDraft.title.trim() || !createDraft.classId || !createDraft.rubricId}
+                disabled={createBusy || !createDraft.title.trim() || !createDraft.classId}
               >
                 {createBusy ? 'Creating...' : 'Create Activity'}
               </button>
