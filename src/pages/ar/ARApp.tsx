@@ -21,6 +21,7 @@ import { isMiddleFingerGesture, isOpenPalmGesture } from './utils/gestures';
 import { useGestureSelect } from './hooks/useGestureSelect';
 import { useArTutorial } from './hooks/useArTutorial';
 import { useSingleFaceDetection } from './hooks/useSingleFaceDetection';
+import { useTouchArLayout } from './hooks/useTouchArLayout';
 import { submitActivity, reportGestureAlert } from '../../services/studentApi';
 import { requestStudentColorSuggestion } from '../../services/aiGradingApi';
 import { saveUserSettings } from '../../services/userSettingsApi';
@@ -424,7 +425,8 @@ function ARApp({
   }, [normalizedPuzzlePieces, puzzleToolbarState, sceneModelConfigs]);
   const paintMode = !isViewMode && ['paint', 'bucket', 'eraser', 'remove'].includes(activeTool);
   const isGrabAllMode = isViewMode || activeTool === 'grabAll';
-  const compactUi = mobileMode || vrMode;
+  const touchLayout = useTouchArLayout();
+  const compactUi = mobileMode || vrMode || touchLayout;
   const voiceGuideEnabled = userSettings.voiceInstructions !== false;
   const tutorialEnabled = arInteractionAllowed && !isViewMode && !vrMode;
   const {
