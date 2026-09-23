@@ -5,6 +5,7 @@ import {
   recoverProfileName,
   validateManagePlatformUserInput,
   validateSetPlatformUserStatusInput,
+  validateBulkUserInput,
   type ManagePlatformUserInput,
 } from "./logic.ts";
 
@@ -145,9 +146,11 @@ const recoverOrRejectExistingUser = async ({
 const createNewUser = async ({
   admin,
   request,
+  recoverExisting = true,
 }: {
   admin: SupabaseClient;
   request: ManagePlatformUserInput;
+  recoverExisting?: boolean;
 }) => {
   const { data: createData, error: createError } = await admin.auth.admin.createUser({
     email: request.email,
@@ -162,7 +165,8 @@ const createNewUser = async ({
   if (createError || !createData.user) {
     const code = String(createError?.code || "").toLowerCase();
     const message = String(createError?.message || "").toLowerCase();
-    if (code === "user_already_exists" || message.includes("already registered")) {
+    if (code === "user_already_exists" || code === "email_exists" || message.includes("already registered")) {
+      if (!recoverExisting) return jsonResponse({ success: false, code: 'email_already_registered', message: 'Email is already registered. No changes made.' }, 409);
       const racedUser = await findAuthUserByEmail(admin, request.email);
       if (racedUser) {
         return recoverOrRejectExistingUser({ admin, authUser: racedUser, request });
@@ -394,6 +398,66 @@ Deno.serve(async (request) => {
   }
 
   const bodyRecord = body && typeof body === "object" && !Array.isArray(body) ? body as JsonRecord : {};
+  if (bodyRecord.action === 'bulk_create') {
+    if (!Array.isArray(bodyRecord.rows) || !bodyRecord.rows.length || bodyRecord.rows.length > 10) {
+      return jsonResponse({ success: false, message: 'Send between 1 and 10 users per batch.' }, 400);
+    }
+    const results = [];
+    const seen = new Set<string>();
+    for (const [index, row] of bodyRecord.rows.entries()) {
+      const validation = validateBulkUserInput(row);
+      if (!validation.ok) {
+        results.push({ index, status: 'Failed', message: validation.message });
+        continue;
+      }
+      const input = validation.value;
+      if (seen.has(input.email)) {
+        results.push({ index, status: 'Skipped', message: 'Duplicate email in this batch.' });
+        continue;
+      }
+      seen.add(input.email);
+      try {
+        if (input.classId) {
+          const { data: classRow, error } = await admin.from('classes').select('id').eq('id', input.classId).eq('is_active', true).maybeSingle();
+          if (error || !classRow) {
+            results.push({ index, status: 'Failed', message: 'Selected class is unavailable. Choose an active class.' });
+            continue;
+          }
+        }
+        const response = await createNewUser({ admin, request: input, recoverExisting: false });
+        const created = await response.json();
+        if (!created.success) {
+          results.push({ index, status: created.code === 'email_already_registered' ? 'Skipped' : 'Failed', message: created.message });
+          continue;
+        }
+        let message = 'Account created.';
+        if (input.classId) {
+          const { error: enrollmentError } = await admin.from('class_students').insert({
+            class_id: input.classId, student_id: created.user.id, student_name: input.name, student_email: input.email,
+          });
+          if (enrollmentError) {
+            message = 'Account created, but enrollment failed. Add this student from the class page; do not recreate the account.';
+          } else {
+            message = 'Account created and enrolled.';
+            const { count, error: countError } = await admin.from('class_students').select('id', { count: 'exact', head: true }).eq('class_id', input.classId);
+            const { error: countUpdateError } = countError ? { error: countError } : await admin.from('classes').update({ student_count: count || 0 }).eq('id', input.classId);
+            const { data: activities, error: activityError } = await admin.from('activities').select('id').eq('class_id', input.classId).eq('status', 'active');
+            let assignmentError = activityError;
+            if (!activityError && activities?.length) {
+              const assignment = await admin.from('activity_assignments').insert(activities.map((activity) => ({ activity_id: activity.id, student_id: created.user.id, status: 'pending' })));
+              assignmentError = assignment.error;
+            }
+            if (assignmentError || countUpdateError) message += ' Class totals or existing assignments could not be updated; check the class page.';
+          }
+        }
+        results.push({ index, status: 'Created', message });
+      } catch {
+        // Never log or echo the uploaded row, which contains a password.
+        results.push({ index, status: 'Unconfirmed', message: 'Could not confirm the result. Check User Management before retrying this email.' });
+      }
+    }
+    return jsonResponse({ success: true, results });
+  }
   if (bodyRecord.action === "set_status") {
     const statusValidation = validateSetPlatformUserStatusInput(body);
     if (!statusValidation.ok) {

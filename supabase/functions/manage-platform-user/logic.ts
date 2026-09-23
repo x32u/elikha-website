@@ -90,6 +90,20 @@ export const validateSetPlatformUserStatusInput = (value: unknown): StatusValida
   return { ok: true, value: { action: "set_status", userId, isActive: body.isActive } };
 };
 
+export const validateBulkUserInput = (value: unknown) => {
+  const result = validateManagePlatformUserInput(value);
+  if (!result.ok) return result;
+  if (!['student', 'teacher'].includes(result.value.role)) {
+    return { ok: false as const, message: 'Bulk upload supports Student and Teacher only.' };
+  }
+  const body = asObject(value);
+  const classId = typeof body.classId === 'string' ? body.classId.trim() : '';
+  if (classId && (result.value.role !== 'student' || !UUID_PATTERN.test(classId))) {
+    return { ok: false as const, message: 'Only students can be enrolled in a valid class.' };
+  }
+  return { ok: true as const, value: { ...result.value, classId } };
+};
+
 // Authorization roles must never be restored from user_metadata because the
 // user can edit it. Only a server-written app_metadata value is trusted.
 export const recoverPlatformRole = (appMetadata: unknown): PlatformRole => {

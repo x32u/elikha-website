@@ -7,12 +7,13 @@ import * as THREE from 'three';
 import { ModelLoader } from './ModelLoader';
 import type { HandLandmarks, GrabState, DebugInfo, PalmPosition } from '../hooks/useHandTrackingV2';
 import { CONFIG } from '../hooks/useHandTrackingV2';
+import { useLatestCallback } from '../hooks/useLatestCallback';
 import { raycastFromFingertip } from '../utils/raycasting';
 import { createPaintDecal } from '../utils/decals';
 import { eraseFootprint, applyErasedRegions, type ErasedRegion } from '../utils/paintErasing';
 import { selectPaintRecoverySource } from '../utils/paintRecovery';
 import { bindWebglContextRecovery } from '../utils/renderingRecovery';
-import { recolorModel } from '../utils/decals';
+import { setBucketPaint, clearBucketPaint, bucketEraseAt, type BucketErase } from '../utils/bucketPaint';
 import type { PaintStamp } from '../utils/decals';
 import { isPointingGesture } from '../utils/gestures';
 import {
@@ -37,6 +38,7 @@ import { placeModelInView } from '../utils/modelPlacement';
 export type { SerializedBaseModelTransform } from '../utils/baseModelTransform';
 
 export interface SerializedPaintDecal {
+  bucketErases?: BucketErase[];
   erasedRegions?: ErasedRegion[];
   id: string;
   meshPath: number[];
@@ -62,6 +64,7 @@ export interface SerializedSceneObjectPaintDecal {
 }
 
 export interface SerializedSceneObject {
+  bucketErases?: BucketErase[];
   id: string;
   objectId: string;
   position: [number, number, number];
@@ -399,6 +402,7 @@ function normalizeSerializedPaintState(
       id: typeof item.id === 'string' && item.id ? item.id : `stamp-${index}`,
       meshPath: item.meshPath.filter((v) => Number.isInteger(v) && v >= 0),
       erasedRegions: item.erasedRegions || [],
+      bucketErases: item.bucketErases || [],
       point: [
         Number(item.point?.[0]) || 0,
         Number(item.point?.[1]) || 0,
@@ -472,6 +476,7 @@ function normalizeSerializedSceneState(inputState?: SerializedSceneObject[]): Se
         rotation: safeRotation,
         scale: safeScale,
         color: typeof item.color === 'string' ? item.color : undefined,
+        bucketErases: item.bucketErases || [],
         gluedTo: typeof item.gluedTo === 'string' ? item.gluedTo : null,
         groupId: typeof item.groupId === 'string' ? item.groupId : null,
         paint: normalizeSerializedSceneObjectPaintState(item.paint),
@@ -887,23 +892,6 @@ function findPuzzleAncestor(object: THREE.Object3D | null): THREE.Object3D | nul
   return current;
 }
 
-function findPuzzlePieceRoot(
-  object: THREE.Object3D | null,
-  modelRoot: THREE.Object3D
-): THREE.Object3D | null {
-  let current = object;
-  let pieceRoot: THREE.Object3D | null = null;
-
-  while (current && current !== modelRoot) {
-    if (current.userData?.isPuzzlePiece && current.userData?.puzzlePieceId) {
-      pieceRoot = current;
-    }
-    current = current.parent;
-  }
-
-  return pieceRoot;
-}
-
 function sameObjectPath(a: number[] = [], b: number[] = []): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
@@ -1183,7 +1171,7 @@ function buildSceneObjectMesh(serialized: SerializedSceneObject): THREE.Object3D
 
   const geometry = PRIMITIVE_GEOMETRIES[definition.primitive] || PRIMITIVE_GEOMETRIES.box;
   const material = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(serialized.color || definition.color || '#ffffff'),
+    color: new THREE.Color(definition.color || '#ffffff'),
     roughness: 0.62,
     metalness: 0.04,
     side: THREE.DoubleSide,
@@ -1203,6 +1191,7 @@ function buildSceneObjectMesh(serialized: SerializedSceneObject): THREE.Object3D
   group.rotation.set(...serialized.rotation);
   group.scale.setScalar(serialized.scale || definition.defaultScale || 0.32);
   group.updateWorldMatrix(true, true);
+  if (serialized.color) setBucketPaint(mesh, new THREE.Color(serialized.color), serialized.bucketErases || []);
 
   normalizeSerializedSceneObjectPaintState(serialized.paint).forEach((stamp, index) => {
     const worldPoint = mesh.localToWorld(new THREE.Vector3(...stamp.point));
@@ -1238,14 +1227,7 @@ function applySceneObjectColor(object: THREE.Object3D, color: THREE.Color): void
   object.traverse((child) => {
     if (child.userData.isSceneObjectPaintDecal || child.userData.isPaintDecal) return;
     if (!(child instanceof THREE.Mesh)) return;
-    const materials = Array.isArray(child.material) ? child.material : [child.material];
-    materials.forEach((material) => {
-      const colorMaterial = material as THREE.Material & { color?: THREE.Color };
-      if (colorMaterial.color instanceof THREE.Color) {
-        colorMaterial.color.copy(color);
-        colorMaterial.needsUpdate = true;
-      }
-    });
+    setBucketPaint(child, color);
   });
 }
 
@@ -2146,9 +2128,9 @@ function SceneObjectSystem({
     }
   }, [onSceneObjectSelectionChange, removeSelectionHelper, scene]);
 
+  const publishSceneState = useLatestCallback(onSceneStateChange);
   const emitSceneState = useCallback(() => {
-    if (!onSceneStateChange) return;
-    onSceneStateChange(
+    publishSceneState(
       serializedSceneRef.current.map((entry) => ({
         ...entry,
         position: [...entry.position] as [number, number, number],
@@ -2157,11 +2139,12 @@ function SceneObjectSystem({
         editingLocked: entry.editingLocked === true,
       }))
     );
-  }, [onSceneStateChange]);
+  }, [publishSceneState]);
 
   const disposeSceneObject = useCallback((object: THREE.Object3D) => {
     object.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return;
+      clearBucketPaint(child);
       if (Array.isArray(child.material)) {
         child.material.forEach((material) => material.dispose());
       } else if (child.material) {
@@ -2227,7 +2210,7 @@ function SceneObjectSystem({
 
     applySceneObjectColor(object, color);
     serializedSceneRef.current = serializedSceneRef.current.map((entry) => (
-      entry.id === objectId ? { ...entry, color: nextColor } : entry
+      entry.id === objectId ? { ...entry, color: nextColor, bucketErases: [] } : entry
     ));
     emitSceneState();
     return true;
@@ -2241,7 +2224,7 @@ function SceneObjectSystem({
       const object = objectsRef.current.get(entry.id);
       if (!object || !object.visible || entry.editingLocked) return entry;
       applySceneObjectColor(object, paintColor);
-      return { ...entry, color: `#${paintColor.getHexString()}` };
+      return { ...entry, color: `#${paintColor.getHexString()}`, bucketErases: [] };
     });
     emitSceneState();
   }, [bucketRequest, emitSceneState, paintColor]);
@@ -2356,12 +2339,20 @@ function SceneObjectSystem({
     if (nowMs - lastObjectPaintTimeRef.current < OBJECT_PAINT_COOLDOWN_MS) return false;
 
     const existingStamps = scenePaintStampsRef.current.get(hitInfo.objectId) || [];
-    if (existingStamps.length === 0) return false;
-
     const eraseRadius = Math.max(brushSize * 0.5, 0.005);
     const removedIds = new Set<string>();
     const remainingStamps: PaintStamp[] = [];
     const targetPoint = hitInfo.hit.point.clone();
+    let erasedBucket = false;
+    const object = objectsRef.current.get(hitInfo.objectId);
+    const baseMesh = object && getSceneObjectBaseMesh(object);
+    serializedSceneRef.current = serializedSceneRef.current.map((entry) => {
+      if (entry.id !== hitInfo.objectId || !entry.color || !baseMesh) return entry;
+      const bucketErases = [...(entry.bucketErases || []), bucketEraseAt(baseMesh, targetPoint, eraseRadius)];
+      setBucketPaint(baseMesh, new THREE.Color(entry.color), bucketErases);
+      erasedBucket = true;
+      return { ...entry, bucketErases };
+    });
 
     existingStamps.forEach((stamp) => {
       const region = eraseFootprint(stamp.mesh, targetPoint, eraseRadius);
@@ -2377,7 +2368,7 @@ function SceneObjectSystem({
       remainingStamps.push(stamp);
     });
 
-    if (removedIds.size === 0) return false;
+    if (removedIds.size === 0 && !erasedBucket) return false;
 
     scenePaintStampsRef.current.set(hitInfo.objectId, remainingStamps);
     serializedSceneRef.current = serializedSceneRef.current.map((entry) => (
@@ -3408,8 +3399,9 @@ function PaintSystem({
     }
   }, []);
 
+  // Tool changes update the parent's callback; they are not scene teardown.
+  const publishPaintState = useLatestCallback(onPaintStateChange);
   const flushPaintState = useCallback(() => {
-    if (!onPaintStateChange) return;
 
     if (emitTimeoutRef.current !== null) {
       window.clearTimeout(emitTimeoutRef.current);
@@ -3417,7 +3409,7 @@ function PaintSystem({
     }
 
     lastEmitTimeRef.current = performance.now();
-    onPaintStateChange(
+    publishPaintState(
       serializedPaintRef.current.map((stamp) => ({
         ...stamp,
         meshPath: [...stamp.meshPath],
@@ -3425,11 +3417,10 @@ function PaintSystem({
         normal: [...stamp.normal] as [number, number, number],
       }))
     );
-  }, [onPaintStateChange]);
+  }, [publishPaintState]);
 
   const emitPaintState = useCallback(
     (immediate = false) => {
-      if (!onPaintStateChange) return;
 
       if (immediate) {
         flushPaintState();
@@ -3450,7 +3441,7 @@ function PaintSystem({
         }, PAINT_STATE_EMIT_INTERVAL - elapsed);
       }
     },
-    [flushPaintState, onPaintStateChange]
+    [flushPaintState]
   );
 
   const captureBaseMaterialColors = useCallback((root: THREE.Object3D) => {
@@ -3491,11 +3482,16 @@ function PaintSystem({
     });
   }, []);
 
+  const clearBucketMaterials = useCallback(() => {
+    modelRef.current?.traverse((child) => { if (child instanceof THREE.Mesh) clearBucketPaint(child); });
+  }, [modelRef]);
+
   const clearPaintState = useCallback((restoreMaterials = false, emit = true) => {
     paintStampsRef.current.forEach(disposeStamp);
     paintStampsRef.current = [];
     serializedPaintRef.current = [];
     if (restoreMaterials) {
+      clearBucketMaterials();
       restoreBaseMaterialColors();
     }
     bucketArmedRef.current = false;
@@ -3504,7 +3500,7 @@ function PaintSystem({
     smoothedNormal.current = null;
     lastPaintTargetRef.current = null;
     if (emit) emitPaintState(true);
-  }, [disposeStamp, emitPaintState, restoreBaseMaterialColors]);
+  }, [disposeStamp, emitPaintState, restoreBaseMaterialColors, clearBucketMaterials]);
 
   useEffect(() => {
     return () => {
@@ -3516,8 +3512,9 @@ function PaintSystem({
       paintStampsRef.current.forEach(disposeStamp);
       paintStampsRef.current = [];
       serializedPaintRef.current = [];
+      clearBucketMaterials();
     };
-  }, [disposeStamp, flushPaintState]);
+  }, [disposeStamp, flushPaintState, clearBucketMaterials]);
 
   useEffect(() => {
     bucketArmedRef.current = false;
@@ -3539,7 +3536,7 @@ function PaintSystem({
       }
       const path = getObjectPath(root, object);
       if (!path) return;
-      recolorModel(object, paintColor);
+      setBucketPaint(object, paintColor);
       fills.push({ id: `fill-${bucketRequest}-${fills.length}`, meshPath: path,
         point: [0, 0, 0], normal: [0, 0, 1], size: brushSize,
         color: `#${paintColor.getHexString()}`, timestamp: Date.now(), mode: 'fill' });
@@ -3598,11 +3595,16 @@ function PaintSystem({
         const fillTarget = savedStamp.meshPath.length > 0
           ? getObjectByPath(modelRoot, savedStamp.meshPath)
           : modelRoot;
-        recolorModel(fillTarget || modelRoot, new THREE.Color(savedStamp.color));
-        restoredSerialized.push({
-          ...savedStamp,
-          id: savedStamp.id || `fill-${index}`,
-          mode: 'fill',
+        (fillTarget || modelRoot).traverse((child) => {
+          if (child instanceof THREE.Mesh && !child.userData.isPaintDecal && !child.userData.isSceneObjectPaintDecal) {
+            setBucketPaint(child, new THREE.Color(savedStamp.color), savedStamp.bucketErases || []);
+            restoredSerialized.push({
+              ...savedStamp,
+              id: `${savedStamp.id || `fill-${index}`}-${restoredSerialized.length}`,
+              meshPath: getObjectPath(modelRoot, child) || [],
+              mode: 'fill',
+            });
+          }
         });
         return;
       }
@@ -3758,45 +3760,6 @@ function PaintSystem({
       smoothedNormal.current = null;
     }
 
-    if (isBucketFill) {
-      if (!bucketArmedRef.current) {
-        const modelRoot = modelRef.current;
-        const puzzlePieceRoot = findPuzzlePieceRoot(targetMesh, modelRoot);
-        let instanceRoot: THREE.Object3D = targetMesh;
-        while (instanceRoot.parent && instanceRoot.parent !== modelRoot && !instanceRoot.userData.activityModelId) instanceRoot = instanceRoot.parent;
-        const fillRoot = puzzlePieceRoot || (instanceRoot.userData.activityModelId ? instanceRoot : modelRoot);
-        const fillPath = getObjectPath(modelRoot, fillRoot) || [];
-
-        recolorModel(fillRoot, paintColor);
-        bucketArmedRef.current = true;
-
-        const fillStamp: SerializedPaintDecal = {
-          id: `fill-${Date.now()}-${Math.random()}`,
-          meshPath: fillPath,
-          point: [0, 0, 0],
-          normal: [0, 0, 1],
-          size: brushSize,
-          color: `#${paintColor.getHexString()}`,
-          timestamp,
-          layer: (serializedPaintRef.current[serializedPaintRef.current.length - 1]?.layer || 0) + 1,
-          mode: 'fill',
-          targetId: getPaintTargetId(targetMesh),
-        };
-
-        serializedPaintRef.current = [
-          ...serializedPaintRef.current.filter((stamp) => !(stamp.mode === 'fill' && sameObjectPath(stamp.meshPath, fillPath))),
-          fillStamp,
-        ];
-        emitPaintState(true);
-      }
-
-      lastPaintTime.current = nowMs;
-      lastPaintPos.current = null;
-      smoothedHitPos.current = null;
-      smoothedNormal.current = null;
-      return;
-    }
-
     if (!smoothedHitPos.current) {
       smoothedHitPos.current = hit.point.clone();
     } else {
@@ -3823,6 +3786,14 @@ function PaintSystem({
 
     if (isEraser) {
       const eraseRadius = Math.max(brushSize * 0.5, 0.005);
+      let erasedBucket = false;
+      serializedPaintRef.current = serializedPaintRef.current.map((saved) => {
+        if (saved.mode !== 'fill' || getObjectByPath(modelRef.current, saved.meshPath) !== targetMesh) return saved;
+        const bucketErases = [...(saved.bucketErases || []), bucketEraseAt(targetMesh, targetPoint, eraseRadius)];
+        setBucketPaint(targetMesh, new THREE.Color(saved.color), bucketErases);
+        erasedBucket = true;
+        return { ...saved, bucketErases };
+      });
       const remainingStamps: PaintStamp[] = [];
       const removedStampIds = new Set<string>();
 
@@ -3838,7 +3809,7 @@ function PaintSystem({
         remainingStamps.push(stamp);
       });
 
-      if (removedStampIds.size > 0) {
+      if (removedStampIds.size > 0 || erasedBucket) {
         paintStampsRef.current = remainingStamps;
         emitPaintState(false);
       }

@@ -5,7 +5,17 @@ import {
   recoverProfileName,
   validateManagePlatformUserInput,
   validateSetPlatformUserStatusInput,
+  validateBulkUserInput,
 } from "./logic.ts";
+
+test('bulk import restricts roles and student-only class selection', () => {
+  const base = { name:'Example',email:'e@example.com',password:'password123',role:'Student' };
+  assert.equal(validateBulkUserInput(base).ok,true);
+  assert.equal(validateBulkUserInput({...base,role:'SuperAdmin'}).ok,false);
+  assert.equal(validateBulkUserInput({...base,classId:'invalid'}).ok,false);
+  assert.equal(validateBulkUserInput({...base,role:'Teacher',classId:'6aa5d0d4-2a9f-4483-b6c8-0cf4c6c98ac4'}).ok,false);
+  assert.equal(validateBulkUserInput({...base,classId:'6aa5d0d4-2a9f-4483-b6c8-0cf4c6c98ac4'}).ok,true);
+});
 
 test("normalizes a valid platform account request", () => {
   const result = validateManagePlatformUserInput({

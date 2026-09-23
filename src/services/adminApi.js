@@ -230,6 +230,13 @@ const enrollCreatedStudentInClass = async ({ classId, studentId, studentName, st
   }
 };
 
+export const setStudentClasses = async (studentId, classIds, expectedClassIds) => {
+  const { error } = await supabase.rpc('admin_set_student_classes', {
+    p_student_id: studentId, p_class_ids: classIds, p_expected_class_ids: expectedClassIds,
+  });
+  return error ? { success: false, error: error.message } : { success: true };
+};
+
 export const fetchAllUsers = async () => {
   try {
     const { data, error } = await supabase
@@ -239,8 +246,13 @@ export const fetchAllUsers = async () => {
 
     if (error) throw error;
 
+    const { data: enrollments, error: enrollmentError } = await supabase
+      .from('class_students').select('student_id, class_id, classes(id, name, grade, section, subject)');
+    if (enrollmentError) throw enrollmentError;
     const users = (data || []).map((user) => ({
       ...user,
+      classes: (enrollments || []).filter((entry) => entry.student_id === user.id)
+        .map((entry) => entry.classes || { id: entry.class_id, name: 'Unavailable class' }),
       role_label: toRoleLabel(user.role),
       status: user.is_active === false ? 'Inactive' : 'Active',
       status_label: user.is_active === false ? 'Inactive' : 'Active',
@@ -287,6 +299,16 @@ export const updatePlatformUser = async (userId, updates) => {
     console.error('Error updating user:', error);
     return { success: false, error: error.message };
   }
+};
+
+export const createPlatformUsersBatch = async (rows) => {
+  const { data, error } = await supabase.functions.invoke('manage-platform-user', {
+    body: { action: 'bulk_create', rows: rows.map(({ name, email, password, role, classId }) => ({ name, email, password, role, classId })) },
+  });
+  if (error || !data?.success || !Array.isArray(data.results)) {
+    throw new Error(error ? await readFunctionErrorMessage(error, 'Batch could not be confirmed.') : 'Batch could not be confirmed.');
+  }
+  return data.results;
 };
 
 export const createPlatformUser = async ({ name, email, password, role, classId = '' }) => {

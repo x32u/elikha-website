@@ -717,3 +717,7 @@
   font-size: 11px;
   color: #8a97b8;
 }
+.um-section-editor { padding: 16px 24px; border-top: 1px solid #e4e8ef; }
+.um-section-selection { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 10px 0; }
+.um-section-selection span { min-width: 0; overflow-wrap: anywhere; }
+.um-section-selection button { flex-shrink: 0; }

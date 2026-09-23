@@ -1,6 +1,7 @@
 import React from 'react';
 import './styles/AdminUsers.css';
 import AdminShell from './components/AdminShell';
+import BulkUserUpload from './components/BulkUserUpload';
 import {
   createParentStudentLink,
   createPlatformUser,
@@ -10,9 +11,10 @@ import {
   fetchParentLinkDirectory,
   fetchParentStudentLinks,
   setPlatformUserActive,
+  setStudentClasses,
   updatePlatformUser,
 } from '../../services/adminApi';
-import { formatClassOptionLabel } from '../../utils/classLabels';
+import { formatClassLabel, formatClassOptionLabel } from '../../utils/classLabels';
 import {
   AVATAR_ACCEPT_ATTR,
   removeUserAvatar,
@@ -68,6 +70,7 @@ function AdminUsers({ onNavigate, role }) {
   const [saveBusy, setSaveBusy] = React.useState(false);
   const [saveError, setSaveError] = React.useState('');
   const [showAddModal, setShowAddModal] = React.useState(false);
+  const [showBulkUpload, setShowBulkUpload] = React.useState(false);
   const [showAddPassword, setShowAddPassword] = React.useState(false);
   const [addBusy, setAddBusy] = React.useState(false);
   const [addError, setAddError] = React.useState('');
@@ -167,10 +170,8 @@ function AdminUsers({ onNavigate, role }) {
   }, [loadUsers]);
 
   React.useEffect(() => {
-    if (isSuperAdmin) {
-      loadClassOptions();
-    }
-  }, [isSuperAdmin, loadClassOptions]);
+    loadClassOptions();
+  }, [loadClassOptions]);
 
   React.useEffect(() => {
     const onDocClick = (event) => {
@@ -209,6 +210,7 @@ function AdminUsers({ onNavigate, role }) {
       role: String(user.role || '').toLowerCase(),
       status: user.status_label || 'Active',
       isActive: user.is_active !== false,
+      classIds: (user.classes || []).map((c) => c.id),
     });
     setSaveError('');
     setEditAvatarFile(null);
@@ -345,6 +347,15 @@ function AdminUsers({ onNavigate, role }) {
     }
 
     let updatedUser = result.data;
+    if (editDraft.role === 'student' && JSON.stringify([...editDraft.classIds].sort()) !== JSON.stringify((editing.classes || []).map((c) => c.id).sort())) {
+      const sectionResult = await setStudentClasses(editDraft.id, editDraft.classIds, (editing.classes || []).map((c) => c.id));
+      if (!sectionResult.success) {
+        setSaveBusy(false);
+        setSaveError(`Profile saved, but sections were not changed: ${sectionResult.error}`);
+        return;
+      }
+      updatedUser = { ...updatedUser, classes: editDraft.classIds.map((id) => classOptions.find((c) => c.id === id) || editing.classes.find((c) => c.id === id)) };
+    }
     const statusChanged = isSuperAdmin && editDraft.isActive !== (editing?.is_active !== false);
     if (statusChanged) {
       const statusResult = await setPlatformUserActive(editDraft.id, editDraft.isActive);
@@ -506,6 +517,9 @@ function AdminUsers({ onNavigate, role }) {
             </button>
             <button className="um-add-btn" type="button" onClick={openAdd}>
               + Add User
+            </button>
+            <button className="um-secondary-btn" type="button" disabled={loading} onClick={() => setShowBulkUpload(true)}>
+              Bulk Add Users
             </button>
           </div>
         )}
@@ -672,6 +686,7 @@ function AdminUsers({ onNavigate, role }) {
               <th>Name</th>
               <th>Role</th>
               <th>Email</th>
+              <th>Class / Section</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -679,13 +694,13 @@ function AdminUsers({ onNavigate, role }) {
           <tbody>
             {loading ? (
               <tr>
-                <td className="um-empty" colSpan={5}>
+                <td className="um-empty" colSpan={6}>
                   Loading users...
                 </td>
               </tr>
             ) : filteredUsers.length === 0 ? (
               <tr>
-                <td className="um-empty" colSpan={5}>
+                <td className="um-empty" colSpan={6}>
                   No users found.
                 </td>
               </tr>
@@ -695,6 +710,7 @@ function AdminUsers({ onNavigate, role }) {
                   <td>{user.name || 'Unnamed User'}</td>
                   <td>{roleLabel(user.role)}</td>
                   <td className="um-muted">{user.email || '—'}</td>
+                  <td>{user.role === 'student' ? (user.classes?.length ? user.classes.map((c) => <div key={c.id}>{formatClassLabel(c)}</div>) : 'No class assigned') : '—'}</td>
                   <td>
                     <span className={`um-status ${user.is_active === false ? 'inactive' : 'active'}`}>{user.status_label || (user.is_active === false ? 'Inactive' : 'Active')}</span>
                   </td>
@@ -839,8 +855,24 @@ function AdminUsers({ onNavigate, role }) {
                   {isSuperAdmin && <small>Inactive users cannot sign in. Their profile and work are kept.</small>}
                 </label>
               </div>
+              {editDraft.role === 'student' && <div className="um-section-editor">
+                <label className="um-field"><span>Class / Section</span>
+                  <select className="um-input" value="" disabled={saveBusy || classesLoading || Boolean(classesError)} onChange={(event) => {
+                    const id = event.target.value;
+                    if (id) setEditDraft((prev) => ({ ...prev, classIds: [...prev.classIds, id] }));
+                  }}>
+                    <option value="">{classesLoading ? 'Loading classes…' : 'Select a class to add'}</option>
+                    {classOptions.filter((c) => !editDraft.classIds.includes(c.id)).map((c) => <option key={c.id} value={c.id}>{formatClassOptionLabel(c)}</option>)}
+                  </select>
+                </label>
+                {editDraft.classIds.map((id) => <div className="um-section-selection" key={id}>
+                  <span>{formatClassOptionLabel(classOptions.find((c) => c.id === id) || editing.classes?.find((c) => c.id === id))}</span>
+                  <button type="button" className="um-btn ghost" disabled={saveBusy} aria-label={`Remove ${formatClassLabel(classOptions.find((c) => c.id === id) || editing.classes?.find((c) => c.id === id))}`} onClick={() => setEditDraft((prev) => ({ ...prev, classIds: prev.classIds.filter((value) => value !== id) }))}>Remove</button>
+                </div>)}
+                <p className="um-field-hint">{editDraft.classIds.length ? 'To transfer sections, remove the old class and select the new one. Changes apply when you save.' : 'No class assigned. Select a class above to enroll this student.'} Existing assignments and submitted work are kept.</p>
+                {classesError && <p role="alert">{classesError}</p>}
+              </div>}
             </div>
-
             <div className="um-modal-actions">
               <button className="um-btn ghost" type="button" onClick={closeEdit}>
                 Cancel
@@ -1149,6 +1181,7 @@ function AdminUsers({ onNavigate, role }) {
           </div>
         </div>
       )}
+      {isSuperAdmin && showBulkUpload && <BulkUserUpload users={users} classes={classOptions} classesLoading={classesLoading} classesError={classesError} onClose={() => setShowBulkUpload(false)} onComplete={loadUsers} />}
     </AdminShell>
   );
 }

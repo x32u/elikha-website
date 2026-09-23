@@ -1,0 +1,3 @@
+email,password,name,role
+student@example.com,,Example Student,Student
+teacher@example.com,,Example Teacher,Teacher
