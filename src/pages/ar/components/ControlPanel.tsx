@@ -166,8 +166,8 @@ export function ControlPanel({
             ? `scale(${fitScale})`
             : 'none',
         transformOrigin: vrMode ? 'bottom center' : 'bottom right',
-        background: compact && !vrMode ? 'rgba(24, 30, 44, 0.94)' : 'transparent',
-        border: compact && !vrMode ? '1px solid rgba(255, 255, 255, 0.32)' : 'none',
+        background: 'transparent',
+        border: 'none',
         borderRadius: 16,
         padding: compact ? 4 : 12,
         color: 'white',
@@ -182,9 +182,9 @@ export function ControlPanel({
         flexDirection: 'column',
         gap: compact ? 2 : 10,
         alignItems: 'flex-start',
-        boxShadow: compact && !vrMode ? '0 10px 24px rgba(0, 0, 0, 0.18)' : 'none',
-        backdropFilter: compact && !vrMode ? 'blur(8px)' : 'none',
-        WebkitBackdropFilter: compact && !vrMode ? 'blur(8px)' : 'none',
+        boxShadow: 'none',
+        backdropFilter: 'none',
+        WebkitBackdropFilter: 'none',
       }}
     >
       <div

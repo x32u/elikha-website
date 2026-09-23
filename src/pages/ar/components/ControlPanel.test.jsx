@@ -79,6 +79,10 @@ describe('ControlPanel selected 3D model locking', () => {
     expect(container.querySelector('.control-panel-content').hidden).toBe(false);
     expect(container.querySelector('.control-panel').getAttribute('data-fit-scale')).toBe('1.000');
     expect(container.querySelector('.control-panel').style.overflow).toBe('auto');
+    const panel = container.querySelector('.control-panel');
+    expect(panel.style.background).toBe('transparent');
+    expect(panel.style.boxShadow).toBe('none');
+    expect(panel.style.backdropFilter).toBe('none');
   });
 
   it('renders only the activity palette in its saved order', async () => {
