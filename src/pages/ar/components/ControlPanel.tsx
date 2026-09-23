@@ -116,7 +116,10 @@ export function ControlPanel({
         const availableWidth = vrMode
           ? Math.max(1, viewportWidth / 2 - 12)
           : Math.max(1, viewportWidth - 16);
-        const availableHeight = Math.max(1, viewportHeight - (vrMode ? 16 : 120));
+        const panelStyle = window.getComputedStyle(panel);
+        const topInset = parseFloat(panelStyle.top) || 12;
+        const bottomInset = parseFloat(panelStyle.marginBottom) || 12;
+        const availableHeight = Math.max(1, viewportHeight - (vrMode ? 16 : topInset + bottomInset));
         const naturalWidth = Math.max(1, panel.scrollWidth);
         const content = panel.querySelector<HTMLElement>('.control-panel-content');
         const naturalHeight = Math.max(1, vrMode ? panel.scrollHeight : (content?.scrollHeight || 0) + 8);
@@ -158,9 +161,10 @@ export function ControlPanel({
       className={`control-panel ${isLandscape ? 'landscape' : 'portrait'} ${compact ? 'compact' : ''} ${vrMode ? 'vr' : ''} ${vrEye ? `eye-${vrEye}` : ''}`}
       style={{
         position: 'absolute',
-        top: vrMode || compact ? 'auto' : 20,
+        top: vrMode ? 'auto' : compact ? 'max(12px, env(safe-area-inset-top))' : 20,
         right: vrMode ? 'auto' : compact ? 'max(12px, env(safe-area-inset-right))' : 20,
-        bottom: vrMode ? 6 : compact ? 'max(12px, env(safe-area-inset-bottom))' : 'auto',
+        bottom: vrMode ? 6 : 'auto',
+        marginBottom: compact && !vrMode ? 'max(12px, env(safe-area-inset-bottom))' : 0,
         left: vrMode
           ? vrEye === 'right'
             ? '75vw'
@@ -173,7 +177,7 @@ export function ControlPanel({
           : compact
             ? `scale(${fitScale})`
             : 'none',
-        transformOrigin: vrMode ? 'bottom center' : 'bottom right',
+        transformOrigin: vrMode ? 'bottom center' : 'top right',
         background: 'transparent',
         border: 'none',
         borderRadius: 16,
@@ -183,10 +187,10 @@ export function ControlPanel({
         fontSize: compact ? 11 : 14,
         zIndex: 1000,
         maxWidth: vrMode ? 'calc(50vw - 12px)' : compact ? 'calc(100vw - 24px)' : 320,
-        width: vrMode ? 'min(44vw, 360px)' : compact ? 'min(520px, max(320px, 44vw), calc(100vw - 24px))' : 'auto',
+        width: vrMode ? 'min(44vw, 360px)' : compact ? 'min(320px, max(180px, 28vw), calc(100vw - 24px))' : 'auto',
         maxHeight: compact && !vrMode
           ? availablePanelHeight === null
-            ? 'calc(100dvh - 120px)'
+            ? 'calc(100dvh - max(12px, env(safe-area-inset-top)) - max(12px, env(safe-area-inset-bottom)))'
             : `${availablePanelHeight / fitScale}px`
           : 'none',
         overflow: compact && !vrMode ? 'auto' : 'visible',

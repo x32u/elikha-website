@@ -83,6 +83,7 @@ describe('ControlPanel selected 3D model locking', () => {
     expect(panel.style.background).toBe('transparent');
     expect(panel.style.boxShadow).toBe('none');
     expect(panel.style.backdropFilter).toBe('none');
+    expect(panel.style.transformOrigin).toBe('top right');
   });
 
   it('fits long touch toolbars and refits after content changes without tiny controls', async () => {
@@ -109,7 +110,7 @@ describe('ControlPanel selected 3D model locking', () => {
       Object.defineProperty(content, 'scrollHeight', { configurable: true, value: 1500 });
       act(() => measure());
       expect(panel.dataset.fitScale).toBe('0.850');
-      expect(parseFloat(panel.style.maxHeight) * 0.85).toBeCloseTo(window.innerHeight - 120);
+      expect(parseFloat(panel.style.maxHeight) * 0.85).toBeCloseTo(window.innerHeight - 24);
       Object.defineProperty(content, 'scrollHeight', { configurable: true, value: 200 });
       act(() => { resized(); measure(); });
       expect(panel.dataset.fitScale).toBe('1.000');

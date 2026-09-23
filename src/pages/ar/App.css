@@ -226,7 +226,7 @@ body {
   flex-shrink: 0;
 }
 
-/* Wrap into wider rows first; the panel gently scales to the visible viewport. */
+/* A narrow edge rail uses the full safe height without spreading into the artwork. */
 .ar-app-root .control-panel.compact:not(.vr) {
   overscroll-behavior: contain;
   touch-action: pan-y;
@@ -247,6 +247,8 @@ body {
   font-size: 14px;
   line-height: 1.3;
   touch-action: manipulation;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 .ar-app-root .control-panel.compact:not(.vr) .tool-icon { width: 20px; height: 20px; }
 .ar-app-root .control-panel.compact:not(.vr) .color-swatch { width: 44px; height: 44px; }
