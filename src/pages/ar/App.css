@@ -224,6 +224,34 @@ body {
   overflow: visible;
 }
 
+/* Touch controls stay at their actual size; scroll instead of shrinking. */
+.ar-app-root .control-panel.compact:not(.vr) {
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+.ar-app-root .control-panel.compact:not(.vr) .control-label {
+  font-size: 13px !important;
+  line-height: 1.4;
+  margin: 8px 0 6px !important;
+}
+.ar-app-root .control-panel.compact:not(.vr) .control-row {
+  gap: 6px !important;
+  flex-wrap: wrap;
+  margin-bottom: 6px !important;
+}
+.ar-app-root .control-panel.compact:not(.vr) .tool-button {
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 14px;
+  line-height: 1.3;
+  touch-action: manipulation;
+}
+.ar-app-root .control-panel.compact:not(.vr) .tool-icon { width: 20px; height: 20px; }
+.ar-app-root .control-panel.compact:not(.vr) .color-swatch { width: 44px; height: 44px; }
+.ar-app-root .control-panel.compact:not(.vr) .gesture-slider { height: 44px; }
+.ar-app-root .control-panel.compact:not(.vr) .brush-size-value,
+.ar-app-root .control-panel.compact:not(.vr) .selected-shape-status { font-size: 13px; }
+
 .control-panel.compact .control-card {
   padding: 2px !important;
 }

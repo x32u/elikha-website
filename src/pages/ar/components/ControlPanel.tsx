@@ -80,7 +80,7 @@ export function ControlPanel({
     typeof window !== 'undefined' ? window.innerWidth > window.innerHeight : true
   );
   const panelRef = useRef<HTMLDivElement>(null);
-  const preferredCompactScale = vrMode ? 0.68 : 0.72;
+  const preferredCompactScale = vrMode ? 0.68 : 1;
   const [fitScale, setFitScale] = useState(compact ? preferredCompactScale : 1);
   const currentColorHex = `#${paintColor.getHexString()}`;
   const enabledTools = new Set(allowedTools);
@@ -97,7 +97,7 @@ export function ControlPanel({
   }, []);
 
   useLayoutEffect(() => {
-    if (!compact) {
+    if (!vrMode) {
       setFitScale(1);
       return undefined;
     }
@@ -151,8 +151,8 @@ export function ControlPanel({
       style={{
         position: 'absolute',
         top: vrMode || compact ? 'auto' : 20,
-        right: vrMode ? 'auto' : compact ? 8 : 20,
-        bottom: vrMode ? 6 : compact ? 8 : 'auto',
+        right: vrMode ? 'auto' : compact ? 'max(12px, env(safe-area-inset-right))' : 20,
+        bottom: vrMode ? 6 : compact ? 'max(12px, env(safe-area-inset-bottom))' : 'auto',
         left: vrMode
           ? vrEye === 'right'
             ? '75vw'
@@ -166,7 +166,7 @@ export function ControlPanel({
             ? `scale(${fitScale})`
             : 'none',
         transformOrigin: vrMode ? 'bottom center' : 'bottom right',
-        background: compact && !vrMode ? 'rgba(255, 255, 255, 0.22)' : 'transparent',
+        background: compact && !vrMode ? 'rgba(24, 30, 44, 0.94)' : 'transparent',
         border: compact && !vrMode ? '1px solid rgba(255, 255, 255, 0.32)' : 'none',
         borderRadius: 16,
         padding: compact ? 4 : 12,
@@ -176,8 +176,8 @@ export function ControlPanel({
         zIndex: 1000,
         maxWidth: vrMode ? 'calc(50vw - 12px)' : compact ? 'min(360px, calc(100vw - 16px))' : 320,
         width: vrMode ? 'min(44vw, 360px)' : compact ? 'min(360px, calc(100vw - 16px))' : 'auto',
-        maxHeight: 'none',
-        overflow: 'visible',
+        maxHeight: compact && !vrMode ? 'calc(100dvh - 110px - env(safe-area-inset-bottom))' : 'none',
+        overflow: compact && !vrMode ? 'auto' : 'visible',
         display: 'flex',
         flexDirection: 'column',
         gap: compact ? 2 : 10,

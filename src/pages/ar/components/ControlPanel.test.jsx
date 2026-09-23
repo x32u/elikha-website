@@ -59,7 +59,7 @@ describe('ControlPanel selected 3D model locking', () => {
     expect(onToggleModelLock).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps every phone tool rendered without a scroll/collapse control', async () => {
+  it('keeps touch tools at full size with scrollable overflow', async () => {
     await act(async () => {
       root.render(
         <ControlPanel
@@ -77,7 +77,8 @@ describe('ControlPanel selected 3D model locking', () => {
     expect(container.textContent).toContain('Paint');
     expect(container.querySelector('.compact-toolbox-toggle')).toBeNull();
     expect(container.querySelector('.control-panel-content').hidden).toBe(false);
-    expect(container.querySelector('.control-panel').getAttribute('data-fit-scale')).toBe('0.720');
+    expect(container.querySelector('.control-panel').getAttribute('data-fit-scale')).toBe('1.000');
+    expect(container.querySelector('.control-panel').style.overflow).toBe('auto');
   });
 
   it('renders only the activity palette in its saved order', async () => {

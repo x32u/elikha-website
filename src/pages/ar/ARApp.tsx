@@ -1445,7 +1445,7 @@ function ARApp({
       className={`ar-app-root ${compactUi ? 'mobile-ar' : ''} ${vrMode ? 'vr-ar' : ''}`}
       style={{
         width: '100vw',
-        height: '100vh',
+        height: '100dvh',
         overflow: 'hidden',
         position: 'relative',
       }}
