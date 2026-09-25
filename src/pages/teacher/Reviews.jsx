@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
+import ExportArtworkButton from '../../components/ExportArtworkButton';
 import './Reviews.css';
 import { getAllSubmissions, gradeSubmission } from '../../services/teacherApi';
 import { parseArSubmissionDescription } from '../../utils/arSubmission';
@@ -91,6 +92,7 @@ const Reviews = () => {
             dueDate,
             status: displayStatus,
             artwork: sub.artwork_url || '🎨',
+            artworkUrl: sub.artwork_url || null,
             description: parsedArSubmission?.summary || sub.description || 'No description provided',
             paintState: parsedArSubmission?.paintState || [],
             sceneState: parsedArSubmission?.sceneState || [],
@@ -506,6 +508,8 @@ const Reviews = () => {
                       >
                         {hasStarRating(submission.score) ? 'Edit Rating' : 'Rate Student'}
                       </button>
+                      <ExportArtworkButton artworkUrl={submission.artworkUrl}
+                        filename={`${submission.studentName} - ${submission.activityTitle}`} />
                     </div>
                   )}
                 </div>

@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
+import ExportArtworkButton from '../../components/ExportArtworkButton';
 import ArPreparationGuide from '../../components/ArPreparationGuide';
 import { getActivityById } from '../../services/teacherApi';
 import { getActivityDetails, getStudentActivityAssessment } from '../../services/studentApi';
@@ -513,6 +514,7 @@ const ActivityDetails = () => {
                   {submission?.reviewed_at && (
                     <p>Reviewed on {formatDate(submission.reviewed_at)}</p>
                   )}
+                  <div className="submitted-artwork-actions">
                   <button
                     className="view-ar-button"
                     type="button"
@@ -520,6 +522,9 @@ const ActivityDetails = () => {
                   >
                     View in AR
                   </button>
+                  <ExportArtworkButton artworkUrl={submission?.artwork_url}
+                    filename={activity.title} />
+                  </div>
                   {!isReviewed && (
                     <p className="final-review-pending" role="status">
                       Waiting for your teacher's review. Your final score and rubric results will appear here after confirmation.

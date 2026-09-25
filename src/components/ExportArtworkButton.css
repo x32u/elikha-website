@@ -1,0 +1,10 @@
+.artwork-export { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px; max-width: 100%; }
+.artwork-export-button { padding: 10px 20px; min-height: 44px; background: #fff; color: #1800ad; border: 1px solid #1800ad; border-radius: 10px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; touch-action: manipulation; }
+.artwork-export-button:hover:not(:disabled) { background: #f5f3ff; }
+.artwork-export-button:focus-visible { outline: 3px solid #3154e8; outline-offset: 3px; }
+.artwork-export-button:disabled { opacity: .55; cursor: not-allowed; }
+.artwork-export-message { color: #334155; font-size: 13px; max-width: 320px; overflow-wrap: anywhere; }
+.artwork-export-message:empty { display: none; }
+.submitted-artwork-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 12px; margin: 12px 0; }
+.submitted-artwork-actions .view-ar-button { margin: 0; }
+.submitted-artwork-actions .artwork-export-button { border-radius: 999px; font-size: inherit; }
