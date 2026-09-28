@@ -12,6 +12,7 @@ import { getAiSubmissionGrade, requestAiSubmissionGrade } from '../../services/a
 import { buildTeacherRubricEvidence } from '../../utils/teacherReviewEvidence';
 import { RUBRIC_RATINGS, rubricRatingLabel, toRubricRatingCode } from '../../utils/rubricRatings';
 import { rubricDraftStarRationale } from '../../utils/rubricStarRating';
+import { formatPhilippineTimestamp, formatPhilippineDeadline, isSubmissionLate } from '../../utils/philippineTime';
 
 const rubricLevelLabel = (level) => level.code ? (level.label || rubricRatingLabel(level.code) || '') : `${level.score} pts`;
 // An AI criterion carries its private-school rating in levelCode. A missing or
@@ -79,7 +80,7 @@ const Reviews = () => {
             Boolean(sub.reviewed_at) || ['reviewed', 'graded', 'completed'].includes(normalizedSubmissionStatus);
           const isSubmitted =
             Boolean(sub.submitted_at) || ['submitted', 'late', 'reviewed', 'graded', 'completed'].includes(normalizedSubmissionStatus);
-          const isLate = sub.is_late || (sub.submitted_at && dueDate && new Date(sub.submitted_at) > new Date(dueDate));
+          const isLate = sub.is_late || normalizedSubmissionStatus === 'late' || isSubmissionLate(sub.submitted_at, dueDate);
           const displayStatus = isReviewed ? 'reviewed' : isLate ? 'late' : (isSubmitted ? 'submitted' : 'submitted');
           
           return {
@@ -127,13 +128,6 @@ const Reviews = () => {
       'submitted': { label: 'Submitted', class: 'status-pending' }
     };
     return badges[status] || badges.submitted;
-  };
-
-  const formatDateTime = (value) => {
-    if (!value) return 'N/A';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return 'N/A';
-    return date.toLocaleString();
   };
 
   const isImageArtwork = (value) =>
@@ -457,12 +451,12 @@ const Reviews = () => {
                   <div className="submission-meta">
                     <div className="meta-item">
                       <span className="meta-label">Due Date:</span>
-                      <span className="meta-value">{formatDateTime(submission.dueDate)}</span>
+                      <span className="meta-value">{formatPhilippineDeadline(submission.dueDate)}</span>
                     </div>
                     {submission.submittedDate && (
                       <div className="meta-item">
                         <span className="meta-label">Submitted:</span>
-                        <span className="meta-value">{formatDateTime(submission.submittedDate)}</span>
+                        <span className="meta-value">{formatPhilippineTimestamp(submission.submittedDate)}</span>
                       </div>
                     )}
                     {hasStarRating(submission.score) && (
