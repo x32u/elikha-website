@@ -345,66 +345,47 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
         </div>
       </section>
 
-      <h2 className="dash-h2">3D Model Storage</h2>
+      <h2 className="dash-h2">System Storage</h2>
 
       <section className="dash-storage" aria-label="System storage usage">
         <div className="storage-overview">
           <div>
-            <div className="storage-eyebrow">Cloudflare R2 model storage</div>
-            <div className="storage-heading">
-              {storageError ? 'Usage unavailable' : `${storage.usedPercent.toFixed(1)}% used`}
+            <div className="storage-eyebrow">Total storage used</div>
+            <div className="storage-heading" aria-live="polite">
+              {storageError ? 'Usage unavailable' : loading ? 'Checking storage…' : formatStorage(storage.usedBytes)}
             </div>
             <div className="storage-description">
               {storageError
                 ? storageError
-                : `${storage.models.totalLibraryCount.toLocaleString()} AR model${storage.models.totalLibraryCount === 1 ? '' : 's'} shared across administrators, teachers, and students.`}
+                : 'Actual Cloudflare R2 usage, including models, images, and retained artwork files. Shared files count once.'}
             </div>
           </div>
           <div className="storage-capacity">
-            <span>Total capacity</span>
-            <strong>{storageError ? '—' : formatStorage(storage.capacityBytes)}</strong>
+            <span>System storage limit</span>
+            <strong>No app-level cap</strong>
           </div>
-        </div>
-
-        <div
-          className="storage-progress"
-          role="progressbar"
-          aria-label="Storage used"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={storageError ? 0 : Math.round(storage.usedPercent)}
-        >
-          <div
-            className="storage-progress-fill"
-            style={{ width: `${storageError ? 0 : storage.usedPercent}%` }}
-          />
         </div>
 
         <div className="storage-metrics">
           <div className="storage-metric storage-metric-models">
             <span className="storage-metric-dot" aria-hidden="true" />
             <div>
-              <span>3D model storage</span>
-              <strong>{storageError ? '—' : formatStorage(storage.models.usedBytes)}</strong>
-              {!storageError && (
-                <small>
-                  {storage.models.bundledCount} built-in • {storage.models.r2CustomCount} uploaded
-                </small>
-              )}
+              <span>Model library entries</span>
+              <strong>{storageError || loading ? '—' : Number(storage.models?.totalLibraryCount || 0).toLocaleString()}</strong>
             </div>
           </div>
           <div className="storage-metric storage-metric-used">
             <span className="storage-metric-dot" aria-hidden="true" />
             <div>
-              <span>Models stored</span>
-              <strong>{storageError ? '—' : storage.models.fileCount.toLocaleString()}</strong>
+              <span>Stored files</span>
+              <strong>{storageError || loading ? '—' : Number(storage.fileCount || 0).toLocaleString()}</strong>
             </div>
           </div>
           <div className="storage-metric storage-metric-remaining">
             <span className="storage-metric-dot" aria-hidden="true" />
             <div>
-              <span>Remaining storage</span>
-              <strong>{storageError ? '—' : formatStorage(storage.remainingBytes)}</strong>
+              <span>Storage limit per teacher</span>
+              <strong>15 GB</strong>
             </div>
           </div>
         </div>
