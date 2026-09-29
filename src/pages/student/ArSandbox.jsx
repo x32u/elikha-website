@@ -40,10 +40,8 @@ const ArSandbox = () => {
   }, []);
   const { settings: userSettings, userId } = useUserSettings();
   const [models, setModels] = useState(() => getArRenderableModelLibrary());
-  const [classId, setClassId] = useState('');
-  const classes = useMemo(() => Array.from(new Map(models.flatMap((model) => model.classes || [])
-    .map((entry) => [entry.class_id, entry])).values()), [models]);
-  const visibleModels = useMemo(() => models.filter((model) => !classId || model.classes?.some((entry) => entry.class_id === classId)), [models, classId]);
+  // The server already restricts this library to the student's enrolled teachers.
+  const visibleModels = models;
   useEffect(() => {
     const refreshModels = () => setModels(getArRenderableModelLibrary());
     window.addEventListener(AR_MODEL_LIBRARY_UPDATED_EVENT, refreshModels);
@@ -154,19 +152,12 @@ const ArSandbox = () => {
           </div>
 
           <div className="sandbox-fields sandbox-fields-single">
-            <label className="sandbox-class-filter" htmlFor="sandbox-class-filter">
-              Class
-              <select id="sandbox-class-filter" name="sandbox-class" value={classId} onChange={(event) => setClassId(event.target.value)}>
-                <option value="">All classes</option>
-                {classes.map((entry) => <option key={entry.class_id} value={entry.class_id}>{entry.class_name}</option>)}
-              </select>
-            </label>
             <SandboxModelPicker
               models={visibleModels}
               value={selectedModelId}
               onChange={setSelectedModelId}
             />
-            {!visibleModels.length && <p role="status">No models are available for this class yet. Your teacher can add models to their library.</p>}
+            {!visibleModels.length && <p role="status">No models are available from your enrolled classes yet. Your teachers can add models to their libraries.</p>}
           </div>
 
           <section className="sandbox-voice-guide" aria-labelledby="sandbox-voice-guide-title">

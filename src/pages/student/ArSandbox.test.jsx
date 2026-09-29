@@ -63,6 +63,7 @@ describe('AR Sandbox voice guide preference', () => {
     });
 
     const toggle = container.querySelector('[aria-label="Turn Sandbox voice guide off"]');
+    expect(container.querySelector('#sandbox-class-filter')).toBeNull();
     expect(toggle).not.toBeNull();
     expect(toggle.getAttribute('aria-pressed')).toBe('true');
     expect(toggle.textContent).toContain('Voice On');
