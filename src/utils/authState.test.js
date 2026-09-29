@@ -79,7 +79,11 @@ describe('auth state helpers', () => {
 
   it('uses safe role normalization for route decisions', () => {
     expect(normalizeRole('Super-Admin')).toBe('superadmin');
-    expect(getDefaultRouteForRole('Teacher')).toBe('/classes');
+    expect(getDefaultRouteForRole('Teacher')).toBe('/homepage');
+    expect(getDefaultRouteForRole('student')).toBe('/homepage');
+    expect(getDefaultRouteForRole('parent')).toBe('/notifications');
+    expect(getDefaultRouteForRole('admin')).toBe('/admin');
+    expect(getDefaultRouteForRole('superadmin')).toBe('/superadmin');
     expect(getDefaultRouteForRole('unknown')).toBe('/homepage');
   });
 

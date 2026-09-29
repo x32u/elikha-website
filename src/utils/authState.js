@@ -7,7 +7,7 @@ export const normalizeRole = (role) => (
 export const getDefaultRouteForRole = (role) => {
   const normalizedRole = normalizeRole(role);
   if (normalizedRole === 'parent') return '/notifications';
-  if (normalizedRole === 'teacher') return '/classes';
+  if (normalizedRole === 'teacher') return '/homepage';
   if (normalizedRole === 'admin') return '/admin';
   if (normalizedRole === 'superadmin') return '/superadmin';
   return '/homepage';
