@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { uploadWithProgress } from './uploadWithProgress';
 import {
   getArModelLibrary,
   replaceR2ArModelLibrary,
@@ -68,12 +69,13 @@ export const refreshR2ModelLibrary = async () => {
   return getArModelLibrary();
 };
 
-export const uploadR2Model = async ({ label, description = '', file }) => {
+export const uploadR2Model = async ({ label, description = '', file, onProgress }) => {
   requireApiBase();
   if (!(file instanceof File)) throw new Error('Select a 3D model file to upload.');
 
-  const response = await fetch(`${API_BASE}/models`, {
+  const response = await uploadWithProgress(`${API_BASE}/models`, {
     method: 'POST',
+    onProgress,
     headers: await modelUploadHeaders({ label, description, file }),
     body: file,
   });
@@ -82,13 +84,14 @@ export const uploadR2Model = async ({ label, description = '', file }) => {
   return model;
 };
 
-export const updateR2Model = async (id, { label, description = '', file = null }) => {
+export const updateR2Model = async (id, { label, description = '', file = null, onProgress }) => {
   requireApiBase();
   const safeId = encodeURIComponent(String(id || ''));
 
   const response = file instanceof File
-    ? await fetch(`${API_BASE}/models/${safeId}/file`, {
+    ? await uploadWithProgress(`${API_BASE}/models/${safeId}/file`, {
         method: 'PUT',
+        onProgress,
         headers: await modelUploadHeaders({ label, description, file }),
         body: file,
       })

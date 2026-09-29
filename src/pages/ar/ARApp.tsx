@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { CameraFeed } from './components/CameraFeed';
+import { PaintCursor } from './components/PaintCursor';
 import {
   ARSceneV2,
   type BaseArModelConfig,
@@ -1466,6 +1467,9 @@ function ARApp({
       />
 
       {/* Three.js AR scene V2 */}
+      <PaintCursor landmarks={landmarks} videoRef={videoRef} color={`#${paintColor.getHexString()}`}
+        enabled={!isViewMode && arInteractionAllowed && !historyRestoring && activeTool === 'paint'}
+        mirrorX={mirrorCameraX} dualScreenMode={vrMode} />
       <ARSceneV2
         modelUrl={modelUrl || '/models/cute_cactus.glb'}
         modelFileType={modelFileType || undefined}

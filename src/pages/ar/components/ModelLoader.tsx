@@ -1,6 +1,7 @@
 // @ts-nocheck
 /// <reference path="../../../three-jsx.d.ts" />
 import { useEffect, useState, useRef } from 'react';
+import { Html } from '@react-three/drei';
 import { TDSLoader } from 'three/examples/jsm/loaders/TDSLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -226,12 +227,10 @@ export function ModelLoader({
   }
 
   if (!model) {
-    // Loading state - show a small sphere
     return (
-      <mesh position={position}>
-        <sphereGeometry args={[0.1, 16, 16]} />
-        <meshBasicMaterial color="#888888" wireframe />
-      </mesh>
+      <Html position={position} center style={{ pointerEvents: 'none' }}>
+        <span role="status" style={{ display: 'block', whiteSpace: 'nowrap', padding: '8px 12px', borderRadius: 8, background: '#ffffff', color: '#2A2A45', font: '600 14px sans-serif' }}>Loading model…</span>
+      </Html>
     );
   }
 

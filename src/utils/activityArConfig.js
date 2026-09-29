@@ -17,6 +17,9 @@ const resolveBuiltInModelUrl = (id, localUrl) => (
 );
 
 const compareArLibraryItems = (a, b) => {
+  const uploaded = (item) => Date.parse(item?.uploadedAt || item?.createdAt || item?.created_at || '') || 0;
+  const newestFirst = uploaded(b) - uploaded(a);
+  if (newestFirst) return newestFirst;
   const labelA = String(a?.label || a?.name || a?.id || '').trim();
   const labelB = String(b?.label || b?.name || b?.id || '').trim();
   const byLabel = labelA.localeCompare(labelB, undefined, {

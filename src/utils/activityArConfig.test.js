@@ -40,7 +40,7 @@ describe('AR model format handling', () => {
     expect(labels).toEqual(['Cone', 'Cube', 'Cylinder', 'Rectangle', 'Sphere']);
   });
 
-  test('keeps newly added 3D models alphabetized', () => {
+  test('uses alphabetical fallback when upload dates are unavailable', () => {
     replaceR2ArModelLibrary([
       {
         id: 'zebra',
@@ -62,6 +62,14 @@ describe('AR model format handling', () => {
       sensitivity: 'base',
     })));
     expect(labels.indexOf('Apple')).toBeLessThan(labels.indexOf('Zebra'));
+  });
+
+  test('puts the newest upload first even when its name sorts last', () => {
+    replaceR2ArModelLibrary([
+      { id: 'old-apple', label: 'Apple', modelUrl: '/apple.glb', uploadedAt: '2026-09-01T00:00:00Z' },
+      { id: 'new-zebra', label: 'Zebra', modelUrl: '/zebra.glb', uploadedAt: '2026-09-29T00:00:00Z' },
+    ]);
+    expect(getArModelLibrary().slice(0, 2).map(model => model.id)).toEqual(['new-zebra', 'old-apple']);
   });
 
   test('keeps teacher-confirmed expected colors in the activity payload', () => {

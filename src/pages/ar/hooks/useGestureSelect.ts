@@ -81,7 +81,7 @@ function mapToViewport(
   return { x, y };
 }
 
-function mapToScreen(
+export function mapToScreen(
   lm: { x: number; y: number },
   video: HTMLVideoElement | null,
   mirrorX: boolean
@@ -94,7 +94,7 @@ function mapToScreen(
   });
 }
 
-function mapToDualScreenPoints(
+export function mapToDualScreenPoints(
   lm: { x: number; y: number },
   video: HTMLVideoElement | null,
   mirrorX: boolean

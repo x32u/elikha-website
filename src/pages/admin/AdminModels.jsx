@@ -85,6 +85,7 @@ function AdminModels({ onNavigate, role }) {
   const [libraryError, setLibraryError] = React.useState('');
   const [storage, setStorage] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
+  const [uploadProgress, setUploadProgress] = React.useState(null);
   const [apiQuery, setApiQuery] = React.useState('');
   const [apiResults, setApiResults] = React.useState([]);
   const [apiLoading, setApiLoading] = React.useState(false);
@@ -128,12 +129,12 @@ function AdminModels({ onNavigate, role }) {
 
   React.useEffect(() => {
     const onKeyDown = (event) => {
-      if (event.key === 'Escape') closeModals();
+      if (event.key === 'Escape' && !busy) closeModals();
     };
 
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [closeModals]);
+  }, [closeModals, busy]);
 
   const filtered = models.filter((model) => {
     const q = query.trim().toLowerCase();
@@ -241,6 +242,7 @@ function AdminModels({ onNavigate, role }) {
       return;
     }
 
+    setUploadProgress(null);
     setBusy(true);
     setError('');
 
@@ -249,6 +251,7 @@ function AdminModels({ onNavigate, role }) {
         label,
         description: draft.desc,
         file: draft.file,
+        onProgress: setUploadProgress,
       });
 
       closeModals();
@@ -268,6 +271,7 @@ function AdminModels({ onNavigate, role }) {
       return;
     }
 
+    setUploadProgress(null);
     setBusy(true);
     setError('');
 
@@ -289,6 +293,7 @@ function AdminModels({ onNavigate, role }) {
         label,
         description: draft.desc,
         file: replacementFile,
+        onProgress: setUploadProgress,
       });
 
       closeModals();
@@ -308,6 +313,7 @@ function AdminModels({ onNavigate, role }) {
 
   const confirmRemove = async () => {
     if (!removing) return;
+    setUploadProgress(null);
     setBusy(true);
     setError('');
     try {
@@ -484,17 +490,22 @@ function AdminModels({ onNavigate, role }) {
       </section>
 
       {isAddOpen && (
-        <div className="m3d-modal-backdrop" role="presentation" onClick={closeModals}>
+        <div className="m3d-modal-backdrop" role="presentation" onClick={() => { if (!busy) closeModals(); }}>
           <div className="m3d-modal" role="dialog" aria-modal="true" aria-label="Add new 3D model" onClick={(event) => event.stopPropagation()}>
             <div className="m3d-modal-head">
               <div className="m3d-modal-title">Add New 3D Model</div>
-              <button className="m3d-modal-x" type="button" onClick={closeModals} aria-label="Close">
+              <button className="m3d-modal-x" type="button" disabled={busy} onClick={() => { if (!busy) closeModals(); }} aria-label="Close">
                 x
               </button>
             </div>
 
             <div className="m3d-modal-body">
-              {error && <div className="m3d-danger-note">{error}</div>}
+              {error && <div className="m3d-danger-note" role="alert">{error}</div>}
+              {busy && <div role="status" aria-live="polite" style={{ padding: '12px 0' }}>
+                <p>{uploadProgress === 100 ? 'Processing model and refreshing library…' : uploadProgress === null ? (draft.file ? 'Preparing upload…' : 'Saving changes…') : `Uploading… ${uploadProgress}%`}</p>
+                <progress aria-label="Model upload progress" max="100" value={uploadProgress === null || uploadProgress === 100 ? undefined : uploadProgress} style={{ width: '100%' }} />
+                <p>Please keep this window open until the model is saved.</p>
+              </div>}
 
               <label className="m3d-field">
                 <span>Name</span>
@@ -520,6 +531,7 @@ function AdminModels({ onNavigate, role }) {
                 <span>Upload Model File (.obj, .3ds, .glb, or .blend)</span>
                 <input
                   className="m3d-file-input"
+                  disabled={busy}
                   type="file"
                   accept=".obj,.3ds,.glb,.blend"
                   onChange={(event) => setDraft((prev) => ({ ...prev, file: event.target.files?.[0] || null }))}
@@ -533,7 +545,7 @@ function AdminModels({ onNavigate, role }) {
             </div>
 
             <div className="m3d-modal-actions">
-              <button className="m3d-btn ghost" type="button" onClick={closeModals}>
+              <button className="m3d-btn ghost" type="button" disabled={busy} onClick={() => { if (!busy) closeModals(); }}>
                 Cancel
               </button>
               <button className="m3d-btn primary" type="button" onClick={saveAdd} disabled={busy}>
@@ -545,17 +557,22 @@ function AdminModels({ onNavigate, role }) {
       )}
 
       {isEditOpen && editing && (
-        <div className="m3d-modal-backdrop" role="presentation" onClick={closeModals}>
+        <div className="m3d-modal-backdrop" role="presentation" onClick={() => { if (!busy) closeModals(); }}>
           <div className="m3d-modal" role="dialog" aria-modal="true" aria-label="Edit 3D model" onClick={(event) => event.stopPropagation()}>
             <div className="m3d-modal-head">
               <div className="m3d-modal-title">Edit 3D Model</div>
-              <button className="m3d-modal-x" type="button" onClick={closeModals} aria-label="Close">
+              <button className="m3d-modal-x" type="button" disabled={busy} onClick={() => { if (!busy) closeModals(); }} aria-label="Close">
                 x
               </button>
             </div>
 
             <div className="m3d-modal-body">
-              {error && <div className="m3d-danger-note">{error}</div>}
+              {error && <div className="m3d-danger-note" role="alert">{error}</div>}
+              {busy && <div role="status" aria-live="polite" style={{ padding: '12px 0' }}>
+                <p>{uploadProgress === 100 ? 'Processing model and refreshing library…' : uploadProgress === null ? (draft.file ? 'Preparing upload…' : 'Saving changes…') : `Uploading… ${uploadProgress}%`}</p>
+                <progress aria-label="Model upload progress" max="100" value={uploadProgress === null || uploadProgress === 100 ? undefined : uploadProgress} style={{ width: '100%' }} />
+                <p>Please keep this window open until the model is saved.</p>
+              </div>}
 
               <label className="m3d-field">
                 <span>Name</span>
@@ -579,6 +596,7 @@ function AdminModels({ onNavigate, role }) {
                 <span>Replace File (optional)</span>
                 <input
                   className="m3d-file-input"
+                  disabled={busy}
                   type="file"
                   accept=".obj,.3ds,.glb,.blend"
                   onChange={(event) => setDraft((prev) => ({ ...prev, file: event.target.files?.[0] || null }))}
@@ -592,7 +610,7 @@ function AdminModels({ onNavigate, role }) {
             </div>
 
             <div className="m3d-modal-actions">
-              <button className="m3d-btn ghost" type="button" onClick={closeModals}>
+              <button className="m3d-btn ghost" type="button" disabled={busy} onClick={() => { if (!busy) closeModals(); }}>
                 Cancel
               </button>
               <button className="m3d-btn primary" type="button" onClick={saveEdit} disabled={busy}>
@@ -604,17 +622,17 @@ function AdminModels({ onNavigate, role }) {
       )}
 
       {isRemoveOpen && removing && (
-        <div className="m3d-modal-backdrop" role="presentation" onClick={closeModals}>
+        <div className="m3d-modal-backdrop" role="presentation" onClick={() => { if (!busy) closeModals(); }}>
           <div className="m3d-modal m3d-modal-sm" role="dialog" aria-modal="true" aria-label="Remove 3D model" onClick={(event) => event.stopPropagation()}>
             <div className="m3d-modal-head">
               <div className="m3d-modal-title">Remove 3D Model</div>
-              <button className="m3d-modal-x" type="button" onClick={closeModals} aria-label="Close">
+              <button className="m3d-modal-x" type="button" disabled={busy} onClick={() => { if (!busy) closeModals(); }} aria-label="Close">
                 x
               </button>
             </div>
 
             <div className="m3d-modal-body">
-              {error && <div className="m3d-danger-note">{error}</div>}
+              {error && <div className="m3d-danger-note" role="alert">{error}</div>}
               <div className="m3d-danger-note">
                 <div className="m3d-danger-title">This action can&apos;t be undone.</div>
                 <div className="m3d-danger-sub">
@@ -624,7 +642,7 @@ function AdminModels({ onNavigate, role }) {
             </div>
 
             <div className="m3d-modal-actions">
-              <button className="m3d-btn ghost" type="button" onClick={closeModals}>
+              <button className="m3d-btn ghost" type="button" disabled={busy} onClick={() => { if (!busy) closeModals(); }}>
                 Cancel
               </button>
               <button className="m3d-btn danger" type="button" onClick={confirmRemove} disabled={busy}>
