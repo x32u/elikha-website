@@ -21,7 +21,9 @@ test('tracks the fingertip, updates color, and hides when tracking or paint mode
     const dot = container.firstChild;
     expect(dot.style.display).toBe('block');
     expect(dot.style.backgroundColor).toBe('rgb(255, 0, 0)');
-    expect(dot.style.transform).toBe(`translate(${window.innerWidth / 2 - 11}px, ${window.innerHeight / 2 - 11}px)`);
+    expect(dot.style.width).toBe('14px');
+    expect(dot.style.height).toBe('14px');
+    expect(dot.style.transform).toBe(`translate(${window.innerWidth / 2 - 7}px, ${window.innerHeight / 2 - 7}px)`);
     expect(dot.style.pointerEvents).toBe('none');
     render({ indexTip: { x: 0.2, y: 0.3 } }, '#ffff00');
     expect(dot.style.backgroundColor).toBe('rgb(255, 255, 0)');

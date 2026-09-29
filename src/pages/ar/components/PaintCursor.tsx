@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react';
 import { mapToScreen, mapToDualScreenPoints } from '../hooks/useGestureSelect';
 import type { HandLandmarks } from '../hooks/useHandTrackingV2';
 
+const CURSOR_SIZE = 14;
+
 export function PaintCursor({ landmarks, videoRef, color, enabled, mirrorX, dualScreenMode = false }: {
   landmarks: HandLandmarks | null;
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -24,7 +26,7 @@ export function PaintCursor({ landmarks, videoRef, color, enabled, mirrorX, dual
         if (!dot) return;
         const point = points[index];
         dot.style.display = point ? 'block' : 'none';
-        if (point) dot.style.transform = `translate(${point.x - 11}px, ${point.y - 11}px)`;
+        if (point) dot.style.transform = `translate(${point.x - CURSOR_SIZE / 2}px, ${point.y - CURSOR_SIZE / 2}px)`;
       });
       frame = requestAnimationFrame(tick);
     };
@@ -32,8 +34,8 @@ export function PaintCursor({ landmarks, videoRef, color, enabled, mirrorX, dual
     return () => cancelAnimationFrame(frame);
   }, [enabled, mirrorX, dualScreenMode, videoRef]);
   return <>{[0, 1].map(index => <div key={index} ref={node => { dots.current[index] = node; }} aria-hidden="true" style={{
-    display: 'none', position: 'fixed', top: 0, left: 0, width: 22, height: 22,
-    boxSizing: 'border-box', borderRadius: '50%', backgroundColor: color, border: '2px solid white',
+    display: 'none', position: 'fixed', top: 0, left: 0, width: CURSOR_SIZE, height: CURSOR_SIZE,
+    boxSizing: 'border-box', borderRadius: '50%', backgroundColor: color, border: '1px solid white',
     boxShadow: '0 0 0 1px #2A2A45', pointerEvents: 'none', zIndex: 30,
   }} />)}</>;
 }
