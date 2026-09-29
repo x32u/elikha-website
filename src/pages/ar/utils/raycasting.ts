@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { interactionScale } from './stereoRendering';
 
 /**
  * Convert normalized 2D screen coordinates to 3D ray
@@ -12,7 +13,8 @@ export function screenToRay(
   camera: THREE.Camera
 ): THREE.Raycaster {
   // Convert to NDC (Normalized Device Coordinates: -1 to 1)
-  const ndc = new THREE.Vector2(x * 2 - 1, -(y * 2 - 1));
+  const scale = interactionScale(camera);
+  const ndc = new THREE.Vector2((x * 2 - 1) * scale.x, -(y * 2 - 1) * scale.y);
 
   const raycaster = new THREE.Raycaster();
   raycaster.setFromCamera(ndc, camera);

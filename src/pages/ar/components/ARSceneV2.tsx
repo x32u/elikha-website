@@ -9,6 +9,8 @@ import type { HandLandmarks, GrabState, DebugInfo, PalmPosition } from '../hooks
 import { CONFIG } from '../hooks/useHandTrackingV2';
 import { useLatestCallback } from '../hooks/useLatestCallback';
 import { raycastFromFingertip } from '../utils/raycasting';
+import { interactionScale } from '../utils/stereoRendering';
+import { StereoRenderer } from './StereoRenderer';
 import { createPaintDecal } from '../utils/decals';
 import { eraseFootprint, applyErasedRegions, type ErasedRegion } from '../utils/paintErasing';
 import { selectPaintRecoverySource } from '../utils/paintRecovery';
@@ -133,6 +135,8 @@ export interface BaseArModelConfig {
 }
 
 interface ARSceneV2Props {
+  vrMode?: boolean;
+  videoRef?: React.RefObject<HTMLVideoElement | null>;
   modelUrl?: string;
   modelFileType?: string;
   modelConfigs?: BaseArModelConfig[];
@@ -1388,8 +1392,9 @@ function HandSkeleton({
     const allLandmarks = landmarks.allLandmarks;
     const distance = 3;
     const fov = (camera as THREE.PerspectiveCamera).fov * (Math.PI / 180);
-    const height = 2 * Math.tan(fov / 2) * distance;
-    const width = height * (size.width / size.height);
+    const cover = interactionScale(camera);
+    const height = 2 * Math.tan(fov / 2) * distance * cover.y;
+    const width = height / cover.y * (camera as THREE.PerspectiveCamera).aspect * cover.x;
 
     allLandmarks.forEach((lm, i) => {
       // Mirror X only for front-facing camera to match CSS-mirrored video
@@ -1542,7 +1547,7 @@ function PinchMoveController({
   disabled?: boolean;
   onTransformChange?: () => void;
 }) {
-  const { camera, size } = useThree();
+  const { camera } = useThree();
   const smoothedPos = useRef<THREE.Vector3>(new THREE.Vector3());
   const initializedRef = useRef(false);
   const startPalmRef = useRef<PalmPosition | null>(null);
@@ -1596,8 +1601,9 @@ function PinchMoveController({
 
     const distance = Math.max(0.1, Math.abs(startAnchorRef.current.z) || 3);
     const fov = (camera as THREE.PerspectiveCamera).fov * (Math.PI / 180);
-    const height = 2 * Math.tan(fov / 2) * distance;
-    const width = height * (size.width / size.height);
+    const cover = interactionScale(camera);
+    const height = 2 * Math.tan(fov / 2) * distance * cover.y;
+    const width = height / cover.y * (camera as THREE.PerspectiveCamera).aspect * cover.x;
 
     const deltaX = (palmCenter.x - startPalm.x) * width;
     const deltaY = -(palmCenter.y - startPalm.y) * height;
@@ -1666,7 +1672,7 @@ function MultiModelMoveController({
   onModelMoveActiveChange?: (active: boolean) => void;
   onModelTransformChange?: () => void;
 }) {
-  const { camera, scene, size } = useThree();
+  const { camera, scene } = useThree();
   const activeModelIdRef = useRef<string | null>(null);
   const removeModelArmedRef = useRef(false);
   const pinchMoveActiveRef = useRef(false);
@@ -1946,8 +1952,9 @@ function MultiModelMoveController({
 
     const distance = Math.max(0.2, camera.position.distanceTo(pinchStartWorldRef.current));
     const fov = (camera as THREE.PerspectiveCamera).fov * (Math.PI / 180);
-    const worldHeight = 2 * Math.tan(fov / 2) * distance;
-    const worldWidth = worldHeight * (size.width / size.height);
+    const cover = interactionScale(camera);
+    const worldHeight = 2 * Math.tan(fov / 2) * distance * cover.y;
+    const worldWidth = worldHeight / cover.y * (camera as THREE.PerspectiveCamera).aspect * cover.x;
     const deltaX = (palmCenter.x - startPalm.x) * worldWidth;
     const deltaY = -(palmCenter.y - startPalm.y) * worldHeight;
     const targetWorld = pinchStartWorldRef.current.clone().add(new THREE.Vector3(deltaX, deltaY, 0));
@@ -2754,8 +2761,9 @@ function SceneObjectSystem({
     selectedObject.getWorldPosition(worldPos);
     const distance = Math.max(0.2, camera.position.distanceTo(worldPos));
     const fov = (camera as THREE.PerspectiveCamera).fov * (Math.PI / 180);
-    const worldHeight = 2 * Math.tan(fov / 2) * distance;
-    const worldWidth = worldHeight * (size.width / size.height);
+    const cover = interactionScale(camera);
+    const worldHeight = 2 * Math.tan(fov / 2) * distance * cover.y;
+    const worldWidth = worldHeight / cover.y * (camera as THREE.PerspectiveCamera).aspect * cover.x;
 
     const deltaX = (palmCenter.x - startPalm.x) * worldWidth;
     const deltaY = -(palmCenter.y - startPalm.y) * worldHeight;
@@ -3274,8 +3282,9 @@ function PuzzlePieceSystem({
 
     const distance = Math.max(0.2, camera.position.distanceTo(pinchStartWorldRef.current));
     const fov = (camera as THREE.PerspectiveCamera).fov * (Math.PI / 180);
-    const worldHeight = 2 * Math.tan(fov / 2) * distance;
-    const worldWidth = worldHeight * (size.width / size.height);
+    const cover = interactionScale(camera);
+    const worldHeight = 2 * Math.tan(fov / 2) * distance * cover.y;
+    const worldWidth = worldHeight / cover.y * (camera as THREE.PerspectiveCamera).aspect * cover.x;
     const deltaX = (palmCenter.x - startPalm.x) * worldWidth;
     const deltaY = -(palmCenter.y - startPalm.y) * worldHeight;
     const targetWorld = pinchStartWorldRef.current.clone().add(new THREE.Vector3(deltaX, deltaY, 0));
@@ -4505,6 +4514,7 @@ export function ARSceneV2(props: ARSceneV2Props) {
         onRestored={props.onRenderingRestored}
       />
       <SceneContent {...props} />
+      {props.vrMode && <StereoRenderer videoRef={props.videoRef} />}
     </Canvas>
   );
 }

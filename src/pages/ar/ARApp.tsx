@@ -1088,7 +1088,9 @@ function ARApp({
             }
 
             if (sceneCanvas) {
-              ctx.drawImage(sceneCanvas, eyeX, 0, eyeWidth, height);
+              // Each half now contains a distinct eye render, not a duplicated mono view.
+              ctx.drawImage(sceneCanvas, eye * sceneCanvas.width / 2, 0,
+                sceneCanvas.width / 2, sceneCanvas.height, eyeX, 0, eyeWidth, height);
             }
           }
         }
@@ -1175,7 +1177,7 @@ function ARApp({
     if (!sceneCanvas) return null;
 
     try {
-      const width = sceneCanvas.width || 1280;
+      const width = vrMode ? Math.floor(sceneCanvas.width / 2) : (sceneCanvas.width || 1280);
       const height = sceneCanvas.height || 720;
       const outputCanvas = document.createElement('canvas');
       outputCanvas.width = width;
@@ -1194,14 +1196,14 @@ function ARApp({
       // The WebGL canvas is already rendered with a transparent clear color.
       // Preserve its alpha directly so intentionally black paint stays black
       // in both the saved artwork and the image supplied to AI grading.
-      ctx.drawImage(sceneCanvas, 0, 0, width, height);
+      ctx.drawImage(sceneCanvas, 0, 0, width, height, 0, 0, width, height);
 
       return outputCanvas.toDataURL('image/jpeg', 0.9);
     } catch (error) {
       console.error('Failed to capture AR snapshot:', error);
       return null;
     }
-  }, []);
+  }, [vrMode]);
 
   const handleSubmitAndExit = useCallback(async () => {
     if (applyingUndoRef.current) {
@@ -1471,6 +1473,8 @@ function ARApp({
         enabled={!isViewMode && arInteractionAllowed && !historyRestoring && activeTool === 'paint'}
         mirrorX={mirrorCameraX} dualScreenMode={vrMode} />
       <ARSceneV2
+        vrMode={vrMode}
+        videoRef={videoRef}
         modelUrl={modelUrl || '/models/cute_cactus.glb'}
         modelFileType={modelFileType || undefined}
         modelConfigs={renderedModelConfigs}
