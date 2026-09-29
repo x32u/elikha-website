@@ -38,7 +38,8 @@ describe.each([['admin', AdminDashboard], ['superadmin', SuperAdminDashboard]])(
     } });
     await act(async () => root.render(<Component />));
     expect(container.querySelector('.storage-heading').textContent).toBe('90 MB');
-    expect(container.textContent).toContain('No app-level cap');
+    expect(container.textContent).not.toContain('System storage limit');
+    expect(container.textContent).not.toContain('No app-level cap');
     expect(container.textContent).not.toContain('Remaining storage');
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
     expect(container.textContent).toContain('System Analytics');

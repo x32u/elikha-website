@@ -360,10 +360,6 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
                 : 'Actual Cloudflare R2 usage, including models, images, and retained artwork files. Shared files count once.'}
             </div>
           </div>
-          <div className="storage-capacity">
-            <span>System storage limit</span>
-            <strong>No app-level cap</strong>
-          </div>
         </div>
 
         <div className="storage-metrics">
