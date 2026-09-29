@@ -1,4 +1,14 @@
 /* 3D Models page-specific styles. Shared layout/sidebar comes from AdminShell.css */
+.m3d-owner-directory { max-width: 1440px; margin: 24px auto; }
+.m3d-owner-directory p { color: var(--m3d-muted); }
+.m3d-owner-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 10px; }
+.m3d-owner-list button { display: flex; align-items: center; gap: 12px; padding: 16px; border: 1px solid var(--m3d-border); border-radius: 12px; background: white; color: var(--m3d-ink); font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.m3d-owner-list button[aria-pressed="true"] { border-color: var(--m3d-blue); background: #f1f3ff; }
+.m3d-owner-list button:hover { border-color: var(--m3d-blue); }
+.m3d-owner-list button:focus-visible { outline: 2px solid var(--m3d-blue); outline-offset: 3px; }
+.m3d-owner-initial { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; background: #edf0ff; border-radius: 10px; color: var(--m3d-blue); font-weight: 700; }
+.m3d-owner-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.m3d-owner-name small { display: block; margin-top: 4px; color: var(--m3d-muted); }
 .m3d-library-controls {
   width: min(100%, 1440px);
   margin: 20px auto 12px;

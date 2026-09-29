@@ -4,6 +4,7 @@ import { MODEL_SORTS, MODEL_SIZE_FILTERS, formatModelSize, selectLibraryModels }
 import './styles/AdminModels.css';
 import AdminShell from './components/AdminShell';
 import Navbar from '../../components/Navbar';
+import { fetchAdminTeachers } from '../../services/adminApi';
 import {
   AR_MODEL_LIBRARY_UPDATED_EVENT,
   getArModelLibrary,
@@ -91,6 +92,33 @@ function AdminModels({ onNavigate, role }) {
     return next;
   }, { replace: true });
   const [models, setModels] = React.useState(() => getArModelLibrary());
+  const [teachers, setTeachers] = React.useState([]);
+  const [teacherError, setTeacherError] = React.useState('');
+  const [teachersLoading, setTeachersLoading] = React.useState(role !== 'Teacher');
+  const selectedOwner = searchParams.get('owner') || '';
+  React.useEffect(() => {
+    if (role === 'Teacher') return undefined;
+    let active = true;
+    fetchAdminTeachers().then((result) => {
+      if (!active) return;
+      setTeachersLoading(false);
+      if (result.success) setTeachers(result.data);
+      else setTeacherError(result.error || 'Unable to load teacher names. Refresh to retry.');
+    }).catch(() => {
+      if (active) { setTeachersLoading(false); setTeacherError('Unable to load teacher names. Refresh to retry.'); }
+    });
+    return () => { active = false; };
+  }, [role]);
+  const libraries = React.useMemo(() => {
+    const owners = new Map(teachers.map((teacher) => [teacher.id, { ...teacher, count: 0 }]));
+    models.forEach((model) => {
+      const id = model.ownerId || 'unassigned';
+      if (!owners.has(id)) owners.set(id, { id, name: id === 'unassigned' ? 'Unassigned library' : 'Other account library', email: id === 'unassigned' ? '' : id, count: 0 });
+      owners.get(id).count += 1;
+    });
+    return [...owners.values()];
+  }, [teachers, models]);
+  const libraryModels = React.useMemo(() => role === 'Teacher' ? models : models.filter((model) => (model.ownerId || 'unassigned') === selectedOwner), [models, role, selectedOwner]);
 
   const [isAddOpen, setIsAddOpen] = React.useState(false);
   const [isEditOpen, setIsEditOpen] = React.useState(false);
@@ -153,7 +181,7 @@ function AdminModels({ onNavigate, role }) {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [closeModals, busy]);
 
-  const filtered = React.useMemo(() => selectLibraryModels(models, { query, type, size, sort }), [models, query, type, size, sort]);
+  const filtered = React.useMemo(() => selectLibraryModels(libraryModels, { query, type, size, sort }), [libraryModels, query, type, size, sort]);
 
   const validateFile = (file) => {
     if (!file) return { valid: false, error: 'Please select a model file.' };
@@ -444,6 +472,21 @@ function AdminModels({ onNavigate, role }) {
         ) : null}
       </section>
 
+      {role !== 'Teacher' && <section className="m3d-owner-directory" aria-label="Teacher model libraries">
+        <h2>Model libraries</h2>
+        <p>Select a teacher to browse their models. Identical models in different libraries remain separate entries.</p>
+        {teachersLoading && <p role="status">Loading teacher names…</p>}
+        {teacherError && <p role="alert">{teacherError}</p>}
+        <div className="m3d-owner-list">
+          {libraries.map((owner) => <button type="button" key={owner.id} aria-pressed={selectedOwner === owner.id} onClick={() => setFilter('owner', owner.id)}>
+            <span className="m3d-owner-initial" aria-hidden="true">{owner.name.charAt(0).toUpperCase()}</span>
+            <span className="m3d-owner-name"><strong>{owner.name}</strong><small>{owner.email}</small></span>
+            <span>{owner.count} models</span>
+          </button>)}
+        </div>
+        {selectedOwner && <h3>{libraries.find((owner) => owner.id === selectedOwner)?.name || 'Selected library'}</h3>}
+      </section>}
+      {(role === 'Teacher' || selectedOwner) && <>
       <section className="m3d-library-controls" aria-label="Model library filters">
         <label>Sort by
           <select name="modelSort" value={sort} onChange={(event) => setFilter('sort', event.target.value)}>
@@ -461,7 +504,7 @@ function AdminModels({ onNavigate, role }) {
             {Object.entries(MODEL_SIZE_FILTERS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </label>
-        <div className="m3d-library-count" role="status">{filtered.length} of {models.length} models</div>
+        <div className="m3d-library-count" role="status">{filtered.length} of {libraryModels.length} models</div>
         {(query || type !== 'all' || size !== 'all' || sort !== 'newest') && <button type="button" className="m3d-btn" onClick={resetFilters}>Reset filters</button>}
       </section>
       <section className="m3d-tablewrap" aria-label="3D models table" tabIndex={0}>
@@ -480,7 +523,7 @@ function AdminModels({ onNavigate, role }) {
             {filtered.length === 0 ? (
               <tr>
                 <td className="m3d-empty" colSpan={5}>
-                  {models.length ? 'No models match. Try another search or reset the filters.' : 'No 3D models yet. Add a model to start your library.'}
+                  {libraryModels.length ? 'No models match. Try another search or reset the filters.' : 'This library has no models yet.'}
                 </td>
               </tr>
             ) : (
@@ -525,6 +568,7 @@ function AdminModels({ onNavigate, role }) {
           </tbody>
         </table>
       </section>
+      </>}
 
       {isAddOpen && (
         <div className="m3d-modal-backdrop" role="presentation" onClick={() => { if (!busy) closeModals(); }}>

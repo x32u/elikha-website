@@ -347,7 +347,7 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
 
       <h2 className="dash-h2">System Storage</h2>
 
-      <section className="dash-storage" aria-label="System storage usage">
+      <section className="dash-storage dash-storage-compact" aria-label="System storage usage">
         <div className="storage-overview">
           <div>
             <div className="storage-eyebrow">Total storage used</div>
@@ -361,6 +361,7 @@ function AdminDashboard({ onNavigate, role = 'Admin' }) {
             </div>
           </div>
         </div>
+        <button className="storage-browse" type="button" onClick={() => onNavigate('models')}>Browse model libraries</button>
 
         <div className="storage-metrics">
           <div className="storage-metric storage-metric-models">
