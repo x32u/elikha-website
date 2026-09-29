@@ -43,6 +43,7 @@ import {
 import Notifications from './pages/shared/Notifications';
 import UserSettingsEffects from './components/UserSettingsEffects';
 import ModelLibraryEffects from './components/ModelLibraryEffects';
+import SignedOutOnly from './components/SignedOutOnly';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { isSupabaseConfigured } from './lib/supabase';
 import { getDefaultRouteForRole, normalizeRole } from './utils/authState';
@@ -133,8 +134,8 @@ function App() {
         <UserSettingsEffects />
         <ModelLibraryEffects />
         <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<SignedOutOnly><LandingPage /></SignedOutOnly>} />
+        <Route path="/login" element={<SignedOutOnly><Login /></SignedOutOnly>} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route 
