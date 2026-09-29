@@ -1,8 +1,14 @@
 import React from 'react';
 import { refreshR2ModelLibrary } from '../services/r2ModelApi';
+import { replaceR2ArModelLibrary } from '../utils/activityArConfig';
+import { useAuth } from '../context/AuthContext';
 
 const ModelLibraryEffects = () => {
+  const { userInfo, status } = useAuth();
+  const userId = userInfo?.id;
   React.useEffect(() => {
+    replaceR2ArModelLibrary([], userId || null);
+    if (status !== 'authenticated') return undefined;
     let active = true;
 
     const refresh = async () => {
@@ -21,7 +27,7 @@ const ModelLibraryEffects = () => {
       active = false;
       window.removeEventListener('focus', onFocus);
     };
-  }, []);
+  }, [userId, status]);
 
   return null;
 };

@@ -1,14 +1,15 @@
+import { LibraryModel, LIBRARY_PREFIX, TEACHER_CAPACITY, libraryBytes, ownerFromModelId, readLibrary, saveLibraryModel } from './libraries';
+
 interface Env {
   MODEL_BUCKET: R2Bucket;
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
   ALLOWED_ORIGINS: string;
-  MODEL_STORAGE_CAPACITY_BYTES: string;
   MAX_MODEL_FILE_BYTES: string;
   POLY_PIZZA_API_KEY: string;
 }
 
-interface ModelMetadata {
+interface ModelMetadata extends LibraryModel {
   id: string;
   label: string;
   description: string;
@@ -41,7 +42,6 @@ const METADATA_PREFIX = "metadata/";
 const MODEL_PREFIX = "models/";
 const SUPPORTED_EXTENSIONS = new Set(["obj", "3ds", "glb", "blend"]);
 const MUTATION_ROLES = new Set(["teacher", "admin", "superadmin"]);
-const DEFAULT_CAPACITY_BYTES = 10_000_000_000;
 const DEFAULT_MAX_FILE_BYTES = 50 * 1024 * 1024;
 const MAX_METADATA_BYTES = 16 * 1024;
 const MEDIA_PREFIX = "media/";
@@ -139,6 +139,12 @@ const jsonResponse = (
 };
 
 const errorResponse = (request: Request, env: Env, error: unknown): Response => {
+  if (error instanceof Error && error.message === 'TEACHER_STORAGE_FULL') {
+    error = new ApiError(507, 'STORAGE_CAPACITY_REACHED', 'Your 15 GB model storage allowance is full. Contact your administrator to review retained artwork files.');
+  }
+  if (error instanceof Error && error.message === 'MODEL_CONFLICT') {
+    error = new ApiError(409, 'MODEL_CONFLICT', 'The model library changed during this request. Refresh and try again.');
+  }
   if (error instanceof ApiError) {
     return jsonResponse(
       request,
@@ -212,7 +218,7 @@ const authenticateRequest = async (request: Request, env: Env): Promise<Authenti
 
   const profileUrl = new URL(`${env.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/users`);
   profileUrl.searchParams.set("id", `eq.${userId}`);
-  profileUrl.searchParams.set("select", "role");
+  profileUrl.searchParams.set("select", "role,is_active");
   profileUrl.searchParams.set("limit", "1");
 
   const profileResponse = await fetch(profileUrl, { headers: authHeaders });
@@ -221,7 +227,8 @@ const authenticateRequest = async (request: Request, env: Env): Promise<Authenti
     throw new ApiError(403, "ROLE_LOOKUP_FAILED", "Unable to confirm your E-Likha role.");
   }
 
-  const profiles = (await profileResponse.json()) as Array<{ role?: unknown }>;
+  const profiles = (await profileResponse.json()) as Array<{ role?: unknown; is_active?: boolean }>;
+  if (profiles[0]?.is_active === false) throw new ApiError(403, 'ACCOUNT_INACTIVE', 'This account is inactive.');
   const role = normalizeRole(profiles[0]?.role);
   if (!["student", "teacher", "admin", "superadmin"].includes(role)) {
     throw new ApiError(403, "ROLE_NOT_ALLOWED", "Your account cannot access this resource.");
@@ -527,6 +534,8 @@ const listAllObjects = async (bucket: R2Bucket, prefix: string): Promise<R2Objec
 };
 
 const readMetadata = async (bucket: R2Bucket, id: string): Promise<ModelMetadata | null> => {
+  const owner = ownerFromModelId(id);
+  if (owner) return (await readLibrary(bucket, owner)).models.find((model) => model.id === id) || null;
   const object = await bucket.get(metadataKey(id));
   if (!object) return null;
   if (object.size > MAX_METADATA_BYTES) {
@@ -542,7 +551,8 @@ const readMetadata = async (bucket: R2Bucket, id: string): Promise<ModelMetadata
   }
 };
 
-const writeMetadata = async (bucket: R2Bucket, metadata: ModelMetadata): Promise<void> => {
+const writeMetadata = async (bucket: R2Bucket, metadata: ModelMetadata, previous?: ModelMetadata): Promise<void> => {
+  if (metadata.ownerId) return saveLibraryModel(bucket, metadata, previous);
   const payload = JSON.stringify(metadata);
   if (new TextEncoder().encode(payload).byteLength > MAX_METADATA_BYTES) {
     throw new ApiError(400, "METADATA_TOO_LARGE", "Model name or description is too long.");
@@ -552,42 +562,43 @@ const writeMetadata = async (bucket: R2Bucket, metadata: ModelMetadata): Promise
   });
 };
 
-const getModelUsage = async (env: Env): Promise<{ usedBytes: number; fileCount: number }> => {
-  const objects = await listAllObjects(env.MODEL_BUCKET, MODEL_PREFIX);
-  return {
-    usedBytes: objects.reduce((total, object) => total + object.size, 0),
-    fileCount: objects.length,
-  };
-};
-
-const getCapacity = (env: Env): number =>
-  toPositiveInteger(env.MODEL_STORAGE_CAPACITY_BYTES, DEFAULT_CAPACITY_BYTES);
-
 const getMaxFileSize = (env: Env): number =>
   toPositiveInteger(env.MAX_MODEL_FILE_BYTES, DEFAULT_MAX_FILE_BYTES);
 
-const ensureCapacity = async (env: Env, incomingBytes: number, replacingBytes = 0): Promise<void> => {
-  const usage = await getModelUsage(env);
-  const projected = Math.max(0, usage.usedBytes - replacingBytes) + incomingBytes;
-  if (projected > getCapacity(env)) {
-    throw new ApiError(
-      507,
-      "STORAGE_CAPACITY_REACHED",
-      "The 10 GB 3D-model storage is full. Delete an unused model before uploading another.",
-    );
-  }
+const ensureCapacity = async (env: Env, user: AuthenticatedUser, incomingBytes: number): Promise<void> => {
+  if (user.role !== 'teacher') return;
+  const { models } = await readLibrary(env.MODEL_BUCKET, user.id);
+  if (libraryBytes(models) + incomingBytes > TEACHER_CAPACITY) throw new Error('TEACHER_STORAGE_FULL');
 };
 
-const ensureCurrentUsageWithinCapacity = async (env: Env, replacingBytes = 0): Promise<void> => {
-  const usage = await getModelUsage(env);
-  const finalUsage = Math.max(0, usage.usedBytes - replacingBytes);
-  if (finalUsage > getCapacity(env)) {
-    throw new ApiError(
-      507,
-      "STORAGE_CAPACITY_REACHED",
-      "The 10 GB 3D-model storage is full. Delete an unused model before uploading another.",
-    );
+interface LibraryClass { class_id: string; class_name: string; teacher_id: string }
+const accessibleClasses = async (env: Env, user: AuthenticatedUser): Promise<LibraryClass[]> => {
+  const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/model_library_classes`, {
+    method: 'POST', headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${user.token}`, 'Content-Type': 'application/json' }, body: '{}',
+  });
+  if (!response.ok) throw new ApiError(503, 'ENROLLMENT_LOOKUP_FAILED', 'Unable to check class model access. Please try again.');
+  return response.json<LibraryClass[]>();
+};
+
+const visibleLibraries = async (env: Env, user: AuthenticatedUser) => {
+  const classes = user.role === 'student' ? await accessibleClasses(env, user) : [];
+  let owners: string[];
+  if (isAdministrator(user)) {
+    owners = (await listAllObjects(env.MODEL_BUCKET, LIBRARY_PREFIX)).map((entry) => entry.key.slice(LIBRARY_PREFIX.length, -5));
+  } else {
+    owners = user.role === 'teacher' ? [user.id] : [...new Set(classes.map((entry) => entry.teacher_id))];
   }
+  const models: ModelMetadata[] = [];
+  // Avoid unbounded R2 subrequest fan-out for a large school.
+  for (const owner of owners) models.push(...(await readLibrary(env.MODEL_BUCKET, owner)).models);
+  return { models, classes };
+};
+
+const requireModelOwner = (user: AuthenticatedUser, model: ModelMetadata) => {
+  if (!model.ownerId || (!isAdministrator(user) && model.ownerId !== user.id)) {
+    throw new ApiError(403, 'MODEL_NOT_OWNED', 'You can only change models in your own library.');
+  }
+  if (model.archived) throw new ApiError(404, 'MODEL_NOT_FOUND', 'This model was removed from the library.');
 };
 
 const toPublicModel = (metadata: ModelMetadata, request: Request): Record<string, unknown> => ({
@@ -600,6 +611,8 @@ const toPublicModel = (metadata: ModelMetadata, request: Request): Record<string
   uploadedAt: metadata.uploadedAt,
   updatedAt: metadata.updatedAt,
   uploadedByRole: metadata.uploadedByRole,
+  ownerId: metadata.ownerId,
+  sourceModelId: metadata.sourceModelId,
   isBuiltIn: metadata.isBuiltIn,
   isCustom: !metadata.isBuiltIn,
   source: metadata.source ?? "E-Likha",
@@ -609,21 +622,11 @@ const toPublicModel = (metadata: ModelMetadata, request: Request): Record<string
 });
 
 const listModels = async (request: Request, env: Env): Promise<Response> => {
-  const entries = await listAllObjects(env.MODEL_BUCKET, METADATA_PREFIX);
-  const models = (
-    await Promise.all(
-      entries.map(async (entry) => {
-        const id = entry.key.slice(METADATA_PREFIX.length).replace(/\.json$/i, "");
-        return readMetadata(env.MODEL_BUCKET, id);
-      }),
-    )
-  )
-    .filter((item): item is ModelMetadata => Boolean(item))
-    .sort((left, right) => {
-      if (left.isBuiltIn !== right.isBuiltIn) return left.isBuiltIn ? -1 : 1;
-      return left.label.localeCompare(right.label);
-    })
-    .map((item) => toPublicModel(item, request));
+  const user = await authenticateRequest(request, env);
+  const { models: entries, classes } = await visibleLibraries(env, user);
+  const models = entries.filter((entry) => !entry.archived)
+    .sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt))
+    .map((item) => ({ ...toPublicModel(item, request), classes: classes.filter((entry) => entry.teacher_id === item.ownerId) }));
 
   return jsonResponse(request, env, { success: true, data: models }, 200, {
     "Cache-Control": "no-store",
@@ -631,19 +634,13 @@ const listModels = async (request: Request, env: Env): Promise<Response> => {
 };
 
 const storageUsage = async (request: Request, env: Env): Promise<Response> => {
-  const usage = await getModelUsage(env);
-  const metadataObjects = await listAllObjects(env.MODEL_BUCKET, METADATA_PREFIX);
-  const metadata = (
-    await Promise.all(
-      metadataObjects.map((entry) => {
-        const id = entry.key.slice(METADATA_PREFIX.length).replace(/\.json$/i, "");
-        return readMetadata(env.MODEL_BUCKET, id);
-      }),
-    )
-  ).filter((item): item is ModelMetadata => Boolean(item));
-  const capacityBytes = getCapacity(env);
-  const remainingBytes = Math.max(capacityBytes - usage.usedBytes, 0);
-  const usedPercent = capacityBytes > 0 ? Math.min(100, (usage.usedBytes / capacityBytes) * 100) : 0;
+  const user = await authenticateMutation(request, env);
+  const { models: metadata } = await visibleLibraries(env, user);
+  const objects = isAdministrator(user) ? await listAllObjects(env.MODEL_BUCKET, '') : [];
+  const usage = { usedBytes: isAdministrator(user) ? objects.reduce((sum, item) => sum + item.size, 0) : libraryBytes(metadata), fileCount: objects.length };
+  const capacityBytes = user.role === 'teacher' ? TEACHER_CAPACITY : null;
+  const remainingBytes = capacityBytes === null ? null : Math.max(capacityBytes - usage.usedBytes, 0);
+  const usedPercent = capacityBytes ? Math.min(100, (usage.usedBytes / capacityBytes) * 100) : null;
 
   return jsonResponse(
     request,
@@ -652,7 +649,7 @@ const storageUsage = async (request: Request, env: Env): Promise<Response> => {
       success: true,
       data: {
         ...usage,
-        modelCount: metadata.length,
+        modelCount: metadata.filter((entry) => !entry.archived).length,
         builtInCount: metadata.filter((item) => item.isBuiltIn).length,
         customCount: metadata.filter((item) => !item.isBuiltIn).length,
         capacityBytes,
@@ -666,9 +663,24 @@ const storageUsage = async (request: Request, env: Env): Promise<Response> => {
 };
 
 const serveModelFile = async (request: Request, env: Env, id: string): Promise<Response> => {
-  const metadata = await readMetadata(env.MODEL_BUCKET, id);
+  const user = await authenticateRequest(request, env);
+  const { models } = await visibleLibraries(env, user);
+  let metadata = await readMetadata(env.MODEL_BUCKET, id);
+  let allowed = isAdministrator(user) || models.some((entry) => entry.id === id || entry.sourceModelId === id);
+  if (!allowed) {
+    const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/can_read_activity_model`, {
+      method: 'POST', headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${user.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model_id: id, model_owner: metadata?.ownerId || null }),
+    });
+    if (!response.ok) throw new ApiError(503, 'MODEL_ACCESS_LOOKUP_FAILED', 'Unable to verify access to this artwork model.');
+    allowed = (await response.json()) === true;
+  }
+  if (!allowed) throw new ApiError(403, 'MODEL_ACCESS_DENIED', 'This model is not available to your account or classes.');
   if (!metadata) {
     throw new ApiError(404, "MODEL_NOT_FOUND", "3D model not found.");
+  }
+  const version = new URL(request.url).searchParams.get('v');
+  if (version && version !== metadata.updatedAt) {
+    metadata = metadata.versions?.find((entry) => entry.updatedAt === version) || metadata;
   }
 
   const rangeHeader = request.headers.get("Range");
@@ -686,7 +698,7 @@ const serveModelFile = async (request: Request, env: Env, id: string): Promise<R
   headers.set("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(metadata.fileName)}`);
   headers.set("Accept-Ranges", "bytes");
   headers.set("ETag", object.httpEtag);
-  headers.set("Cache-Control", "public, max-age=3600");
+  headers.set("Cache-Control", "private, no-store");
   headers.set("X-Content-Type-Options", "nosniff");
 
   let status = 200;
@@ -737,8 +749,8 @@ const uploadNewModel = async (request: Request, env: Env): Promise<Response> => 
   }
   if (!request.body) throw new ApiError(400, "FILE_REQUIRED", "Select a 3D model file to upload.");
 
-  await ensureCapacity(env, input.size);
-  const id = `custom-${crypto.randomUUID()}`;
+  await ensureCapacity(env, user, input.size);
+  const id = `${user.id}-m-${crypto.randomUUID()}`;
   const objectKey = `${MODEL_PREFIX}${id}.${input.extension}`;
   const now = new Date().toISOString();
   const object = await env.MODEL_BUCKET.put(objectKey, request.body, {
@@ -754,9 +766,9 @@ const uploadNewModel = async (request: Request, env: Env): Promise<Response> => 
   }
 
   try {
-    await ensureCurrentUsageWithinCapacity(env);
     const metadata: ModelMetadata = {
       id,
+      ownerId: user.id,
       label: input.label,
       description: input.description,
       fileName: input.fileName,
@@ -830,9 +842,10 @@ const readSmallJson = async (request: Request): Promise<Record<string, unknown>>
 };
 
 const updateModelMetadata = async (request: Request, env: Env, id: string): Promise<Response> => {
-  await authenticateMutation(request, env);
+  const user = await authenticateMutation(request, env);
   const existing = await readMetadata(env.MODEL_BUCKET, id);
   if (!existing) throw new ApiError(404, "MODEL_NOT_FOUND", "3D model not found.");
+  requireModelOwner(user, existing);
   if (existing.isBuiltIn) {
     throw new ApiError(403, "BUILT_IN_MODEL", "Built-in models cannot be edited.");
   }
@@ -846,9 +859,8 @@ const updateModelMetadata = async (request: Request, env: Env, id: string): Prom
     ...existing,
     label,
     description,
-    updatedAt: new Date().toISOString(),
   };
-  await writeMetadata(env.MODEL_BUCKET, updated);
+  await writeMetadata(env.MODEL_BUCKET, updated, existing);
   return jsonResponse(request, env, { success: true, data: toPublicModel(updated, request) });
 };
 
@@ -856,11 +868,10 @@ const replaceModelFile = async (request: Request, env: Env, id: string): Promise
   const user = await authenticateMutation(request, env);
   const existing = await readMetadata(env.MODEL_BUCKET, id);
   if (!existing) throw new ApiError(404, "MODEL_NOT_FOUND", "3D model not found.");
+  requireModelOwner(user, existing);
   if (existing.isBuiltIn) {
     throw new ApiError(403, "BUILT_IN_MODEL", "Built-in models cannot be replaced.");
   }
-  const storedExisting = await env.MODEL_BUCKET.head(existing.objectKey);
-  const replacingBytes = storedExisting?.size ?? 0;
 
   const input = parseUploadHeaders(request);
   const maxBytes = getMaxFileSize(env);
@@ -869,7 +880,7 @@ const replaceModelFile = async (request: Request, env: Env, id: string): Promise
   }
   if (!request.body) throw new ApiError(400, "FILE_REQUIRED", "Select a replacement model file.");
 
-  await ensureCapacity(env, input.size, replacingBytes);
+  await ensureCapacity(env, { ...user, id: existing.ownerId!, role: existing.uploadedByRole as AuthenticatedUser['role'] }, input.size);
   const objectKey = `${MODEL_PREFIX}${id}-${crypto.randomUUID()}.${input.extension}`;
   const object = await env.MODEL_BUCKET.put(objectKey, request.body, {
     httpMetadata: {
@@ -892,13 +903,11 @@ const replaceModelFile = async (request: Request, env: Env, id: string): Promise
     objectKey,
     size: object.size,
     updatedAt: new Date().toISOString(),
-    uploadedBy: user.id,
-    uploadedByRole: user.role,
+    versions: [...(existing.versions || []), { ...existing, versions: undefined }],
   };
 
   try {
-    await ensureCurrentUsageWithinCapacity(env, replacingBytes);
-    await writeMetadata(env.MODEL_BUCKET, updated);
+    await writeMetadata(env.MODEL_BUCKET, updated, existing);
   } catch (error) {
     if (existing.objectKey !== objectKey) {
       await env.MODEL_BUCKET.delete(objectKey);
@@ -906,15 +915,7 @@ const replaceModelFile = async (request: Request, env: Env, id: string): Promise
     throw error;
   }
 
-  if (existing.objectKey !== objectKey) {
-    try {
-      await env.MODEL_BUCKET.delete(existing.objectKey);
-    } catch (error) {
-      // Metadata already points to the new object. Keeping it is safer than
-      // rolling back by deleting the file that readers now resolve.
-      console.error("Unable to remove replaced R2 model object", existing.id, error);
-    }
-  }
+  // Keep the immutable previous file for existing activities and submissions.
 
   return jsonResponse(request, env, { success: true, data: toPublicModel(updated, request) });
 };
@@ -982,8 +983,8 @@ const importRemoteModel = async (request: Request, env: Env): Promise<Response> 
     throw new ApiError(413, "FILE_TOO_LARGE", "This model is larger than the 50 MB upload limit.");
   }
 
-  await ensureCapacity(env, size);
-  const id = `custom-${crypto.randomUUID()}`;
+  await ensureCapacity(env, user, size);
+  const id = `${user.id}-m-${crypto.randomUUID()}`;
   const objectKey = `${MODEL_PREFIX}${id}.${extension}`;
   const now = new Date().toISOString();
   const object = await env.MODEL_BUCKET.put(objectKey, sourceResponse.body, {
@@ -997,6 +998,7 @@ const importRemoteModel = async (request: Request, env: Env): Promise<Response> 
 
   const metadata: ModelMetadata = {
     id,
+    ownerId: user.id,
     label,
     description,
     fileName,
@@ -1014,7 +1016,6 @@ const importRemoteModel = async (request: Request, env: Env): Promise<Response> 
   };
 
   try {
-    await ensureCurrentUsageWithinCapacity(env);
     await writeMetadata(env.MODEL_BUCKET, metadata);
     return jsonResponse(request, env, { success: true, data: toPublicModel(metadata, request) }, 201);
   } catch (error) {
@@ -1121,14 +1122,15 @@ const searchRemoteCatalog = async (request: Request, env: Env): Promise<Response
 };
 
 const deleteModel = async (request: Request, env: Env, id: string): Promise<Response> => {
-  await authenticateMutation(request, env);
+  const user = await authenticateMutation(request, env);
   const existing = await readMetadata(env.MODEL_BUCKET, id);
   if (!existing) throw new ApiError(404, "MODEL_NOT_FOUND", "3D model not found.");
+  requireModelOwner(user, existing);
   if (existing.isBuiltIn) {
     throw new ApiError(403, "BUILT_IN_MODEL", "Built-in models cannot be deleted.");
   }
 
-  await env.MODEL_BUCKET.delete([existing.objectKey, metadataKey(id)]);
+  await writeMetadata(env.MODEL_BUCKET, { ...existing, archived: true }, existing);
   return jsonResponse(request, env, { success: true });
 };
 

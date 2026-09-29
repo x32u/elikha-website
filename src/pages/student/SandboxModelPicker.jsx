@@ -94,7 +94,7 @@ const SandboxModelPicker = ({ models = [], value = '', onChange }) => {
         <span className="sandbox-model-picker__icon" aria-hidden="true">◇</span>
         <span className="sandbox-model-picker__selection">
           <strong>{selectedModel?.label || 'No Model Available'}</strong>
-          <small>{selectedModel ? `${String(selectedModel.fileType || '3D').toUpperCase()} model` : 'Add a model to the library first'}</small>
+          <small>{selectedModel ? `${String(selectedModel.fileType || '3D').toUpperCase()} model` : 'Your teacher’s models will appear here'}</small>
         </span>
         <span className="sandbox-model-picker__action">Browse Models</span>
       </button>

@@ -342,12 +342,18 @@ function AdminModels({ onNavigate, role }) {
 
       <section className="m3d-storage-summary" aria-label="Cloudflare R2 model storage">
         <div>
-          <strong>Cloudflare R2 shared library</strong>
-          <span>
+          <strong>{role === 'Teacher' ? 'Your model storage' : 'Total storage used'}</strong>
+          <span aria-live="polite">
             {storage
-              ? `${formatStorage(storage.usedBytes)} used • ${formatStorage(storage.remainingBytes)} remaining of ${formatStorage(storage.capacityBytes)}`
-              : 'Checking storage usage...'}
+              ? storage.capacityBytes
+                ? `${formatStorage(storage.usedBytes)} / 15 GB used`
+                : `${formatStorage(storage.usedBytes)} in Cloudflare R2`
+              : 'Checking storage usage…'}
           </span>
+          {storage?.capacityBytes ? <progress aria-label="Teacher model storage used" max={storage.capacityBytes} value={storage.usedBytes} /> : null}
+          <small>{role === 'Teacher'
+            ? 'Private to you and students in your classes. Files retained for saved artwork count toward storage.'
+            : 'Actual stored files, including images and retained artwork models. Shared files count once.'}</small>
         </div>
         <span className={`m3d-cloud-status ${libraryError ? 'error' : ''}`}>
           {libraryError ? 'Unavailable' : 'Connected'}

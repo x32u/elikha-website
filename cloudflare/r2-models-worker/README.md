@@ -2,21 +2,21 @@
 
 This Worker is the shared private storage service used by the E-Likha React
 app. It stores model binaries, profile pictures, class images, and activity thumbnails in the
-`elikha-3d-models` R2 bucket under separate prefixes. Image objects do not count
-toward the app's 3D-model capacity meter.
+`elikha-3d-models` R2 bucket under separate prefixes. Admins see total physical
+bucket usage; teachers see the model bytes attributed to their private library.
 
 ## API contract
 
 - `GET /health` checks service availability.
-- `GET /models` lists built-in and uploaded model metadata.
+- `GET /models` lists only the authenticated caller's accessible model metadata.
 - `GET /models/search?q=&page=` proxies a Poly Pizza catalogue search. The
   provider API key is a Worker secret and never reaches the browser; the route
   is authenticated (teacher/admin/superadmin) so an allowed origin alone cannot
   spend the request quota. Results are filtered to single-file `.glb` downloads
   that this Worker can import.
 - `GET|HEAD /models/files/:id` streams a model and supports byte ranges.
-- `GET /storage` reports actual bytes currently stored under the R2 `models/`
-  prefix, plus configured capacity and remaining space.
+- `GET /storage` reports total bucket bytes for admins (no application cap), or
+  the teacher's model bytes and 15 GB allowance. Shared files count once physically.
 - `POST /models` uploads a model.
 - `POST /models/import` imports an allowlisted HTTPS model from Poly Pizza
   (`static.poly.pizza`). The importer stores the provider's attribution string,
@@ -24,7 +24,7 @@ toward the app's 3D-model capacity meter.
   uses the model, satisfying the CC-BY credit requirement.
 - `PATCH /models/:id` edits custom-model metadata.
 - `PUT /models/:id/file` replaces a custom-model file.
-- `DELETE /models/:id` removes a custom model and its metadata.
+- `DELETE /models/:id` archives a library entry, retaining files for saved work.
 - `GET|HEAD /media/avatars/:userId` returns an authenticated profile picture.
 - `PUT|DELETE /media/avatars/:userId` replaces or removes a profile picture.
 - `GET|HEAD /media/classes/:classId` returns an image after checking class access.
@@ -37,8 +37,11 @@ toward the app's 3D-model capacity meter.
 - `DELETE /activity-thumbnails/:id` removes an uploaded thumbnail for its owner
   or an administrator.
 
-The model read routes are public so students can load assigned AR content. Media
-routes are private and require a valid Supabase session. Model mutations
+Model read routes require a valid Supabase session. Teachers read their own
+library; students read the union of active enrolled-class teachers' libraries.
+Admins can read all libraries. Assigned/submitted activity references can retain
+access to specific files after enrollment changes, without exposing a library.
+Media routes also require a valid Supabase session. Model mutations
 require a valid Supabase access token and a current `teacher`, `admin`, or
 `superadmin` role in `public.users`. Before release, apply and verify the latest
 Supabase authorization-hardening migrations so learners cannot change their own
@@ -59,14 +62,17 @@ copies until they are deliberately removed later.
 - Profile-picture, class-image, and activity-thumbnail uploads accept PNG, JPG,
   or WebP sources up to 20 MiB. The browser crops and compresses profile and
   class images, while activity thumbnails are already resized before upload.
-- Application capacity defaults to 10 GB
-  (`MODEL_STORAGE_CAPACITY_BYTES=10000000000`). This is an E-Likha limit, not the
-  Cloudflare account's total R2 quota.
-- Capacity counts model objects under `models/`; small records under `metadata/`
-  are excluded. When the limit would be exceeded, the Worker returns HTTP `507`
-  and the upload is not kept.
-- Built-in models are immutable through the HTTP API. Teachers, administrators,
-  and super administrators can manage uploaded custom models.
+- Each teacher has a 15,000,000,000-byte allowance; admins have no application cap.
+  Per-owner manifests use conditional R2 writes so concurrent uploads cannot
+  publish model entries exceeding the allowance. Rejected files are removed.
+- `libraries/<user UUID>.json` holds independent model entries; `models/` holds
+  immutable binaries. Existing three teachers received 14 entries each pointing
+  to the same legacy binaries. New teachers receive no automatic seed.
+- Replaced/archived model files remain available for existing artwork and count
+  toward teacher usage. Physical cleanup requires a reference audit; library
+  removal deliberately does not delete shared files.
+- Legacy `metadata/` records remain immutable for saved activity URLs. Teacher
+  copies have independent IDs and are editable without changing legacy records.
 
 ## Local setup
 
@@ -103,7 +109,7 @@ run deliberately when reseeding that bucket.
 1. Add every exact deployed web origin to `ALLOWED_ORIGINS` in `wrangler.jsonc`.
    Do not use a wildcard because mutation routes accept bearer credentials.
 2. Confirm `SUPABASE_URL`, the R2 bucket name, the 50 MiB file limit, and the
-   10 GB application capacity.
+   teacher-specific capacity enforcement.
 3. Store the public Supabase client key as a Worker secret without placing its
    value on the command line:
 

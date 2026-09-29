@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "node --experimental-strip-types --test test/libraries.test.mjs",
     "check": "tsc --noEmit",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",

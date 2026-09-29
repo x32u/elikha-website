@@ -40,6 +40,10 @@ const ArSandbox = () => {
   }, []);
   const { settings: userSettings, userId } = useUserSettings();
   const [models, setModels] = useState(() => getArRenderableModelLibrary());
+  const [classId, setClassId] = useState('');
+  const classes = useMemo(() => Array.from(new Map(models.flatMap((model) => model.classes || [])
+    .map((entry) => [entry.class_id, entry])).values()), [models]);
+  const visibleModels = useMemo(() => models.filter((model) => !classId || model.classes?.some((entry) => entry.class_id === classId)), [models, classId]);
   useEffect(() => {
     const refreshModels = () => setModels(getArRenderableModelLibrary());
     window.addEventListener(AR_MODEL_LIBRARY_UPDATED_EVENT, refreshModels);
@@ -62,7 +66,7 @@ const ArSandbox = () => {
     if (mobileLaunch.autoStart) setIsRunning(true);
   }, [mobileLaunch.autoStart, mobileLaunch.modelId, models]);
 
-  const selectedModel = models.find((model) => model.id === selectedModelId) || models[0];
+  const selectedModel = visibleModels.find((model) => model.id === selectedModelId) || visibleModels[0];
   const selectedLevel = getPracticeLevel(difficultyId);
   const voiceGuideEnabled = userSettings.voiceInstructions !== false;
   // A phone can be wider than 768px after the native shell locks it to
@@ -150,11 +154,19 @@ const ArSandbox = () => {
           </div>
 
           <div className="sandbox-fields sandbox-fields-single">
+            <label className="sandbox-class-filter" htmlFor="sandbox-class-filter">
+              Class
+              <select id="sandbox-class-filter" name="sandbox-class" value={classId} onChange={(event) => setClassId(event.target.value)}>
+                <option value="">All classes</option>
+                {classes.map((entry) => <option key={entry.class_id} value={entry.class_id}>{entry.class_name}</option>)}
+              </select>
+            </label>
             <SandboxModelPicker
-              models={models}
+              models={visibleModels}
               value={selectedModelId}
               onChange={setSelectedModelId}
             />
+            {!visibleModels.length && <p role="status">No models are available for this class yet. Your teacher can add models to their library.</p>}
           </div>
 
           <section className="sandbox-voice-guide" aria-labelledby="sandbox-voice-guide-title">

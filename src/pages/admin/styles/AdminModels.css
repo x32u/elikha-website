@@ -58,6 +58,9 @@
   font-size: 14px;
 }
 
+.m3d-storage-summary small { color: #53627c; line-height: 1.5; max-width: 70ch; }
+.m3d-storage-summary progress { width: min(100%, 360px); height: 10px; accent-color: #304fe5; }
+
 .m3d-storage-summary span {
   color: var(--m3d-muted);
   font-size: 13px;

@@ -7,6 +7,13 @@ const CUSTOM_AR_MODEL_DB_NAME = 'elikha_custom_ar_models_db_v1';
 const CUSTOM_AR_MODEL_DB_VERSION = 1;
 const CUSTOM_AR_MODEL_DB_STORE = 'model_files';
 const R2_AR_MODEL_KEY = 'elikha_r2_ar_models_v1';
+// Private library metadata is memory-only and tied to the current account.
+let privateModels = [];
+let privateModelsOwner = null;
+const activeLibraryUser = () => {
+  try { return JSON.parse(window.sessionStorage.getItem('userInfo') || 'null')?.id || null; }
+  catch { return null; }
+};
 const R2_MODEL_API_BASE = String(process.env.REACT_APP_R2_MODEL_API_URL || '').trim().replace(/\/+$/, '');
 export const AR_MODEL_LIBRARY_UPDATED_EVENT = 'elikha-ar-model-library-updated';
 
@@ -310,6 +317,9 @@ const normalizeR2ModelEntry = (entry) => {
     uploadedAt: String(entry?.uploadedAt || ''),
     updatedAt: String(entry?.updatedAt || ''),
     uploadedByRole: String(entry?.uploadedByRole || ''),
+    ownerId: String(entry?.ownerId || ''),
+    sourceModelId: String(entry?.sourceModelId || ''),
+    classes: Array.isArray(entry?.classes) ? entry.classes : [],
     isBuiltIn,
     isCustom: !isBuiltIn,
     storageProvider: 'r2',
@@ -320,29 +330,19 @@ const normalizeR2ModelEntry = (entry) => {
 };
 
 const readR2ModelLibrary = () => {
-  if (!isBrowser) return [];
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(R2_AR_MODEL_KEY) || '[]');
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map(normalizeR2ModelEntry).filter(Boolean);
-  } catch {
-    return [];
-  }
+  return isBrowser && privateModelsOwner === activeLibraryUser() ? privateModels : [];
 };
 
-export const replaceR2ArModelLibrary = (models = []) => {
+export const replaceR2ArModelLibrary = (models = [], ownerId = activeLibraryUser()) => {
   if (!isBrowser) return [];
   const normalized = Array.isArray(models)
     ? models.map(normalizeR2ModelEntry).filter(Boolean)
     : [];
 
-  try {
-    window.localStorage.setItem(R2_AR_MODEL_KEY, JSON.stringify(normalized));
-    emitModelLibraryUpdated();
-  } catch {
-    // The current page still receives the fetched result even when persistent
-    // browser storage is unavailable.
-  }
+  privateModelsOwner = ownerId;
+  privateModels = normalized;
+  try { window.localStorage.removeItem(R2_AR_MODEL_KEY); } catch { /* Storage may be disabled. */ }
+  emitModelLibraryUpdated();
   return normalized;
 };
 
@@ -617,6 +617,7 @@ export const deleteCustomArModel = async (modelId) => {
 };
 
 export const getArModelLibrary = () => {
+  if (R2_MODEL_API_BASE) return sortArLibraryItems(readR2ModelLibrary());
   const dedupe = new Map();
 
   BUILT_IN_AR_MODELS.forEach((model) => {
@@ -679,7 +680,7 @@ export const getArRenderableModelLibrary = () => getArModelLibrary().filter((mod
 const getArModelById = () => {
   const modelMap = new Map();
   getArModelLibrary().forEach((model) => {
-    const keys = [model.id, slugifyId(model.id), model.label, model.fileName];
+    const keys = [model.id, slugifyId(model.id), model.label, model.fileName, model.sourceModelId];
     if (Array.isArray(model.aliases)) {
       keys.push(...model.aliases);
     }
@@ -748,7 +749,7 @@ export const getArModelDefinition = (modelId, fallbackUrl = '', fallbackFileType
     };
   }
 
-  return modelMap.get(DEFAULT_MODEL_ID) || BUILT_IN_AR_MODELS[0];
+  return modelMap.get(DEFAULT_MODEL_ID) || (R2_MODEL_API_BASE ? null : BUILT_IN_AR_MODELS[0]);
 };
 
 export const resolveArModelDefinitions = (modelIds) =>

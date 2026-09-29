@@ -7,6 +7,7 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as THREE from 'three';
 import { getCustomArModelBlob } from '../../../utils/activityArConfig';
+import { modelFileHeaders } from '../../../services/r2ModelApi';
 
 interface ModelLoaderProps {
   url: string;
@@ -108,6 +109,18 @@ export function ModelLoader({
 
     const loadModel = async () => {
       let resolvedUrl = normalizedUrl;
+      const headers = await modelFileHeaders(normalizedUrl);
+      if (cancelled) return;
+      if (headers.Authorization) {
+        // Keep the bearer token out of Three's dependency loaders: an uploaded
+        // file can reference external textures, which must never receive it.
+        const response = await fetch(normalizedUrl, { headers, cache: 'no-store' });
+        if (!response.ok) throw new Error(`Unable to load model (${response.status}).`);
+        const blob = await response.blob();
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        resolvedUrl = objectUrl;
+      }
 
       if (normalizedUrl.startsWith('idb://')) {
         const blob = await getCustomArModelBlob(normalizedUrl);

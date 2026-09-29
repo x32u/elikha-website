@@ -20,7 +20,7 @@ const ActivityModelSelector = ({
   const dialogRef = useRef(null);
   const modelCounts = useMemo(() => countModels(modelIds), [modelIds]);
   const selectedModels = useMemo(
-    () => modelOptions.filter((model) => (modelCounts.get(model.id) || 0) > 0),
+    () => modelOptions.filter((model) => (modelCounts.get(model.id) || modelCounts.get(model.sourceModelId) || 0) > 0),
     [modelCounts, modelOptions]
   );
   const visibleModels = useMemo(() => {

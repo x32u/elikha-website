@@ -50,6 +50,14 @@ const authenticatedHeaders = async (headers = {}) => ({
   Authorization: `Bearer ${await getAccessToken()}`,
 });
 
+export const modelFileHeaders = async (url) => {
+  if (!API_BASE) return {};
+  const target = new URL(url, window.location.origin);
+  const base = new URL(API_BASE);
+  if (target.origin !== base.origin || !target.pathname.startsWith(`${base.pathname.replace(/\/$/, '')}/models/files/`)) return {};
+  return authenticatedHeaders();
+};
+
 const modelUploadHeaders = async ({ label, description, file }) => authenticatedHeaders({
   'Content-Type': file.type || 'application/octet-stream',
   'X-Model-Name': encodeHeader(label),
@@ -59,13 +67,20 @@ const modelUploadHeaders = async ({ label, description, file }) => authenticated
 
 export const refreshR2ModelLibrary = async () => {
   if (!API_BASE) return getArModelLibrary();
-
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  const session = data?.session;
+  if (!session) { replaceR2ArModelLibrary([], null); return []; }
   const response = await fetch(`${API_BASE}/models`, {
     method: 'GET',
+    headers: { Authorization: `Bearer ${session.access_token}` },
     cache: 'no-store',
   });
   const models = await parseResponse(response);
-  replaceR2ArModelLibrary(Array.isArray(models) ? models : []);
+  // An in-flight refresh from a previous account must never repopulate the cache.
+  const { data: current } = await supabase.auth.getSession();
+  if (current?.session?.user?.id !== session.user.id) return getArModelLibrary();
+  replaceR2ArModelLibrary(Array.isArray(models) ? models : [], session.user.id);
   return getArModelLibrary();
 };
 
@@ -166,6 +181,7 @@ export const fetchR2StorageUsage = async () => {
   requireApiBase();
   const response = await fetch(`${API_BASE}/storage`, {
     method: 'GET',
+    headers: await authenticatedHeaders(),
     cache: 'no-store',
   });
   return parseResponse(response);
