@@ -12,9 +12,12 @@ export const isSupabaseConfigured = Boolean(
 // any request can reach this inert fallback client.
 const supabaseUrl = configuredSupabaseUrl || 'http://127.0.0.1:54321';
 const supabaseAnonKey = configuredSupabaseAnonKey || 'missing-anon-key';
+// Match Supabase's existing default so existing logins remain valid.
+export const AUTH_STORAGE_KEY = `sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
+    storageKey: AUTH_STORAGE_KEY,
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
