@@ -1,4 +1,40 @@
 /* 3D Models page-specific styles. Shared layout/sidebar comes from AdminShell.css */
+.m3d-library-controls {
+  width: min(100%, 1440px);
+  margin: 20px auto 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+}
+.m3d-library-controls label {
+  display: grid;
+  gap: 6px;
+  flex: 1 1 170px;
+  min-width: 0;
+  color: var(--m3d-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.m3d-library-controls select {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--m3d-border);
+  border-radius: 10px;
+  background: var(--m3d-panel);
+  color: var(--m3d-ink);
+  font: inherit;
+}
+.m3d-library-controls select:focus-visible,
+.m3d-library-controls button:focus-visible,
+.m3d-tablewrap:focus-visible { outline: 2px solid var(--m3d-blue); outline-offset: 3px; }
+.m3d-library-count { padding-block: 12px; color: var(--m3d-muted); font-size: 14px; }
+.m3d-table .m3d-size { white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; }
+@media (max-width: 600px) {
+  .m3d-library-controls label { flex-basis: 100%; }
+  .m3d-library-count { flex: 1; }
+}
 
 :root {
   --m3d-ink: #0d141c;

@@ -1,4 +1,6 @@
 import React from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { MODEL_SORTS, MODEL_SIZE_FILTERS, formatModelSize, selectLibraryModels } from '../../utils/modelLibraryView';
 import './styles/AdminModels.css';
 import AdminShell from './components/AdminShell';
 import Navbar from '../../components/Navbar';
@@ -72,7 +74,22 @@ function AdminModels({ onNavigate, role }) {
   const isSuperAdmin = role === 'SuperAdmin';
   const homePageKey = isSuperAdmin ? 'sa-dashboard' : 'homepage';
 
-  const [query, setQuery] = React.useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const query = searchParams.get('q') || '';
+  const sort = Object.keys(MODEL_SORTS).includes(searchParams.get('sort')) ? searchParams.get('sort') : 'newest';
+  const type = SUPPORTED_EXTENSIONS.includes(searchParams.get('type')) ? searchParams.get('type') : 'all';
+  const size = Object.keys(MODEL_SIZE_FILTERS).includes(searchParams.get('size')) ? searchParams.get('size') : 'all';
+  const setFilter = (key, value) => setSearchParams((current) => {
+    const next = new URLSearchParams(current);
+    if (!value || value === 'all' || (key === 'sort' && value === 'newest')) next.delete(key);
+    else next.set(key, value);
+    return next;
+  }, { replace: true });
+  const resetFilters = () => setSearchParams((current) => {
+    const next = new URLSearchParams(current);
+    ['q', 'sort', 'type', 'size'].forEach((key) => next.delete(key));
+    return next;
+  }, { replace: true });
   const [models, setModels] = React.useState(() => getArModelLibrary());
 
   const [isAddOpen, setIsAddOpen] = React.useState(false);
@@ -136,16 +153,7 @@ function AdminModels({ onNavigate, role }) {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [closeModals, busy]);
 
-  const filtered = models.filter((model) => {
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-
-    return (
-      String(model.label || '').toLowerCase().includes(q) ||
-      String(model.description || '').toLowerCase().includes(q) ||
-      String(inferFileName(model)).toLowerCase().includes(q)
-    );
-  });
+  const filtered = React.useMemo(() => selectLibraryModels(models, { query, type, size, sort }), [models, query, type, size, sort]);
 
   const validateFile = (file) => {
     if (!file) return { valid: false, error: 'Please select a model file.' };
@@ -373,10 +381,11 @@ function AdminModels({ onNavigate, role }) {
             className="m3d-search-input"
             type="text"
             name="modelSearch"
+            aria-label="Search your model library"
             autoComplete="off"
             placeholder="Search 3D models…"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => setFilter('q', event.target.value)}
           />
         </div>
       </section>
@@ -435,13 +444,34 @@ function AdminModels({ onNavigate, role }) {
         ) : null}
       </section>
 
-      <section className="m3d-tablewrap" aria-label="3D models table">
+      <section className="m3d-library-controls" aria-label="Model library filters">
+        <label>Sort by
+          <select name="modelSort" value={sort} onChange={(event) => setFilter('sort', event.target.value)}>
+            {Object.entries(MODEL_SORTS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+        <label>File type
+          <select name="modelType" value={type} onChange={(event) => setFilter('type', event.target.value)}>
+            <option value="all">All file types</option>
+            {SUPPORTED_EXTENSIONS.map((value) => <option key={value} value={value}>{value.toUpperCase()}</option>)}
+          </select>
+        </label>
+        <label>File size
+          <select name="modelSize" value={size} onChange={(event) => setFilter('size', event.target.value)}>
+            {Object.entries(MODEL_SIZE_FILTERS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+        <div className="m3d-library-count" role="status">{filtered.length} of {models.length} models</div>
+        {(query || type !== 'all' || size !== 'all' || sort !== 'newest') && <button type="button" className="m3d-btn" onClick={resetFilters}>Reset filters</button>}
+      </section>
+      <section className="m3d-tablewrap" aria-label="3D models table" tabIndex={0}>
         <table className="m3d-table">
           <thead>
             <tr>
               <th>Name</th>
               <th>Description</th>
               <th>File</th>
+              <th scope="col" className="m3d-size">Size</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -449,8 +479,8 @@ function AdminModels({ onNavigate, role }) {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td className="m3d-empty" colSpan={4}>
-                  No 3D models found.
+                <td className="m3d-empty" colSpan={5}>
+                  {models.length ? 'No models match. Try another search or reset the filters.' : 'No 3D models yet. Add a model to start your library.'}
                 </td>
               </tr>
             ) : (
@@ -467,6 +497,7 @@ function AdminModels({ onNavigate, role }) {
                   </td>
                   <td className="m3d-muted">{model.description || '—'}</td>
                   <td className="m3d-muted">{inferFileName(model)}</td>
+                  <td className="m3d-size">{formatModelSize(model)}</td>
                   <td className="m3d-actions">
                     <button
                       className="m3d-action"
