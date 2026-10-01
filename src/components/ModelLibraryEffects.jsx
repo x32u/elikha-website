@@ -2,6 +2,7 @@ import React from 'react';
 import { refreshR2ModelLibrary } from '../services/r2ModelApi';
 import { replaceR2ArModelLibrary } from '../utils/activityArConfig';
 import { useAuth } from '../context/AuthContext';
+import { isMobileSandboxAutoLaunch } from '../utils/mobileLaunch';
 
 const ModelLibraryEffects = () => {
   const { userInfo, status } = useAuth();
@@ -9,6 +10,8 @@ const ModelLibraryEffects = () => {
   React.useEffect(() => {
     replaceR2ArModelLibrary([], userId || null);
     if (status !== 'authenticated') return undefined;
+    // Native launches own their bounded, cancellable catalog request and errors.
+    if (isMobileSandboxAutoLaunch(window.location.search)) return undefined;
     let active = true;
 
     const refresh = async () => {

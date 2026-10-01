@@ -13,6 +13,7 @@ import ActivityDetails from './pages/shared/ActivityDetails';
 import TeacherActivityDetails from './pages/teacher/ActivityDetails';
 import ActivityStart from './pages/student/ActivityStart';
 import MobileActivityStart from './pages/student/MobileActivityStart';
+import MobileSandboxStart from './pages/student/MobileSandboxStart';
 import ArSandbox from './pages/student/ArSandbox';
 import Profile from './pages/student/Profile';
 // Teacher pages
@@ -100,7 +101,7 @@ const RoleProtectedRoute = ({ allowedRoles = [], children }) => {
 };
 
 const SandboxRoute = () => {
-  if (isMobileSandboxAutoLaunch(window.location.search)) return <ArSandbox />;
+  if (isMobileSandboxAutoLaunch(window.location.search)) return <MobileSandboxStart />;
 
   return (
     <ProtectedRoute>

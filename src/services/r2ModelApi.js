@@ -65,22 +65,36 @@ const modelUploadHeaders = async ({ label, description, file }) => authenticated
   'X-Model-File-Name': encodeHeader(file.name),
 });
 
-export const refreshR2ModelLibrary = async () => {
+export const refreshR2ModelLibrary = async ({ signal, expectedUserId } = {}) => {
+  const checkCancelled = () => {
+    if (signal?.aborted) throw new DOMException('Model loading cancelled.', 'AbortError');
+  };
+  checkCancelled();
   if (!API_BASE) return getArModelLibrary();
   const { data, error } = await supabase.auth.getSession();
+  checkCancelled();
   if (error) throw error;
   const session = data?.session;
+  if (expectedUserId && session?.user?.id !== expectedUserId) {
+    throw new Error('The Sandbox session changed. Return to the app and open it again.');
+  }
   if (!session) { replaceR2ArModelLibrary([], null); return []; }
   const response = await fetch(`${API_BASE}/models`, {
     method: 'GET',
     headers: { Authorization: `Bearer ${session.access_token}` },
     cache: 'no-store',
+    signal,
   });
   const models = await parseResponse(response);
+  if (!Array.isArray(models)) throw new Error('The model library returned an invalid response. Please retry.');
   // An in-flight refresh from a previous account must never repopulate the cache.
   const { data: current } = await supabase.auth.getSession();
+  checkCancelled();
+  if (expectedUserId && current?.session?.user?.id !== expectedUserId) {
+    throw new Error('The Sandbox session changed. Return to the app and open it again.');
+  }
   if (current?.session?.user?.id !== session.user.id) return getArModelLibrary();
-  replaceR2ArModelLibrary(Array.isArray(models) ? models : [], session.user.id);
+  replaceR2ArModelLibrary(models, session.user.id);
   return getArModelLibrary();
 };
 

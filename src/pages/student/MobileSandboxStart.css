@@ -1,0 +1,18 @@
+.mobile-sandbox-launch {
+  min-height: 100vh;
+  min-height: 100dvh;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  background: #fff;
+  color: #111;
+}
+.mobile-sandbox-launch__content { width: min(100%, 520px); overflow-wrap: anywhere; }
+.mobile-sandbox-launch__brand { color: #1800ad; font-size: 14px; font-weight: 600; }
+.mobile-sandbox-launch h1 { margin: 14px 0 12px; font-size: clamp(24px, 4vw, 32px); line-height: 1.2; }
+.mobile-sandbox-launch p { margin: 0; color: #485064; line-height: 1.6; }
+.mobile-sandbox-launch__actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+.mobile-sandbox-launch button { min-height: 44px; padding: 10px 18px; border: 1px solid #d7d7e1; border-radius: 8px; background: #fff; color: #1800ad; font: inherit; font-weight: 600; cursor: pointer; touch-action: manipulation; }
+.mobile-sandbox-launch .mobile-sandbox-launch__retry { background: #1800ad; color: #fff; border-color: #1800ad; }
+.mobile-sandbox-launch button:focus-visible { outline: 3px solid #38b6ff; outline-offset: 3px; }
