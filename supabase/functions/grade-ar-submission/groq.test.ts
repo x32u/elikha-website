@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { DEFAULT_GROQ_MODEL, resolveGroqModel } from "../_shared/groqModel.ts";
 import {
   buildGroqRequestBody,
   callGroqEvaluation,
@@ -18,12 +19,13 @@ const completion = (content: unknown) =>
 
 test("builds the supported Qwen vision JSON-mode request", () => {
   const body = buildGroqRequestBody({
-    model: "qwen/qwen3.6-27b",
+    model: resolveGroqModel(),
     prompt: "Grade this artwork.",
     image,
     attempt: 0,
   });
 
+  assert.equal(body.model, "qwen/qwen3.8-27b");
   assert.deepEqual(body.response_format, { type: "json_object" });
   assert.equal(body.reasoning_effort, "none");
   assert.equal(body.reasoning_format, "hidden");
@@ -31,6 +33,30 @@ test("builds the supported Qwen vision JSON-mode request", () => {
   assert.equal(body.top_p, 0.8);
   assert.equal(body.messages[0].content[1].image_url.url, "data:image/png;base64,c2FmZS1maXh0dXJl");
   assert.equal("json_schema" in body.response_format, false);
+});
+
+test("a retired Qwen override sends its successor with the artwork and validates the response", async (context) => {
+  context.mock.method(console, "warn", () => {});
+  let calls = 0;
+  const result = await callGroqEvaluation({
+    apiKey: "secret",
+    model: resolveGroqModel("qwen/qwen3.6-27b"),
+    prompt: "Grade this artwork.",
+    image,
+    signal,
+    fetchImpl: async (_input, init) => {
+      calls += 1;
+      const body = JSON.parse(String(init?.body));
+      assert.equal(body.model, "qwen/qwen3.8-27b");
+      assert.deepEqual(body.response_format, { type: "json_object" });
+      assert.equal(body.messages[0].content[1].image_url.url, "data:image/png;base64,c2FmZS1maXh0dXJl");
+      return completion('{"criterionScores":[]}');
+    },
+    validate: (value) => ({ validated: true, value }),
+  });
+
+  assert.equal(calls, 1);
+  assert.deepEqual(result, { validated: true, value: { criterionScores: [] } });
 });
 
 test("retries a Groq failed_generation once and then returns validated JSON", async () => {
@@ -47,7 +73,7 @@ test("retries a Groq failed_generation once and then returns validated JSON", as
 
   const result = await callGroqEvaluation({
     apiKey: "secret",
-    model: "qwen/qwen3.6-27b",
+    model: DEFAULT_GROQ_MODEL,
     prompt: "prompt",
     image,
     signal,
@@ -69,7 +95,7 @@ test("retries a semantic rubric validation failure without reusing raw output", 
   let calls = 0;
   const result = await callGroqEvaluation({
     apiKey: "secret",
-    model: "qwen/qwen3.6-27b",
+    model: DEFAULT_GROQ_MODEL,
     prompt: "prompt",
     image,
     signal,
@@ -92,7 +118,7 @@ test("returns a privacy-safe error after repeated malformed JSON", async () => {
   await assert.rejects(
     callGroqEvaluation({
       apiKey: "secret",
-      model: "qwen/qwen3.6-27b",
+      model: DEFAULT_GROQ_MODEL,
       prompt: "prompt",
       image,
       signal,
@@ -116,7 +142,7 @@ test("does not retry provider authentication failures", async () => {
   await assert.rejects(
     callGroqEvaluation({
       apiKey: "bad-secret",
-      model: "qwen/qwen3.6-27b",
+      model: DEFAULT_GROQ_MODEL,
       prompt: "prompt",
       image,
       signal,
@@ -140,7 +166,7 @@ test("does not retry provider authentication failures", async () => {
 test("accepts fenced JSON and array-form message content", async () => {
   const result = await callGroqEvaluation({
     apiKey: "secret",
-    model: "qwen/qwen3.6-27b",
+    model: DEFAULT_GROQ_MODEL,
     prompt: "prompt",
     image,
     signal,
@@ -155,7 +181,7 @@ test("maps an aborted request to a safe timeout message", async () => {
   await assert.rejects(
     callGroqEvaluation({
       apiKey: "secret",
-      model: "qwen/qwen3.6-27b",
+      model: DEFAULT_GROQ_MODEL,
       prompt: "prompt",
       image,
       signal,
@@ -170,4 +196,41 @@ test("maps an aborted request to a safe timeout message", async () => {
       return true;
     },
   );
+});
+
+test("a decommissioned configured model fails safely without retrying or fabricating a grade", async () => {
+  let calls = 0;
+  let validations = 0;
+  await assert.rejects(
+    callGroqEvaluation({
+      apiKey: "secret",
+      model: "custom/retired-vision-model",
+      prompt: "prompt",
+      image,
+      signal,
+      fetchImpl: async (_input, init) => {
+        calls += 1;
+        const body = JSON.parse(String(init?.body));
+        assert.equal(body.model, "custom/retired-vision-model");
+        assert.equal(body.messages[0].content[1].image_url.url, "data:image/png;base64,c2FmZS1maXh0dXJl");
+        return new Response(JSON.stringify({
+          error: {
+            code: "model_decommissioned",
+            message: "The configured model has been decommissioned.",
+          },
+        }), { status: 400 });
+      },
+      validate: (value) => {
+        validations += 1;
+        return value;
+      },
+    }),
+    (error: Error) => {
+      assert.equal(error.message, groqSafeMessages.temporary);
+      assert.doesNotMatch(error.message, /decommissioned|custom\/|secret/i);
+      return true;
+    },
+  );
+  assert.equal(calls, 1);
+  assert.equal(validations, 0);
 });

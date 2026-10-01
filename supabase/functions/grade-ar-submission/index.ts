@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { resolveGroqModel } from "../_shared/groqModel.ts";
 import { callGroqEvaluation } from "./groq.ts";
 import { normalizeArColorSuggestions, resolveActivityColorPalette } from "./colorPalette.ts";
 import {
@@ -19,7 +20,6 @@ const corsHeaders = {
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const PROCESSING_TTL_MS = 2 * 60 * 1000;
-const DEFAULT_GROQ_MODEL = "qwen/qwen3.6-27b";
 const DEFAULT_GEMINI_MODEL = "gemini-3.6-flash";
 const GRADER_VERSION = "grader-v3-private-rubric";
 
@@ -713,7 +713,7 @@ Deno.serve(async (request) => {
   const geminiApiKey = Deno.env.get("GEMINI_API_KEY") || "";
   const provider = groqApiKey ? "groq" : "gemini";
   const model = provider === "groq"
-    ? cleanText(Deno.env.get("GROQ_MODEL") || DEFAULT_GROQ_MODEL, 120)
+    ? resolveGroqModel(Deno.env.get("GROQ_MODEL"))
     : cleanText(Deno.env.get("GEMINI_MODEL") || DEFAULT_GEMINI_MODEL, 120);
   const storedModel = `${provider}:${model}:${GRADER_VERSION}`;
 

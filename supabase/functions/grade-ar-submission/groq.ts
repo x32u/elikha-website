@@ -48,6 +48,12 @@ const isJsonGenerationFailure = (payload: GroqJsonRecord) => {
     message.includes("failed_generation");
 };
 
+const isModelConfigurationFailure = (payload: GroqJsonRecord) => {
+  const error = asObject(payload.error);
+  const code = cleanText(error.code, 100).toLowerCase();
+  return code === "model_decommissioned" || code === "model_not_found";
+};
+
 const extractGroqText = (payload: GroqJsonRecord) => {
   const choices = Array.isArray(payload.choices) ? payload.choices : [];
   const message = asObject(asObject(choices[0]).message);
@@ -151,8 +157,12 @@ export const callGroqEvaluation = async <T>({
       const payload = asObject(await response.json().catch(() => ({})));
 
       if (!response.ok) {
-        const retryable = isJsonGenerationFailure(payload) || response.status >= 500;
-        finalMessage = safeStatusMessage(response.status);
+        const modelConfigurationFailure = isModelConfigurationFailure(payload);
+        const retryable = !modelConfigurationFailure &&
+          (isJsonGenerationFailure(payload) || response.status >= 500);
+        finalMessage = modelConfigurationFailure
+          ? TEMPORARY_FAILURE
+          : safeStatusMessage(response.status);
         if (retryable && attempt + 1 < MAX_ATTEMPTS) continue;
         throw new Error(finalMessage);
       }

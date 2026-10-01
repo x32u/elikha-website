@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { resolveGroqModel } from "../_shared/groqModel.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -46,7 +47,7 @@ Deno.serve(async (request) => {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: Deno.env.get("GROQ_MODEL") || "qwen/qwen3.6-27b",
+        model: resolveGroqModel(Deno.env.get("GROQ_MODEL")),
         temperature: 0,
         response_format: { type: "json_object" },
         messages: [

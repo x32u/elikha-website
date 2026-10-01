@@ -140,7 +140,9 @@ never placed in the React bundle.
 1. Apply `database/rubrics.sql`, then
    `database/ai_submission_grading.sql` in the Supabase SQL editor.
 2. Add `GROQ_API_KEY` as a Supabase Edge Function secret. Optionally set
-   `GROQ_MODEL`; it defaults to the multimodal `qwen/qwen3.6-27b` model.
+   `GROQ_MODEL`; it defaults to the multimodal `qwen/qwen3.8-27b` model
+   (currently a Groq preview). The retired `qwen/qwen3.6-27b` override is
+   explicitly migrated to this replacement with a server-side warning.
    During migration, the function uses `GEMINI_API_KEY` as a fallback only when
    no Groq key is configured.
 3. Deploy the function:
