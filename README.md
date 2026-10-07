@@ -2,17 +2,32 @@
 
 The web application for e-Likha, an arts and crafts learning platform with
 guided activities, role-based workspaces, progress tracking, and interactive AR
-experiences for elementary learners.
+experiences for kindergarten learners.
 
 ## Features
 
-- Student activities with step-by-step and voice-assisted guidance
-- Web-based augmented-reality activities and manipulable 3D models
-- Class, activity, submission, and review workflows for teachers
-- Groq-assisted AR submission checking based on each activity's teacher-created rubric
-- Role-specific administration for students, teachers, admins, and super admins
-- Progress, database-backed parent notifications, settings, audit, and direct email-OTP password recovery
-- Supabase authentication and application data, with Cloudflare R2 model storage
+- **Students:** side navigation, assigned activities, teacher feedback and five-star ratings, submitted creations, favorites, and settings.
+- **AR and practice:** interactive painting and 3D assembly, puzzle guides that disappear on completion, gesture controls, optional voice instructions, subtle background music, and split-view headset mode.
+- **Teachers:** class and enrollment management, activity creation/editing, required descriptions and instructions, optional rubrics, activity closing/reopening, and submission reviews with required written feedback.
+- **Creative student insights:** reviewed creations, creative exploration, progress, follow-up needs, and activity-specific teacher-rating rankings. Rubrics are optional for these reports; material/color counts describe saved work rather than measure creativity.
+- **Reports:** class and period filters, submission trends, CSV/Excel exports, and lists limited to ten entries per page with Previous/Next controls.
+- **Behavior alerts:** gesture and activity-lock events, including fullscreen exits and activity unlocking, labeled with student and activity identities.
+- **Model toolbar:** shared 3D materials and an optional searchable emoji picker with categories. A selected emoji replaces the model name in the learner toolbar.
+- **Parents:** linked-student progress, reviewed creations, and database-backed notifications.
+- **Administration:** role-protected user/model management, analytics, paginated audit history, and super-admin application-data backup/restore.
+- **Authentication and storage:** Supabase Auth and application data, private Cloudflare R2 media/model storage, and direct six-digit email-code password recovery.
+
+Teacher reviews use a five-star overall rating and written feedback. An attached
+rubric can additionally support criterion-level observations and AI suggestions;
+the teacher confirms the published result. AI checking is an optional assistant,
+not a requirement for reviewing an open-ended creation.
+
+## Related mobile app
+
+[e-Likha Mobile](https://github.com/x32u/elikha-mobile-ar) provides native Flutter
+student, teacher, and parent workflows. Its authenticated WebView loads this
+application for AR/Sandbox and administrator workspaces, so deploy web changes
+before testing those experiences in mobile.
 
 ## Technology
 
@@ -76,9 +91,11 @@ CORS, local-development, and release checklist.
 
 ## Database setup
 
-The `database/` directory contains SQL migrations and policy helpers for user
-profiles, class administration, gesture alerts, settings,
-parent/student links, and activity thumbnails. Review each script against the
+The `database/` and `supabase/migrations/` directories contain SQL migrations
+and policy helpers for user
+profiles, class administration, gesture/activity-lock alerts, settings,
+parent/student links, activity thumbnails, required review feedback, audit
+events, and platform backup functions. Review each script against the
 target Supabase project before applying it.
 
 ### Password reset email OTP
@@ -151,9 +168,9 @@ never placed in the React bundle.
    supabase functions deploy grade-ar-submission
    ```
 
-When a student submits an AR activity, the app starts the check automatically.
-The result is saved privately and shown in the teacher review modal with
-criterion-level evidence. Teachers can accept, edit, or ignore the suggestion;
+For activities with an attached rubric, AR submission checking can provide a
+private AI suggestion. The result is saved privately and shown in the teacher
+review modal with criterion-level evidence. Teachers can accept, edit, or ignore the suggestion;
 only **Submit Review** publishes the final rating.
 
 Do not add `GROQ_API_KEY` to `.env`, `.env.local`, or any variable beginning
